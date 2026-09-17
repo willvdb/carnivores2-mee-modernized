@@ -59,7 +59,7 @@ GLOBAL   int iSendResult;
 GLOBAL   HWND    hwndMain;
 
 
-GLOBAL   HANDLE  Heap;
+GLOBAL   Platform::HeapHandle Heap;
 
 GLOBAL   HDC     hdcMain, hdcCMain;
 

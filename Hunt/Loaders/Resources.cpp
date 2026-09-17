@@ -115,12 +115,12 @@ void GenerateAlphaFlags(TModel *mptr);
 // so that MEM_DEBUG builds can record every allocation without duplicating
 // the arena-vs-heap dispatch.
 // --------------------------------------------------------------------------
-static LPVOID AllocDispatch(HANDLE hHeap,
-                            DWORD dwFlags,
+static void* AllocDispatch(Platform::HeapHandle hHeap,
+                            std::uint32_t dwFlags,
                             size_t bytes,
                             MemoryTag tag)
 {
-  LPVOID res = nullptr;
+  void* res = nullptr;
 
   if (tag == MemoryTag::Level && LevelArena != nullptr)
   {
@@ -130,8 +130,8 @@ static LPVOID AllocDispatch(HANDLE hHeap,
   }
   else
   {
-    res = HeapAlloc(hHeap,
-                    dwFlags | HEAP_ZERO_MEMORY,
+    res = Platform::AllocateHeap(hHeap,
+                    dwFlags | Platform::ZeroMemoryFlag,
                     bytes);
   }
 
@@ -155,8 +155,8 @@ static LPVOID AllocDispatch(HANDLE hHeap,
 // 3-arg _HeapAlloc: forwards to the 4-arg overload with MemoryTag::Global.
 // This is the safe default — untagged allocations land on the persistent
 // heap where LevelArena->Reset() cannot invalidate them.
-LPVOID _HeapAlloc(HANDLE hHeap,
-                  DWORD dwFlags,
+void* _HeapAlloc(Platform::HeapHandle hHeap,
+                  std::uint32_t dwFlags,
                   size_t bytes)
 {
   return _HeapAlloc(hHeap, dwFlags, bytes, MemoryTag::Global);
@@ -167,15 +167,15 @@ LPVOID _HeapAlloc(HANDLE hHeap,
 //   tag == MemoryTag::Level AND LevelArena != nullptr → allocate from
 //     the per-level arena. The arena does not zero-initialize, so the
 //     returned block is explicitly memset to 0 (matches C1's behavior;
-//     the heap path gets HEAP_ZERO_MEMORY for the same effect).
-//   otherwise → HeapAlloc on the game heap with HEAP_ZERO_MEMORY.
+//     the heap path gets Platform::ZeroMemoryFlag for the same effect).
+//   otherwise → HeapAlloc on the game heap with Platform::ZeroMemoryFlag.
 //
 // HeapAllocated is incremented for ALL allocations (arena + heap),
 // matching C1. The name is a misnomer — it's really "total bytes
 // allocated" — but the counter feeds carnivor.log lines that downstream
 // tooling may parse, so the accounting is preserved verbatim.
-LPVOID _HeapAlloc(HANDLE hHeap,
-                  DWORD dwFlags,
+void* _HeapAlloc(Platform::HeapHandle hHeap,
+                  std::uint32_t dwFlags,
                   size_t bytes,
                   MemoryTag tag)
 {
@@ -186,7 +186,7 @@ LPVOID _HeapAlloc(HANDLE hHeap,
   // has complete coverage — even call sites that don't use _AllocTrack.
   std::lock_guard<std::mutex> lock(g_AllocMutex);
   if (!g_Allocations) g_Allocations = new std::map<void*, AllocationInfo>();
-  LPVOID res = AllocDispatch(hHeap, dwFlags, bytes, tag);
+  void* res = AllocDispatch(hHeap, dwFlags, bytes, tag);
   (*g_Allocations)[res] = { bytes, tag,
                             "unknown", 0 };
   return res;
@@ -203,8 +203,8 @@ LPVOID _HeapAlloc(HANDLE hHeap,
 // tracked (recursive tracking would be unsafe; see the bootstrap note
 // in Memory.h). The map entry is the source of truth for the leak
 // report at shutdown.
-LPVOID _HeapAlloc(HANDLE hHeap,
-                  DWORD dwFlags,
+void* _HeapAlloc(Platform::HeapHandle hHeap,
+                  std::uint32_t dwFlags,
                   size_t bytes,
                   MemoryTag tag,
                   const char* file,
@@ -213,7 +213,7 @@ LPVOID _HeapAlloc(HANDLE hHeap,
   std::lock_guard<std::mutex> lock(g_AllocMutex);
   if (!g_Allocations) g_Allocations = new std::map<void*, AllocationInfo>();
 
-  LPVOID res = AllocDispatch(hHeap, dwFlags, bytes, tag);
+  void* res = AllocDispatch(hHeap, dwFlags, bytes, tag);
 
   (*g_Allocations)[res] = { bytes, tag,
                             file ? file : "unknown", line };
@@ -224,8 +224,8 @@ LPVOID _HeapAlloc(HANDLE hHeap,
 // macro. Records the call site plus the actual backing store and arena
 // generation at alloc time, so the shutdown report attributes every block
 // and ClearTagAllocations can no longer silently hide heap-fallback blocks.
-LPVOID _HeapAllocImpl(HANDLE hHeap,
-                      DWORD dwFlags,
+void* _HeapAllocImpl(Platform::HeapHandle hHeap,
+                      std::uint32_t dwFlags,
                       size_t bytes,
                       MemoryTag tag,
                       const char* file,
@@ -234,7 +234,7 @@ LPVOID _HeapAllocImpl(HANDLE hHeap,
   std::lock_guard<std::mutex> lock(g_AllocMutex);
   if (!g_Allocations) g_Allocations = new std::map<void*, AllocationInfo>();
 
-  LPVOID res = AllocDispatch(hHeap, dwFlags, bytes, tag);
+  void* res = AllocDispatch(hHeap, dwFlags, bytes, tag);
 
   AllocationInfo info{ bytes, tag,
                        file ? file : "unknown", line };
@@ -250,9 +250,9 @@ LPVOID _HeapAllocImpl(HANDLE hHeap,
 #pragma pop_macro("_HeapAlloc")
 #endif
 
-BOOL _HeapFree(HANDLE hHeap,
-               DWORD  dwFlags,
-               LPVOID lpMem)
+BOOL _HeapFree(Platform::HeapHandle hHeap,
+               std::uint32_t dwFlags,
+               void* lpMem)
 {
   if (!lpMem) return false;
 
@@ -291,16 +291,16 @@ BOOL _HeapFree(HANDLE hHeap,
   if (LevelArena != nullptr && LevelArena->Contains(lpMem))
     return true;
 
-  const SIZE_T bytes = HeapSize(hHeap, HEAP_NO_SERIALIZE, lpMem);
+  const std::size_t bytes = Platform::HeapAllocationSize(hHeap, lpMem);
 
-  BOOL res = HeapFree(hHeap,
+  BOOL res = Platform::FreeHeap(hHeap,
                       dwFlags,
                       lpMem);
   if (!res)
     DoHalt("Heap free error!");
 
-  // HeapSize reports failure as SIZE_T(-1), not a released byte count.
-  if (bytes != static_cast<SIZE_T>(-1))
+  // HeapSize reports failure as std::size_t(-1), not a released byte count.
+  if (bytes != static_cast<std::size_t>(-1))
     HeapReleased += bytes;
 
   return res;
@@ -917,7 +917,7 @@ void LoadResources()
   {
     ReadRscValue(hfile, RandSound[r].length, "random-sound length");
     // Phase 5B.1: lpData is now std::vector<short int>. assign() value-
-    // initializes to zero (matches the previous HEAP_ZERO_MEMORY behavior).
+    // initializes to zero (matches the previous Platform::ZeroMemoryFlag behavior).
     // Bound the length first: corrupt values drove huge assigns (and odd
     // lengths overflowed the floor(length/2) read by one byte).
     if (!IsValidWavLength(RandSound[r].length))

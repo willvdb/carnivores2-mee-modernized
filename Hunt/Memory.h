@@ -23,7 +23,9 @@
 
 #include <cstdint>
 #include <cstddef>
-#include <windows.h>
+#include "Platform/Memory.h"
+#include <cstdio>
+#include <cstring>
 #include <memory>
 #include <limits>
 #include <new>
@@ -80,10 +82,10 @@ inline bool IsReclaimedByArenaReset(MemoryTag allocationTag,
 // Forward declarations (match C1)
 // ----------------------------------------------------------------------------
 
-extern HANDLE Heap;
-[[nodiscard]] LPVOID _HeapAlloc(HANDLE hHeap, DWORD dwFlags, size_t bytes);
-[[nodiscard]] LPVOID _HeapAlloc(HANDLE hHeap, DWORD dwFlags, size_t bytes, MemoryTag tag);
-[[nodiscard]] BOOL   _HeapFree(HANDLE hHeap, DWORD dwFlags, LPVOID lpMem);
+extern Platform::HeapHandle Heap;
+[[nodiscard]] void* _HeapAlloc(Platform::HeapHandle hHeap, std::uint32_t dwFlags, size_t bytes);
+[[nodiscard]] void* _HeapAlloc(Platform::HeapHandle hHeap, std::uint32_t dwFlags, size_t bytes, MemoryTag tag);
+[[nodiscard]] std::int32_t   _HeapFree(Platform::HeapHandle hHeap, std::uint32_t dwFlags, void* lpMem);
 [[noreturn]] void   DoHalt(char* msg);
 void   PrintLog(char* msg);
 
@@ -174,12 +176,12 @@ public:
         : m_Size(size), m_Offset(0), m_DebugName(debugName)
     {
         m_Base = static_cast<uint8_t*>(
-            VirtualAlloc(nullptr, m_Size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
+            Platform::AllocatePages(m_Size));
     }
 
     ~MemoryArena() {
         if (m_Base) {
-            VirtualFree(m_Base, 0, MEM_RELEASE);
+            Platform::FreePages(m_Base, m_Size);
         }
     }
 
@@ -309,8 +311,8 @@ private:
 // overhead. Runtime pointers may grow on x64; they are not serialized.
 static_assert(sizeof(void*) == 4 || sizeof(void*) == 8,
               "Expected a 32-bit or 64-bit runtime");
-static_assert(sizeof(unique_heap_ptr<WORD[]>) == sizeof(void*),
-              "unique_heap_ptr<WORD[]> must be the same size as a raw pointer "
+static_assert(sizeof(unique_heap_ptr<std::uint16_t[]>) == sizeof(void*),
+              "unique_heap_ptr<std::uint16_t[]> must be the same size as a raw pointer "
               "(empty base optimization on HeapDeleter must apply)");
 static_assert(sizeof(unique_obj_ptr<int>) == sizeof(void*),
               "unique_obj_ptr<T> must be the same size as a raw pointer "
@@ -369,7 +371,7 @@ void ClearTagAllocations(MemoryTag tag);
 // Only 3-arg and 4-arg shapes exist in the codebase (verified by audit);
 // a call with any other arity fails loudly at the selector instead of
 // silently recording a wrong tag.
-LPVOID _HeapAllocImpl(HANDLE hHeap, DWORD dwFlags, size_t bytes,
+void* _HeapAllocImpl(Platform::HeapHandle hHeap, std::uint32_t dwFlags, size_t bytes,
                       MemoryTag tag, const char* file, int line);
 #define _HeapAlloc3Dbg(hHeap, dwFlags, bytes) \
     _HeapAllocImpl(hHeap, dwFlags, bytes, MemoryTag::Global, __FILE__, __LINE__)

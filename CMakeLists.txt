@@ -166,6 +166,8 @@ else()
     message(FATAL_ERROR "Unknown CARNIVORES_PLATFORM='${CARNIVORES_PLATFORM}'")
 endif()
 
+add_library(CarnivoresPlatformMemory STATIC Hunt/Platform/Memory.cpp)
+
 # Core source files (excluding renderers)
 set(CORE_FILES
     ${PLATFORM_SRC}
@@ -450,3 +452,9 @@ if(MSVC)
         )
     endif()
 endif()
+
+foreach(target IN ITEMS Carnivores1 Carnivores2Tests Carnivores2MemoryPlainTests Carnivores2MemoryDebugTests Carnivores2ResourceTests Carnivores2ModelTests Carnivores2MediaTests)
+    if(TARGET ${target})
+        target_link_libraries(${target} PRIVATE CarnivoresPlatformMemory)
+    endif()
+endforeach()

@@ -6,8 +6,8 @@
 HANDLE Heap=GetProcessHeap();BOOL HARD3D=TRUE,NightVisionOn=FALSE;
 extern DWORD MediaEndPosition;
 extern std::vector<HANDLE> MediaHandles;
-LPVOID _HeapAlloc(HANDLE h,DWORD f,size_t n,MemoryTag) { return HeapAlloc(h,f|HEAP_ZERO_MEMORY,n); }
-BOOL _HeapFree(HANDLE h,DWORD f,LPVOID p) { return HeapFree(h,f,p); }
+LPVOID _HeapAlloc(HANDLE h,std::uint32_t f,size_t n,MemoryTag) { return HeapAlloc(h,f|HEAP_ZERO_MEMORY,n); }
+BOOL _HeapFree(HANDLE h,std::uint32_t f,LPVOID p) { return HeapFree(h,f,p); }
 [[noreturn]] void DoHalt(char* m) {
     for(auto h:MediaHandles) if(h!=INVALID_HANDLE_VALUE) CloseHandle(h);
     MediaHandles.clear();throw std::runtime_error(m);

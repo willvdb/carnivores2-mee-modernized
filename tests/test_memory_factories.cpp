@@ -3,13 +3,13 @@
 #include <gtest/gtest.h>
 #include "Memory.h"
 
-HANDLE Heap = GetProcessHeap();
+Platform::HeapHandle Heap = Platform::CreateHeap();
 
 namespace {
 struct AllocationStopped {};
 struct SizeOverflow {};
 size_t requestedBytes = 0;
-DWORD requestedFlags = 0;
+std::uint32_t requestedFlags = 0;
 MemoryTag requestedTag = MemoryTag::Global;
 int allocationCalls = 0;
 int freeCalls = 0;
@@ -17,13 +17,13 @@ bool stopAllocation = false;
 const char* trackedFile = nullptr;
 int trackedLine = 0;
 
-LPVOID CaptureAllocation(DWORD flags, size_t bytes, MemoryTag tag) {
+void* CaptureAllocation(std::uint32_t flags, size_t bytes, MemoryTag tag) {
     requestedBytes = bytes;
     requestedFlags = flags;
     requestedTag = tag;
     ++allocationCalls;
     if (stopAllocation) throw AllocationStopped{};
-    return HeapAlloc(Heap, flags | HEAP_ZERO_MEMORY, bytes);
+    return Platform::AllocateHeap(Heap, flags | Platform::ZeroMemoryFlag, bytes);
 }
 
 class MemoryFactories : public testing::Test {
@@ -38,23 +38,23 @@ class MemoryFactories : public testing::Test {
 }
 
 // Parentheses bypass the MEM_DEBUG call-site macro when defining overloads.
-LPVOID (_HeapAlloc)(HANDLE, DWORD flags, size_t bytes) {
+void* (_HeapAlloc)(Platform::HeapHandle, std::uint32_t flags, size_t bytes) {
     return CaptureAllocation(flags, bytes, MemoryTag::Global);
 }
-LPVOID (_HeapAlloc)(HANDLE, DWORD flags, size_t bytes, MemoryTag tag) {
+void* (_HeapAlloc)(Platform::HeapHandle, std::uint32_t flags, size_t bytes, MemoryTag tag) {
     return CaptureAllocation(flags, bytes, tag);
 }
 #ifdef MEM_DEBUG
-LPVOID _HeapAllocImpl(HANDLE, DWORD flags, size_t bytes, MemoryTag tag,
+void* _HeapAllocImpl(Platform::HeapHandle, std::uint32_t flags, size_t bytes, MemoryTag tag,
                      const char* file, int line) {
     trackedFile = file;
     trackedLine = line;
     return CaptureAllocation(flags, bytes, tag);
 }
 #endif
-BOOL _HeapFree(HANDLE heap, DWORD flags, LPVOID ptr) {
+std::int32_t _HeapFree(Platform::HeapHandle heap, std::uint32_t flags, void* ptr) {
     ++freeCalls;
-    return HeapFree(heap, flags, ptr);
+    return Platform::FreeHeap(heap, flags, ptr);
 }
 [[noreturn]] void DoHalt(char*) { throw SizeOverflow{}; }
 
@@ -119,12 +119,12 @@ TEST_F(MemoryFactories, ThrowingConstructorReleasesStorage) {
     EXPECT_EQ(freeCalls, 1);
 }
 
-TEST_F(MemoryFactories, ForwardingKeepsNativeBytesAndDWORDFlags) {
+TEST_F(MemoryFactories, ForwardingKeepsNativeBytesAndFlags) {
     stopAllocation = true;
     const size_t bytes = (std::numeric_limits<size_t>::max)();
-    EXPECT_THROW((void)_HeapAlloc(Heap, HEAP_NO_SERIALIZE, bytes), AllocationStopped);
+    EXPECT_THROW((void)_HeapAlloc(Heap, 1u, bytes), AllocationStopped);
     EXPECT_EQ(requestedBytes, bytes);
-    EXPECT_EQ(requestedFlags, HEAP_NO_SERIALIZE);
+    EXPECT_EQ(requestedFlags, 1u);
     EXPECT_EQ(requestedTag, MemoryTag::Global);
     EXPECT_THROW((void)_HeapAlloc(Heap, 0, bytes, MemoryTag::Level), AllocationStopped);
     EXPECT_EQ(requestedBytes, bytes);

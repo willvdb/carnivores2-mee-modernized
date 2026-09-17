@@ -22,11 +22,11 @@ decltype(WMap) WMap{}; decltype(FMap) FMap{}; decltype(TMap1) TMap1{};
 decltype(MapPic) MapPic{}; decltype(WaterList) WaterList{};
 int SkyR=0, SkyG=0, SkyB=0;
 WORD conv_565(WORD) { throw std::runtime_error("unexpected map conversion"); }
-LPVOID _HeapAlloc(HANDLE heap, DWORD flags, size_t bytes, MemoryTag)
+LPVOID _HeapAlloc(HANDLE heap, std::uint32_t flags, size_t bytes, MemoryTag)
 { return HeapAlloc(heap,flags|HEAP_ZERO_MEMORY,bytes); }
-LPVOID _HeapAlloc(HANDLE heap, DWORD flags, size_t bytes)
+LPVOID _HeapAlloc(HANDLE heap, std::uint32_t flags, size_t bytes)
 { return _HeapAlloc(heap,flags,bytes,MemoryTag::Global); }
-BOOL _HeapFree(HANDLE heap,DWORD flags,LPVOID p) { return HeapFree(heap,flags,p); }
+BOOL _HeapFree(HANDLE heap,std::uint32_t flags,LPVOID p) { return HeapFree(heap,flags,p); }
 [[noreturn]] void DoHalt(char* message) { throw std::runtime_error(message); }
 void CalcLights(TModel*) {}
 void ReleaseModelTexture(const TModel*) {}

@@ -440,7 +440,7 @@ void InitEngine()
                 OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, nullptr);
 
 
-  Heap = HeapCreate( 0, 60000000, 0 );
+  Heap = Platform::CreateHeap();
   if( Heap == nullptr )
   {
     MessageBox(hwndMain,"Error creating heap.","Error",IDOK);
