@@ -3,41 +3,21 @@
 // ==========================================================================
 
 #include "Hunt.h"
+#include "Platform/Platform.h"
 #include <algorithm>
 #include <cmath>
 #include "Core/WaterColor.h"  // §3.2: water-colour-aware depth modulation
 
 void CaptureMouse(BOOL capture)
 {
-  if (!hwndMain) return;
-
-  if (capture) {
-    RECT rect;
-    GetClientRect(hwndMain, &rect);
-
-    POINT p1 = { rect.left, rect.top };
-    POINT p2 = { rect.right, rect.bottom };
-    ClientToScreen(hwndMain, &p1);
-    ClientToScreen(hwndMain, &p2);
-    SetRect(&rect, p1.x, p1.y, p2.x, p2.y);
-
-    ClipCursor(&rect);
-    while (ShowCursor(false) >= 0);
-    ResetMousePos();
-  } else {
-    ClipCursor(nullptr);
-    while (ShowCursor(true) < 0);
-  }
+  Platform::SetMouseCapture(capture != FALSE);
+  if (capture) ResetMousePos();
 }
 
 void ResetMousePos()
 {
-  if (!hwndMain) return;
-
   if (blActive && _GameState && !IsPaused()) {
-    POINT p = { VideoCX, VideoCY };
-    ClientToScreen(hwndMain, &p);
-    SetCursorPos(p.x, p.y);
+    Platform::WarpPointerInClient({VideoCX, VideoCY});
   }
 }
 
@@ -250,7 +230,7 @@ void ProcessControls()
 {
   int _KeyFlags = KeyFlags;
   KeyFlags = 0;
-  GetKeyboardState(KeyboardState);
+  Platform::PollKeyboardState(KeyboardState);
 
   
   if (KeyboardState[KeyMap.fkReload] & 128)  KeyFlags += kfLookUp;

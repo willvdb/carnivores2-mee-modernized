@@ -8,6 +8,7 @@
 #include <cmath>
 #include <algorithm>
 #include "Platform/Platform.h"
+#include "Platform/PlatformWin32.h"
 #include "Game/FrameTiming.h"
 
 #ifndef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
@@ -1519,6 +1520,7 @@ BOOL CreateMainWindow()
                WS_VISIBLE |  WS_POPUP,
                0, 0, 0, 0, nullptr,  nullptr, hInst, nullptr );
 
+  Platform::Win32::SetGameWindow(hwndMain);
   if (hwndMain)
     PrintLog("Ok.\n");
 

@@ -3,6 +3,7 @@
 // ==========================================================================
 
 #include "Hunt.h"
+#include "Platform/Platform.h"
 
 void ProcessReload() {
 
@@ -397,10 +398,7 @@ void ProcessSlide()
 void ProcessPlayerMovement()
 {
 
-  POINT ms;
-
-  GetCursorPos(&ms);
-  ScreenToClient(hwndMain, &ms);
+  Platform::Point ms = Platform::PointerInClient();
   if (REVERSEMS) ms.y = -ms.y+VideoCY*2;
   // The per-frame mouse delta naturally scales with frame time because the
   // cursor is reset to the centre every frame, so ms-VideoCX/Y ~= V*T. The
