@@ -19,6 +19,8 @@
 #include <cstdlib>
 #include <set>
 #include <vector>
+#include <memory>
+#include <limits>
 #include "Core/ConfigText.h"
 
 
@@ -1304,22 +1306,28 @@ bool LoadWave(SoundFX& sfx, const std::string& path)
 
 		while (true)
 		{
-			c[0] = tf.get();
+			if (!tf.get(c[0])) return false;
 			if (c[0] == 'd')
 			{
-				tf.read(&c[1], 3);
+				if (!tf.read(&c[1], 3)) return false;
 				if (!std::string(c).compare("data")) break;
 				else tf.seekg(-3, std::ios::cur);
 			}
 		}
 
-		tf.read(reinterpret_cast<char*>(&sfx.m_Length), 4);
-
-		if (sfx.m_Data)
-			delete[] sfx.m_Data;
-
-		sfx.m_Data = new int16_t[sfx.m_Length / sizeof(int16_t)];
-		tf.read(reinterpret_cast<char*>(sfx.m_Data), sfx.m_Length);
+		uint32_t length = 0;
+		if (!tf.read(reinterpret_cast<char*>(&length), 4)) return false;
+		const auto payload = tf.tellg();
+		tf.seekg(0, std::ios::end);
+		if (!tf || tf.tellg() - payload < static_cast<std::streamoff>(length)) return false;
+		tf.seekg(payload);
+		const size_t samples = length / 2 + length % 2;
+		if (samples > (std::numeric_limits<size_t>::max)() / sizeof(int16_t)) return false;
+		std::unique_ptr<int16_t[]> data(new int16_t[samples]{});
+		if (length && !tf.read(reinterpret_cast<char*>(data.get()), length)) return false;
+		delete[] sfx.m_Data;
+		sfx.m_Data = data.release();
+		sfx.m_Length = length;
 
 		tf.close();
 		return true;
