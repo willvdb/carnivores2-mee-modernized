@@ -973,7 +973,7 @@ void LoadResources()
       for (int r=0; r<Ambient[a].RSFXCount; r++)
         if (Ambient[a].rdata[r].Flags)
         {
-          if (r!=15) memcpy(&Ambient[a].rdata[r], &Ambient[a].rdata[r+1], (15-r)*sizeof(TRD));
+          if (r!=15) memmove(&Ambient[a].rdata[r], &Ambient[a].rdata[r+1], (15-r)*sizeof(TRD));
           Ambient[a].RSFXCount--;
           r--;
         }
