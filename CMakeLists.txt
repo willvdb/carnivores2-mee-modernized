@@ -263,6 +263,7 @@ if(RENDERER)
 
     # Link libraries
     target_link_libraries(Carnivores1 PRIVATE
+        LegacyPath
         kernel32
         user32
         gdi32
@@ -363,7 +364,7 @@ if(MSVC)
     target_compile_definitions(Carnivores2ResourceTests PRIVATE ${RENDER_DEFINES})
     target_compile_options(Carnivores2ResourceTests PRIVATE /Gy)
     target_link_options(Carnivores2ResourceTests PRIVATE /OPT:REF /INCREMENTAL:NO)
-    target_link_libraries(Carnivores2ResourceTests PRIVATE gtest_main winmm)
+    target_link_libraries(Carnivores2ResourceTests PRIVATE LegacyPath gtest_main winmm)
     add_test(NAME Carnivores2Tests.ResourceLoader COMMAND Carnivores2ResourceTests)
 
     add_executable(Carnivores2MediaTests tests/test_media_loader.cpp tests/media_loader_source.cpp)

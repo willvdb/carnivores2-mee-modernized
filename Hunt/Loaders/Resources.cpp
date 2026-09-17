@@ -1,4 +1,5 @@
 #include "Hunt.h"
+#include "LegacyAssetPath.h"
 #include "LoadValidate.h"
 #include "ResourceIO.h"
 #include "MapIO.h"
@@ -789,7 +790,7 @@ void LoadResources()
 
   ReleaseResources();
 
-  hfile = CreateFile(RscName,
+  hfile = CreateFile(ResolveLegacyAssetReadPath(RscName).c_str(),
                      GENERIC_READ, FILE_SHARE_READ,
                      nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
 
@@ -1002,12 +1003,16 @@ void LoadResources()
 //================ Load MAPs file ==================//
   PrintLoad("Loading .map...");
   PrintLog("Loading .map:");
-  hfile = CreateFile(MapName,
+  hfile = CreateFile(ResolveLegacyAssetReadPath(MapName).c_str(),
                      GENERIC_READ, FILE_SHARE_READ,
                      nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
 
   if (hfile==INVALID_HANDLE_VALUE)
-    DoHalt("Error opening map file.");
+  {
+    char message[512];
+    sprintf_s(message, sizeof(message), "Error opening map file\n%s.", MapName);
+    DoHalt(message);
+  }
 
   RequireMapRead(EngineMap::ReadBytePlane(hfile, HMap), "height map");
   RequireMapRead(EngineMap::ReadWordPlane(hfile, TMap1), "primary texture map");
