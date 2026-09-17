@@ -1689,7 +1689,7 @@ int RunGame()
 
   Init3DHardware();
   InitEngine();
-  InitAudioSystem(hwndMain, hlog, OptSound);
+  InitAudioSystem(OptSound);
 
   StartLoading();
   PrintLoad("Loading...");

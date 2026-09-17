@@ -2,7 +2,11 @@
 // Keeps the same public API signatures as the original DLL‑based system
 // so Hunt.h / Hunt.cpp / Game.cpp need zero changes.
 
-#include "hunt.h"
+#include "Hunt.h"
+#include "Platform/Platform.h"
+#include <thread>
+#include <mutex>
+#include <atomic>
 #include "Audio.h"
 #include <unordered_map>
 #include <cmath>
@@ -13,10 +17,21 @@
 static ALCdevice*  alDevice = nullptr;
 static ALCcontext* alContext = nullptr;
 static std::unordered_map<short*, ALuint> bufferCache;
+#ifdef _WIN32
 static HANDLE      hAudioThread = nullptr;
 static DWORD       AudioTId;
 static CRITICAL_SECTION AudioCS;
 static volatile BOOL g_AudioShutdown = false;
+
+static void LockAudio() { EnterCriticalSection(&AudioCS); }
+static void UnlockAudio() { LeaveCriticalSection(&AudioCS); }
+#else
+static std::thread audioThread;
+static std::recursive_mutex audioMutex;
+static std::atomic<bool> g_AudioShutdown{false};
+static void LockAudio() { audioMutex.lock(); }
+static void UnlockAudio() { audioMutex.unlock(); }
+#endif
 
 static int iSoundActive = 0;
 static CHANNEL channel[MAX_CHANNEL]{};
@@ -30,6 +45,7 @@ enum class AudioBackend {
 };
 
 static AudioBackend g_AudioBackend = AudioBackend::OpenALSoft;
+#ifdef _WIN32
 static HMODULE g_LegacyAudioDLL = nullptr;
 
 using LegacyAudioInitFn = void (WINAPI *)(HWND, HANDLE);
@@ -53,6 +69,8 @@ static LegacyAudioVoiceFn g_LegacyAddVoice3dv = nullptr;
 static LegacyAudioVersionFn g_LegacyAudioGetVersion = nullptr;
 static LegacyAudioEnvFn g_LegacyAudioSetEnvironment = nullptr;
 static LegacyAudioGeomFn g_LegacyAudioUploadGeometry = nullptr;
+
+#endif
 
 // For EAX → EFX reverb
 static ALuint g_effect = 0;
@@ -118,6 +136,7 @@ bool Audio_SetEnvParam(int env, int field, float v)
     return true;
 }
 
+#ifdef _WIN32
 static void UnloadLegacyAudioBackend()
 {
     if (g_LegacyAudioDLL) {
@@ -169,7 +188,7 @@ static bool LoadLegacyAudioBackend(const char* dllName)
     if (g_LegacyAudioGetVersion) {
         int v = g_LegacyAudioGetVersion();
         char buf[128];
-        sprintf_s(buf, sizeof(buf), "Legacy audio driver version: %d.%d\n", v >> 16, v & 0xFFFF);
+        snprintf(buf, sizeof(buf), "Legacy audio driver version: %d.%d\n", v >> 16, v & 0xFFFF);
         PrintLog(buf);
     }
 
@@ -180,8 +199,10 @@ static bool LoadLegacyAudioBackend(const char* dllName)
 // ---------------------------------------------------------------------------
 // Debug helpers
 // ---------------------------------------------------------------------------
+#endif
+
 #define AL_CHECK(call) do { call; ALenum err = alGetError ? alGetError() : AL_NO_ERROR; \
-    if (err != AL_NO_ERROR) { char m[128]; sprintf_s(m, sizeof(m),"ALerr 0x%04X at %s\n",err,#call); PrintLog(m); } } while(0)
+    if (err != AL_NO_ERROR) { char m[128]; snprintf(m, sizeof(m),"ALerr 0x%04X at %s\n",err,#call); PrintLog(m); } } while(0)
 
 // ---------------------------------------------------------------------------
 // Buffer cache
@@ -202,10 +223,10 @@ static ALuint GetBuffer(short int* lpData, int length) {
 // ---------------------------------------------------------------------------
 // Audio thread  (ambient crossfade only)
 // ---------------------------------------------------------------------------
-DWORD WINAPI ProcessAudioThread(LPVOID) {
+static void RunAudioThread() {
     while (!g_AudioShutdown) {
         if (iSoundActive) {
-            EnterCriticalSection(&AudioCS);
+            LockAudio();
 
             // Fade in new ambient
             if (ambient.volume < 256) {
@@ -228,25 +249,28 @@ DWORD WINAPI ProcessAudioThread(LPVOID) {
                 }
             }
 
-            LeaveCriticalSection(&AudioCS);
+            UnlockAudio();
         }
-        Sleep(70);
+        Platform::SleepMilliseconds(70);
     }
-    return 0;
 }
+#ifdef _WIN32
+static DWORD WINAPI ProcessAudioThread(LPVOID) { RunAudioThread(); return 0; }
+#endif
 
 // ---------------------------------------------------------------------------
 // Init / Shutdown
 // ---------------------------------------------------------------------------
-void InitAudioSystem(HWND hw, HANDLE hlog, int driver)
+void InitAudioSystem(int driver)
 {
+#ifdef _WIN32
     driver = NormalizeAudioBackend(driver);
 
     if (driver == AUDIO_DIRECTSOUND) {
         if (LoadLegacyAudioBackend("a_ds3d.dll")) {
             PrintLog("DirectSound: legacy audio DLL loaded\n");
             if (g_LegacyInitAudioSystem)
-                g_LegacyInitAudioSystem(hw, hlog);
+                g_LegacyInitAudioSystem(hwndMain, hlog);
             g_AudioShutdown = false;
             iSoundActive = 1;
             return;
@@ -255,10 +279,12 @@ void InitAudioSystem(HWND hw, HANDLE hlog, int driver)
         PrintLog("DirectSound: legacy audio DLL not found — falling back to OpenAL Soft\n");
     }
 
+#endif
+
     g_AudioBackend = AudioBackend::OpenALSoft;
 
     if (!LoadOpenAL()) {
-        PrintLog("OpenAL: openal32.dll not found — audio disabled\n");
+        PrintLog("OpenAL: native library not found — audio disabled\n");
         return;
     }
 
@@ -280,7 +306,9 @@ void InitAudioSystem(HWND hw, HANDLE hlog, int driver)
         return;
     }
 
+#ifdef _WIN32
     InitializeCriticalSection(&AudioCS);
+#endif
     g_CurrentEnv = -1;
 
     AL_CHECK(alDistanceModel(AL_INVERSE_DISTANCE_CLAMPED));
@@ -345,15 +373,19 @@ void InitAudioSystem(HWND hw, HANDLE hlog, int driver)
     iSoundActive = 1;
 
     // Start the background thread (same pattern as original audio DLLs)
+#ifdef _WIN32
     hAudioThread = CreateThread(nullptr, 0, ProcessAudioThread, nullptr, 0, &AudioTId);
     if (hAudioThread)
         SetThreadPriority(hAudioThread, THREAD_PRIORITY_HIGHEST);
+#else
+    audioThread = std::thread(RunAudioThread);
+#endif
 
     // ── Log device info ──
     {
         char buf[256];
         const char* devName = alcGetString ? alcGetString(alDevice, ALC_DEVICE_SPECIFIER) : nullptr;
-        sprintf_s(buf, sizeof(buf), "OpenAL: device=\"%s\"\n", devName ? devName : "(unknown)");
+        snprintf(buf, sizeof(buf), "OpenAL: device=\"%s\"\n", devName ? devName : "(unknown)");
         PrintLog(buf);
     }
     PrintLog("OpenAL: Audio System Initialized\n");
@@ -361,6 +393,7 @@ void InitAudioSystem(HWND hw, HANDLE hlog, int driver)
 
 void Audio_Shutdown()
 {
+#ifdef _WIN32
     if (g_AudioBackend == AudioBackend::LegacyDLL) {
         if (g_LegacyAudioShutdown)
             g_LegacyAudioShutdown();
@@ -369,18 +402,23 @@ void Audio_Shutdown()
         g_AudioShutdown = true;
         return;
     }
+#endif
 
     if (!iSoundActive) return;
 
     g_AudioShutdown = true;
 
+#ifdef _WIN32
     if (hAudioThread) {
         WaitForSingleObject(hAudioThread, 5000);
         CloseHandle(hAudioThread);
         hAudioThread = nullptr;
     }
+#else
+    if (audioThread.joinable()) audioThread.join();
+#endif
 
-    EnterCriticalSection(&AudioCS);
+    LockAudio();
     AudioStop();
     iSoundActive = 0;
     g_CurrentEnv = -1;
@@ -398,7 +436,7 @@ void Audio_Shutdown()
         AL_CHECK(alDeleteBuffers(1, &kv.second));
     bufferCache.clear();
 
-    LeaveCriticalSection(&AudioCS);
+    UnlockAudio();
 
     if (alContext) {
         alcMakeContextCurrent(nullptr);
@@ -410,7 +448,9 @@ void Audio_Shutdown()
         alDevice = nullptr;
     }
 
+#ifdef _WIN32
     DeleteCriticalSection(&AudioCS);
+#endif
     UnloadOpenAL();
 
     PrintLog("OpenAL Audio System Shut Down\n");
@@ -418,15 +458,17 @@ void Audio_Shutdown()
 
 void AudioStop()
 {
+#ifdef _WIN32
     if (g_AudioBackend == AudioBackend::LegacyDLL) {
         if (g_LegacyAudioStop)
             g_LegacyAudioStop();
         return;
     }
+#endif
 
     if (!alContext) return;
 
-    EnterCriticalSection(&AudioCS);
+    LockAudio();
 
     for (int i = 0; i < MAX_CHANNEL; i++) {
         AL_CHECK(alSourceStop(channel[i].source));
@@ -448,7 +490,7 @@ void AudioStop()
     AL_CHECK(alSourcei(mambient.source, AL_BUFFER, 0));
     mambient.lpData = nullptr;
 
-    LeaveCriticalSection(&AudioCS);
+    UnlockAudio();
 }
 
 // ---------------------------------------------------------------------------
@@ -456,11 +498,13 @@ void AudioStop()
 // ---------------------------------------------------------------------------
 void Audio_Restore()
 {
+#ifdef _WIN32
     if (g_AudioBackend == AudioBackend::LegacyDLL) {
         if (g_LegacyAudioRestore)
             g_LegacyAudioRestore();
         return;
     }
+#endif
 
     // Nothing to do.
 }
@@ -470,11 +514,13 @@ void Audio_Restore()
 // ---------------------------------------------------------------------------
 void AudioSetCameraPos(float cx, float cy, float cz, float ca, float cb)
 {
+#ifdef _WIN32
     if (g_AudioBackend == AudioBackend::LegacyDLL) {
         if (g_LegacyAudioSetCameraPos)
             g_LegacyAudioSetCameraPos(cx, cy, cz, ca, cb);
         return;
     }
+#endif
 
     if (!iSoundActive) return;
 
@@ -497,19 +543,21 @@ void AudioSetCameraPos(float cx, float cy, float cz, float ca, float cb)
 // ---------------------------------------------------------------------------
 void SetAmbient(int length, short int* lpdata, int av)
 {
+#ifdef _WIN32
     if (g_AudioBackend == AudioBackend::LegacyDLL) {
         if (g_LegacySetAmbient)
             g_LegacySetAmbient(length, lpdata, av);
         return;
     }
+#endif
 
     if (!iSoundActive) return;
 
-    EnterCriticalSection(&AudioCS);
+    LockAudio();
 
     // Already playing this exact sound — nothing to do
     if (ambient.lpData == lpdata && ambient.avolume == av) {
-        LeaveCriticalSection(&AudioCS);
+        UnlockAudio();
         return;
     }
 
@@ -550,7 +598,7 @@ void SetAmbient(int length, short int* lpdata, int av)
         ambient.avolume = 0;
     }
 
-    LeaveCriticalSection(&AudioCS);
+    UnlockAudio();
 }
 
 // ---------------------------------------------------------------------------
@@ -558,22 +606,24 @@ void SetAmbient(int length, short int* lpdata, int av)
 // ---------------------------------------------------------------------------
 void SetAmbient3d(int length, short int* lpdata, float cx, float cy, float cz)
 {
+#ifdef _WIN32
     if (g_AudioBackend == AudioBackend::LegacyDLL) {
         if (g_LegacySetAmbient3d)
             g_LegacySetAmbient3d(length, lpdata, cx, cy, cz);
         return;
     }
+#endif
 
     if (!iSoundActive) return;
 
-    EnterCriticalSection(&AudioCS);
+    LockAudio();
 
     if (!lpdata) {
         // Stop moving ambient
         AL_CHECK(alSourceStop(mambient.source));
         AL_CHECK(alSourcei(mambient.source, AL_BUFFER, 0));
         mambient.lpData = nullptr;
-        LeaveCriticalSection(&AudioCS);
+        UnlockAudio();
         return;
     }
 
@@ -590,7 +640,7 @@ void SetAmbient3d(int length, short int* lpdata, float cx, float cy, float cz)
     mambient.z = cz;
     AL_CHECK(alSource3f(mambient.source, AL_POSITION, cx, cy, cz));
 
-    LeaveCriticalSection(&AudioCS);
+    UnlockAudio();
 }
 
 // ---------------------------------------------------------------------------
@@ -604,9 +654,9 @@ bool IsAmbient3dOwner(short int* lpdata)
 {
     if (g_AudioBackend == AudioBackend::LegacyDLL) return true; // unknowable: keep legacy behaviour
     if (!iSoundActive) return false;
-    EnterCriticalSection(&AudioCS);
+    LockAudio();
     bool owned = (lpdata != nullptr && mambient.lpData == lpdata);
-    LeaveCriticalSection(&AudioCS);
+    UnlockAudio();
     return owned;
 }
 
@@ -614,9 +664,9 @@ bool IsAmbient3dFree()
 {
     if (g_AudioBackend == AudioBackend::LegacyDLL) return true; // unknowable: keep legacy behaviour
     if (!iSoundActive) return false;
-    EnterCriticalSection(&AudioCS);
+    LockAudio();
     bool idle = (mambient.lpData == nullptr);
-    LeaveCriticalSection(&AudioCS);
+    UnlockAudio();
     return idle;
 }
 
@@ -625,15 +675,17 @@ bool IsAmbient3dFree()
 // ---------------------------------------------------------------------------
 void AddVoice3dv(int length, short int* lpdata, float cx, float cy, float cz, int vol)
 {
+#ifdef _WIN32
     if (g_AudioBackend == AudioBackend::LegacyDLL) {
         if (g_LegacyAddVoice3dv && lpdata)
             g_LegacyAddVoice3dv(length, lpdata, cx, cy, cz, vol);
         return;
     }
+#endif
 
     if (!iSoundActive || !lpdata) return;
 
-    EnterCriticalSection(&AudioCS);
+    LockAudio();
 
     // Find a free channel
     int idx = -1;
@@ -642,7 +694,7 @@ void AddVoice3dv(int length, short int* lpdata, float cx, float cy, float cz, in
         AL_CHECK(alGetSourcei(channel[i].source, AL_SOURCE_STATE, &state));
         if (state != AL_PLAYING) { idx = i; break; }
     }
-    if (idx < 0) { LeaveCriticalSection(&AudioCS); return; }
+    if (idx < 0) { UnlockAudio(); return; }
 
     channel[idx].lpData  = lpdata;
     channel[idx].x       = cx;
@@ -664,7 +716,7 @@ void AddVoice3dv(int length, short int* lpdata, float cx, float cy, float cz, in
 
     AL_CHECK(alSourcePlay(channel[idx].source));
 
-    LeaveCriticalSection(&AudioCS);
+    UnlockAudio();
 }
 
 void AddVoice3d(int length, short int* lpdata, float cx, float cy, float cz)
@@ -687,11 +739,13 @@ void AddVoice(int length, short int* lpdata)
 // ---------------------------------------------------------------------------
 void Audio_SetEnvironment(int e, float f)
 {
+#ifdef _WIN32
     if (g_AudioBackend == AudioBackend::LegacyDLL) {
         if (g_LegacyAudioSetEnvironment)
             g_LegacyAudioSetEnvironment(e, f);
         return;
     }
+#endif
 
     if (!iSoundActive || !alContext) return;
     if (e == g_CurrentEnv) return;
@@ -709,7 +763,7 @@ void Audio_SetEnvironment(int e, float f)
     const EAX2ENV* env = &g_EnvRuntime[e];
     {
         char buf[128];
-        sprintf_s(buf, sizeof(buf), "Audio_SetEnvironment: env=%d gain=100 decay=%d decayHF=%d diff=%d reverblevel=%d\n",
+        snprintf(buf, sizeof(buf), "Audio_SetEnvironment: env=%d gain=100 decay=%d decayHF=%d diff=%d reverblevel=%d\n",
                   e, static_cast<int>((env->decay*10)), static_cast<int>((env->decayHF*100)), static_cast<int>((env->diffusion*100)), env->reverb);
         PrintLog(buf);
     }
@@ -755,11 +809,13 @@ void Audio_UploadGeometry()
 {
     UploadGeometry();
 
+#ifdef _WIN32
     if (g_AudioBackend == AudioBackend::LegacyDLL) {
         if (g_LegacyAudioUploadGeometry)
             g_LegacyAudioUploadGeometry(AudioFCount, data);
         return;
     }
+#endif
 
     // OpenAL Soft has no terrain‑occlusion equivalent — discard.
 }

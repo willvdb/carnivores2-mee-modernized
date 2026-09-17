@@ -470,9 +470,7 @@ void SetAmbient(int, short int*, int);
 bool IsAmbient3dOwner(short int* lpdata); // true if the shared looping channel currently plays this sample
 bool IsAmbient3dFree();                   // true if the shared looping channel is idle
 void AudioSetCameraPos(float, float, float, float, float);
-#ifdef _WIN32
-void InitAudioSystem(HWND, HANDLE, int);
-#endif
+void InitAudioSystem(int);
 void Audio_Restore();
 void AudioStop();
 void Audio_Shutdown();

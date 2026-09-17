@@ -166,7 +166,10 @@ else()
     message(FATAL_ERROR "Unknown CARNIVORES_PLATFORM='${CARNIVORES_PLATFORM}'")
 endif()
 
-add_library(CarnivoresPlatformMemory STATIC Hunt/Platform/Memory.cpp Hunt/Platform/Files.cpp)
+add_library(CarnivoresPlatformMemory STATIC Hunt/Platform/Memory.cpp Hunt/Platform/Files.cpp Hunt/Platform/SharedLibrary.cpp)
+if(NOT WIN32)
+    target_link_libraries(CarnivoresPlatformMemory PUBLIC ${CMAKE_DL_LIBS})
+endif()
 
 # Core source files (excluding renderers)
 set(CORE_FILES
@@ -446,6 +449,13 @@ if(MSVC)
     target_link_libraries(Carnivores2UITests PRIVATE gtest_main gdi32)
     add_test(NAME Carnivores2Tests.UIText COMMAND Carnivores2UITests)
 
+    add_library(CarnivoresTestLibrary SHARED tests/shared_library_fixture.cpp)
+    add_executable(Carnivores2LibraryTests tests/test_shared_library.cpp Hunt/Audio/OpenAL_Loader.cpp)
+    target_compile_definitions(Carnivores2LibraryTests PRIVATE TEST_LIBRARY_PATH="$<TARGET_FILE:CarnivoresTestLibrary>")
+    target_link_libraries(Carnivores2LibraryTests PRIVATE gtest_main CarnivoresPlatformMemory)
+    add_dependencies(Carnivores2LibraryTests CarnivoresTestLibrary)
+    add_test(NAME Carnivores2Tests.SharedLibrary COMMAND Carnivores2LibraryTests)
+
     # SmokeTest only runs when a game executable is built (not menu-only)
     if(TARGET Carnivores1)
         add_test(NAME SmokeTest
@@ -457,7 +467,7 @@ if(MSVC)
     endif()
 endif()
 
-foreach(target IN ITEMS Carnivores1 Carnivores2Tests Carnivores2MemoryPlainTests Carnivores2MemoryDebugTests Carnivores2ResourceTests Carnivores2ModelTests Carnivores2MediaTests)
+foreach(target IN ITEMS Carnivores1 Carnivores2Menu Carnivores2Tests Carnivores2MemoryPlainTests Carnivores2MemoryDebugTests Carnivores2ResourceTests Carnivores2ModelTests Carnivores2MediaTests)
     if(TARGET ${target})
         target_link_libraries(${target} PRIVATE CarnivoresPlatformMemory)
     endif()

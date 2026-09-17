@@ -1,4 +1,5 @@
 #include "OpenAL_Loader.h"
+#include "../Platform/SharedLibrary.h"
 
 LPALCOPENDEVICE alcOpenDevice = nullptr;
 LPALCCLOSEDEVICE alcCloseDevice = nullptr;
@@ -34,45 +35,51 @@ LPALSOURCE3I alSource3i = nullptr;
 LPALGETSTRING alGetString = nullptr;
 LPALCGETSTRING alcGetString = nullptr;
 
-static HMODULE hOpenAL = nullptr;
+static Platform::SharedLibrary hOpenAL = nullptr;
 
-bool LoadOpenAL() {
-    hOpenAL = LoadLibraryA("openal32.dll");
+bool LoadOpenAL(const char* library) {
+    if (hOpenAL) UnloadOpenAL();
+#ifdef _WIN32
+    const char* defaultLibrary = "openal32.dll";
+#else
+    const char* defaultLibrary = "libopenal.so.1";
+#endif
+    hOpenAL = Platform::OpenSharedLibrary(library ? library : defaultLibrary);
     if (!hOpenAL) return false;
 
-    alcOpenDevice = (LPALCOPENDEVICE)GetProcAddress(hOpenAL, "alcOpenDevice");
-    alcCloseDevice = (LPALCCLOSEDEVICE)GetProcAddress(hOpenAL, "alcCloseDevice");
-    alcCreateContext = (LPALCCREATECONTEXT)GetProcAddress(hOpenAL, "alcCreateContext");
-    alcMakeContextCurrent = (LPALCMAKECONTEXTCURRENT)GetProcAddress(hOpenAL, "alcMakeContextCurrent");
-    alcDestroyContext = (LPALCDESTROYCONTEXT)GetProcAddress(hOpenAL, "alcDestroyContext");
-    alDistanceModel = (LPALDISTANCEMODEL)GetProcAddress(hOpenAL, "alDistanceModel");
-    alGenBuffers = (LPALGENBUFFERS)GetProcAddress(hOpenAL, "alGenBuffers");
-    alDeleteBuffers = (LPALDELETEBUFFERS)GetProcAddress(hOpenAL, "alDeleteBuffers");
-    alBufferData = (LPALBUFFERDATA)GetProcAddress(hOpenAL, "alBufferData");
-    alGenSources = (LPALGENSOURCES)GetProcAddress(hOpenAL, "alGenSources");
-    alDeleteSources = (LPALDELETESOURCES)GetProcAddress(hOpenAL, "alDeleteSources");
-    alSourcei = (LPALSOURCEI)GetProcAddress(hOpenAL, "alSourcei");
-    alSourcef = (LPALSOURCEF)GetProcAddress(hOpenAL, "alSourcef");
-    alSource3f = (LPALSOURCE3F)GetProcAddress(hOpenAL, "alSource3f");
-    alSourcePlay = (LPALSOURCEPLAY)GetProcAddress(hOpenAL, "alSourcePlay");
-    alSourceStop = (LPALSOURCESTOP)GetProcAddress(hOpenAL, "alSourceStop");
-    alGetSourcei = (LPALGETSOURCEI)GetProcAddress(hOpenAL, "alGetSourcei");
-    alGetError = (LPALGETERROR)GetProcAddress(hOpenAL, "alGetError");
-    alListenerf = (LPALLISTENERF)GetProcAddress(hOpenAL, "alListenerf");
-    alListener3f = (LPALLISTENER3F)GetProcAddress(hOpenAL, "alListener3f");
-    alListenerfv = (LPALLISTENERFV)GetProcAddress(hOpenAL, "alListenerfv");
-    alGenEffects = (LPALGENEFFECTS)GetProcAddress(hOpenAL, "alGenEffects");
-    alDeleteEffects = (LPALDELETEEFFECTS)GetProcAddress(hOpenAL, "alDeleteEffects");
-    alEffecti = (LPALEFFECTI)GetProcAddress(hOpenAL, "alEffecti");
-    alEffectf = (LPALEFFECTF)GetProcAddress(hOpenAL, "alEffectf");
-    alGenAuxiliaryEffectSlots = (LPALGENAUXILIARYEFFECTSLOTS)GetProcAddress(hOpenAL, "alGenAuxiliaryEffectSlots");
-    alDeleteAuxiliaryEffectSlots = (LPALDELETEAUXILIARYEFFECTSLOTS)GetProcAddress(hOpenAL, "alDeleteAuxiliaryEffectSlots");
-    alAuxiliaryEffectSloti = (LPALAUXILIARYEFFECTSLOTI)GetProcAddress(hOpenAL, "alAuxiliaryEffectSloti");
-    alAuxiliaryEffectSlotf = (LPALAUXILIARYEFFECTSLOTF)GetProcAddress(hOpenAL, "alAuxiliaryEffectSlotf");
-    alIsExtensionPresent = (LPALISEXTENSIONPRESENT)GetProcAddress(hOpenAL, "alIsExtensionPresent");
-    alSource3i = (LPALSOURCE3I)GetProcAddress(hOpenAL, "alSource3i");
-    alGetString = (LPALGETSTRING)GetProcAddress(hOpenAL, "alGetString");
-    alcGetString = (LPALCGETSTRING)GetProcAddress(hOpenAL, "alcGetString");
+    alcOpenDevice = (LPALCOPENDEVICE)Platform::SharedLibrarySymbol(hOpenAL, "alcOpenDevice");
+    alcCloseDevice = (LPALCCLOSEDEVICE)Platform::SharedLibrarySymbol(hOpenAL, "alcCloseDevice");
+    alcCreateContext = (LPALCCREATECONTEXT)Platform::SharedLibrarySymbol(hOpenAL, "alcCreateContext");
+    alcMakeContextCurrent = (LPALCMAKECONTEXTCURRENT)Platform::SharedLibrarySymbol(hOpenAL, "alcMakeContextCurrent");
+    alcDestroyContext = (LPALCDESTROYCONTEXT)Platform::SharedLibrarySymbol(hOpenAL, "alcDestroyContext");
+    alDistanceModel = (LPALDISTANCEMODEL)Platform::SharedLibrarySymbol(hOpenAL, "alDistanceModel");
+    alGenBuffers = (LPALGENBUFFERS)Platform::SharedLibrarySymbol(hOpenAL, "alGenBuffers");
+    alDeleteBuffers = (LPALDELETEBUFFERS)Platform::SharedLibrarySymbol(hOpenAL, "alDeleteBuffers");
+    alBufferData = (LPALBUFFERDATA)Platform::SharedLibrarySymbol(hOpenAL, "alBufferData");
+    alGenSources = (LPALGENSOURCES)Platform::SharedLibrarySymbol(hOpenAL, "alGenSources");
+    alDeleteSources = (LPALDELETESOURCES)Platform::SharedLibrarySymbol(hOpenAL, "alDeleteSources");
+    alSourcei = (LPALSOURCEI)Platform::SharedLibrarySymbol(hOpenAL, "alSourcei");
+    alSourcef = (LPALSOURCEF)Platform::SharedLibrarySymbol(hOpenAL, "alSourcef");
+    alSource3f = (LPALSOURCE3F)Platform::SharedLibrarySymbol(hOpenAL, "alSource3f");
+    alSourcePlay = (LPALSOURCEPLAY)Platform::SharedLibrarySymbol(hOpenAL, "alSourcePlay");
+    alSourceStop = (LPALSOURCESTOP)Platform::SharedLibrarySymbol(hOpenAL, "alSourceStop");
+    alGetSourcei = (LPALGETSOURCEI)Platform::SharedLibrarySymbol(hOpenAL, "alGetSourcei");
+    alGetError = (LPALGETERROR)Platform::SharedLibrarySymbol(hOpenAL, "alGetError");
+    alListenerf = (LPALLISTENERF)Platform::SharedLibrarySymbol(hOpenAL, "alListenerf");
+    alListener3f = (LPALLISTENER3F)Platform::SharedLibrarySymbol(hOpenAL, "alListener3f");
+    alListenerfv = (LPALLISTENERFV)Platform::SharedLibrarySymbol(hOpenAL, "alListenerfv");
+    alGenEffects = (LPALGENEFFECTS)Platform::SharedLibrarySymbol(hOpenAL, "alGenEffects");
+    alDeleteEffects = (LPALDELETEEFFECTS)Platform::SharedLibrarySymbol(hOpenAL, "alDeleteEffects");
+    alEffecti = (LPALEFFECTI)Platform::SharedLibrarySymbol(hOpenAL, "alEffecti");
+    alEffectf = (LPALEFFECTF)Platform::SharedLibrarySymbol(hOpenAL, "alEffectf");
+    alGenAuxiliaryEffectSlots = (LPALGENAUXILIARYEFFECTSLOTS)Platform::SharedLibrarySymbol(hOpenAL, "alGenAuxiliaryEffectSlots");
+    alDeleteAuxiliaryEffectSlots = (LPALDELETEAUXILIARYEFFECTSLOTS)Platform::SharedLibrarySymbol(hOpenAL, "alDeleteAuxiliaryEffectSlots");
+    alAuxiliaryEffectSloti = (LPALAUXILIARYEFFECTSLOTI)Platform::SharedLibrarySymbol(hOpenAL, "alAuxiliaryEffectSloti");
+    alAuxiliaryEffectSlotf = (LPALAUXILIARYEFFECTSLOTF)Platform::SharedLibrarySymbol(hOpenAL, "alAuxiliaryEffectSlotf");
+    alIsExtensionPresent = (LPALISEXTENSIONPRESENT)Platform::SharedLibrarySymbol(hOpenAL, "alIsExtensionPresent");
+    alSource3i = (LPALSOURCE3I)Platform::SharedLibrarySymbol(hOpenAL, "alSource3i");
+    alGetString = (LPALGETSTRING)Platform::SharedLibrarySymbol(hOpenAL, "alGetString");
+    alcGetString = (LPALCGETSTRING)Platform::SharedLibrarySymbol(hOpenAL, "alcGetString");
 
     // Core functions required (EFX optional)
     if (!alcOpenDevice || !alcCloseDevice || !alcCreateContext ||
@@ -81,8 +88,7 @@ bool LoadOpenAL() {
         !alGenSources || !alDeleteSources || !alSourcei || !alSourcef ||
         !alSource3f || !alSourcePlay || !alSourceStop || !alGetSourcei ||
         !alGetError || !alListenerf || !alListener3f || !alListenerfv) {
-        FreeLibrary(hOpenAL);
-        hOpenAL = nullptr;
+        UnloadOpenAL();
         return false;
     }
 
@@ -91,7 +97,7 @@ bool LoadOpenAL() {
 
 void UnloadOpenAL() {
     if (hOpenAL) {
-        FreeLibrary(hOpenAL);
+        Platform::CloseSharedLibrary(hOpenAL);
         hOpenAL = nullptr;
 
         alcOpenDevice = nullptr;

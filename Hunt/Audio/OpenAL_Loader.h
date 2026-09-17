@@ -1,7 +1,7 @@
 #ifndef OPENAL_LOADER_H
 #define OPENAL_LOADER_H
 
-#include <windows.h>
+
 
 // --- OpenAL types ---
 typedef char ALchar;
@@ -162,7 +162,7 @@ extern LPALSOURCE3I alSource3i;
 extern LPALGETSTRING alGetString;
 extern LPALCGETSTRING alcGetString;
 
-bool LoadOpenAL();
+bool LoadOpenAL(const char* library = nullptr);
 void UnloadOpenAL();
 
 #endif
