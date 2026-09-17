@@ -136,7 +136,9 @@ TEST(LegacySDL, UnknownScancodesCannotWriteOutsideLegacyBuffer)
 {
     Keyboard keyboard;
     Apply(keyboard,Key(SDL_SCANCODE_UNKNOWN,0));
-    Apply(keyboard,Key(static_cast<SDL_Scancode>(-1),SDLK_A));
+    // Outside the array, but inside SDL_Scancode's representable enum range.
+    // Casting -1 to this unsigned enum makes the fixture itself undefined.
+    Apply(keyboard,Key(static_cast<SDL_Scancode>(SDL_SCANCODE_COUNT + 1),SDLK_A));
     Apply(keyboard,Key(SDL_SCANCODE_COUNT,SDLK_A));
     Platform::KeyboardState state{}; keyboard.Copy(state,0,0);
     for(auto value:state) EXPECT_EQ(value,0);
