@@ -1,7 +1,8 @@
 #pragma once
 
 /*
-    TARGA Vision file header for TARGA 2 file format
+    Historical menu header value object. Packing is retained for API/layout
+    compatibility only; disk bytes are decoded by LegacyImage, never read here.
 */
 
 #ifndef TARGA_H

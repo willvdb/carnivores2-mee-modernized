@@ -785,6 +785,7 @@ void LoadConfig();
 void SaveConfig();
 void RequestMenuExit(int exitCode = 0);
 void TrophyDelete(uint32_t);
+bool LoadMenuBackground(uint16_t (&pixels)[800 * 600], const std::string& path);
 bool ReadTGAFile(const std::string& path, TargaImage& tga);
 bool LoadPicture(Picture& pic, const std::string& fpath);
 bool LoadText(std::vector<std::string>& txt, const std::string& path);

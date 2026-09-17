@@ -9,6 +9,10 @@
 #include "Hunt.h"
 #include "ProfileSerialization.h"
 #include "Targa.h"
+#include "../Shared/LegacyImage.h"
+#include "../Shared/LegacyAudio.h"
+#include <array>
+#include <algorithm>
 
 #include <iostream>
 #include <filesystem>
@@ -1206,7 +1210,15 @@ bool ReadTGAFile(const std::string& path, TargaImage& tga)
 		return false;
 	}
 
-	fs.read(reinterpret_cast<char*>(&tga.m_Header), sizeof(TARGAINFOHEADER));
+	std::array<std::uint8_t, LegacyImage::TgaHeaderSize> headerBytes;
+	LegacyImage::TgaHeader header;
+	if (!fs.read(reinterpret_cast<char*>(headerBytes.data()), headerBytes.size()) ||
+		!LegacyImage::DecodeTgaHeader(headerBytes.data(), headerBytes.size(), header)) return false;
+	// TARGAINFOHEADER remains a menu value object, never a disk layout.
+	tga.m_Header = {header.idLength, header.colorMapType, header.imageType,
+		header.colorMapOffset, header.colorMapLength, header.colorMapBits,
+		header.xOrigin, header.yOrigin, header.width, header.height,
+		header.bits, header.descriptor};
 
 	if (tga.m_Header.tgaColorMapType) {
 		std::cout << "Has a color palette: " << path << std::endl;
@@ -1222,12 +1234,14 @@ bool ReadTGAFile(const std::string& path, TargaImage& tga)
 		fs.seekg(tga.m_Header.tgaIdentSize, std::ios::cur); // Skip Ident header
 	}
 
-	if (tga.m_Data)
-		delete[] tga.m_Data;
-
-	int size = (tga.m_Header.tgaWidth * (tga.m_Header.tgaBits / 8)) * tga.m_Header.tgaHeight;
-	tga.m_Data = new uint8_t[size];
-	fs.read(reinterpret_cast<char*>(tga.m_Data), size);
+	const std::uint64_t bytes = std::uint64_t(header.width) * header.height * (header.bits / 8);
+	// The previous signed-int product was defined only through INT32_MAX.
+	if (bytes > INT32_MAX) return false;
+	const auto size = static_cast<std::size_t>(bytes);
+	std::unique_ptr<uint8_t[]> data(new uint8_t[size]);
+	if (!fs || (size && !fs.read(reinterpret_cast<char*>(data.get()), size))) return false;
+	delete[] tga.m_Data;
+	tga.m_Data = data.release();
 
 	return true;
 }
@@ -1258,15 +1272,27 @@ bool LoadPicture(Picture& pic, const std::string& fpath)
 		// (e.g. equip_nv.tga) store pixels with bit 15 clear, which the menu
 		// treats as fully transparent -> invisible icon. Force the alpha bit
 		// so any loaded picture renders opaque like the stock equipment icons.
-		const uint16_t* src = reinterpret_cast<const uint16_t*>(tga.m_Data);
+		const size_t count = size_t(pic.m_Width) * pic.m_Height;
+		if (!LegacyImage::DecodePixels(tga.m_Data, count * 2, pic.m_Data, count, count)) return false;
 		for (unsigned i = 0; i < pic.m_Width * pic.m_Height; ++i) {
-			pic.m_Data[i] = static_cast<uint16_t>(src[i] | 0x8000u);
+			pic.m_Data[i] = static_cast<uint16_t>(pic.m_Data[i] | 0x8000u);
 		}
 
 		return true;
 	}
 
 	return false;
+}
+
+
+// Full-screen menu art historically consumes the first 800*600 words without
+// forcing alpha or flipping rows. Drawing supplies the vertical reversal.
+bool LoadMenuBackground(uint16_t (&pixels)[800 * 600], const std::string& path)
+{
+	TargaImage tga;
+	if (!ReadTGAFile(path, tga)) return false;
+	const size_t bytes = size_t(tga.m_Header.tgaWidth) * tga.m_Header.tgaHeight * (tga.m_Header.tgaBits / 8);
+	return LegacyImage::DecodePixels(tga.m_Data, bytes, pixels, 800 * 600, 800 * 600);
 }
 
 
@@ -1315,8 +1341,10 @@ bool LoadWave(SoundFX& sfx, const std::string& path)
 			}
 		}
 
+		std::uint8_t lengthBytes[4];
 		uint32_t length = 0;
-		if (!tf.read(reinterpret_cast<char*>(&length), 4)) return false;
+		if (!tf.read(reinterpret_cast<char*>(lengthBytes), 4) ||
+			!LegacyAudio::DecodeLength(lengthBytes, 4, length)) return false;
 		const auto payload = tf.tellg();
 		tf.seekg(0, std::ios::end);
 		if (!tf || tf.tellg() - payload < static_cast<std::streamoff>(length)) return false;
@@ -1324,7 +1352,14 @@ bool LoadWave(SoundFX& sfx, const std::string& path)
 		const size_t samples = length / 2 + length % 2;
 		if (samples > (std::numeric_limits<size_t>::max)() / sizeof(int16_t)) return false;
 		std::unique_ptr<int16_t[]> data(new int16_t[samples]{});
-		if (length && !tf.read(reinterpret_cast<char*>(data.get()), length)) return false;
+		std::array<std::uint8_t, 4096> bytes;
+		for (size_t at = 0; at < length;) {
+			const size_t count = (std::min)(size_t(length) - at, bytes.size());
+			if (!tf.read(reinterpret_cast<char*>(bytes.data()), count) ||
+				!LegacyAudio::DecodePCM16(bytes.data(), count, data.get() + at / 2,
+					samples - at / 2, count)) return false;
+			at += count;
+		}
 		delete[] sfx.m_Data;
 		sfx.m_Data = data.release();
 		sfx.m_Length = length;
