@@ -3,6 +3,7 @@
 // ==========================================================================
 
 #include "Hunt.h"
+#include "LegacyAssetPath.h"
 #include "LoadValidate.h"
 #include "ResourceIO.h"
 #include "AudioIO.h"
@@ -606,7 +607,7 @@ void LoadAnimation(TVTL &vtl, int modelVertexCount)
 void LoadModelEx(unique_obj_ptr<TModel> &mptr, char* FName, MemoryTag tag)
 {
 
-  hfile = CreateFile(FName,
+  hfile = CreateFile(ResolveLegacyAssetReadPath(FName).c_str(),
                      GENERIC_READ, FILE_SHARE_READ,
                      nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
 
@@ -906,7 +907,7 @@ void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
 {
   ReleaseCharacterInfo(chinfo);
 
-  HANDLE hfile = CreateFile(FName,
+  HANDLE hfile = CreateFile(ResolveLegacyAssetReadPath(FName).c_str(),
                             GENERIC_READ, FILE_SHARE_READ,
                             nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
 

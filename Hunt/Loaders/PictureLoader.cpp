@@ -3,6 +3,7 @@
 // ==========================================================================
 
 #include "Hunt.h"
+#include "LegacyAssetPath.h"
 #include "LoadValidate.h"
 #include "ImageIO.h"
 
@@ -43,7 +44,7 @@ void LoadPicture(TPicture &pic, LPSTR pname, MemoryTag tag)
   LegacyImage::BmpHeader header;
   HANDLE hfile;
 
-  hfile = CreateFile(pname, GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr );
+  hfile = CreateFile(ResolveLegacyAssetReadPath(pname).c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr );
   if( hfile==INVALID_HANDLE_VALUE )
   {
     char sz[512];
@@ -90,7 +91,7 @@ void LoadPictureTGA(TPicture &pic, LPSTR pname, MemoryTag tag)
   LegacyImage::TgaHeader header;
   HANDLE hfile;
 
-  hfile = CreateFile(pname, GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr );
+  hfile = CreateFile(ResolveLegacyAssetReadPath(pname).c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr );
   if( hfile==INVALID_HANDLE_VALUE )
   {
     char sz[512];

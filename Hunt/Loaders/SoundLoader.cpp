@@ -3,13 +3,14 @@
 // ==========================================================================
 
 #include "Hunt.h"
+#include "LegacyAssetPath.h"
 #include "LoadValidate.h"
 #include "AudioIO.h"
 
 void LoadWav(char* FName, TSFX &sfx)
 {
 
-  HANDLE hfile = CreateFile(FName, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+  HANDLE hfile = CreateFile(ResolveLegacyAssetReadPath(FName).c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
   if( hfile==INVALID_HANDLE_VALUE )
   {
     char sz[512];

@@ -3,6 +3,7 @@
 // ==========================================================================
 
 #include "Hunt.h"
+#include "LegacyAssetPath.h"
 #include "LoadValidate.h"
 
 // _RES.TXT string safety. Name/file fields are fixed char arrays
@@ -2662,7 +2663,7 @@ void LoadResourcesScript()
 
 //  int nextTrophySlot = 0;
 
-  stream = fopen("HUNTDAT\\_res.txt", "r");
+  stream = fopen(ResolveLegacyAssetReadPath("HUNTDAT\\_res.txt").c_str(), "r");
   if (!stream) DoHalt("Can't open resources file _res.txt");
 
   TotalC = 0;

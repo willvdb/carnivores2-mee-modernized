@@ -353,7 +353,7 @@ if(MSVC)
         tests/test_model_serialization.cpp Hunt/Loaders/ModelLoader.cpp)
     target_include_directories(Carnivores2ModelTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Hunt ${CMAKE_CURRENT_SOURCE_DIR}/deps)
     target_compile_definitions(Carnivores2ModelTests PRIVATE ${RENDER_DEFINES})
-    target_link_libraries(Carnivores2ModelTests PRIVATE gtest_main)
+    target_link_libraries(Carnivores2ModelTests PRIVATE LegacyPath gtest_main)
     add_test(NAME Carnivores2Tests.ModelLoader COMMAND Carnivores2ModelTests)
 
     # Production RSC/MAP paths; tests stop at existing PrintLoad notifications
@@ -369,7 +369,7 @@ if(MSVC)
 
     add_executable(Carnivores2MediaTests tests/test_media_loader.cpp tests/media_loader_source.cpp)
     target_include_directories(Carnivores2MediaTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Hunt ${CMAKE_CURRENT_SOURCE_DIR}/deps)
-    target_link_libraries(Carnivores2MediaTests PRIVATE gtest_main)
+    target_link_libraries(Carnivores2MediaTests PRIVATE LegacyPath gtest_main)
     add_test(NAME Carnivores2Tests.MediaLoader COMMAND Carnivores2MediaTests)
 
     add_executable(Carnivores2MenuMediaTests tests/test_menu_media.cpp Menu/Resources.cpp)

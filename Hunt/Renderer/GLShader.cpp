@@ -7,6 +7,7 @@
 
 #include "Hunt.h"
 #include "GLShader.h"
+#include "../../Shared/LegacyPath.h"
 
 #ifdef _gl
 
@@ -19,7 +20,12 @@
 // --------------------------------------------------------------------------
 static std::string ReadTextFile(const char* path)
 {
-    FILE* fp = std::fopen(path, "rb");
+    const auto resolved = LegacyPath::Resolve(path);
+    if (!resolved) {
+        LOG_ERROR("GLShader: %s", resolved.Message().c_str());
+        return {};
+    }
+    FILE* fp = std::fopen(resolved.path.string().c_str(), "rb");
     if (!fp) {
         LOG_ERROR("GLShader: failed to open '%s'", path);
         return {};
