@@ -4,6 +4,7 @@
 
 #include "Hunt.h"
 #include "LoadValidate.h"
+#include "ModelSerialization.h"
 
 // Corrupt/modded-model fail-fast. All shipped .CAR files pass these checks
 // (audit-scanned 111/111); anything rejected here would previously have
@@ -25,6 +26,46 @@ static void ReadModelExact(HANDLE file, void* dst, DWORD bytes, const char* what
     sprintf_s(sz, sizeof(sz), "Model loading error: truncated %s.", what);
     DoHalt(sz);
   }
+}
+
+// Bounded load-time byte scratch, independent of runtime strides. Keep Win32
+// I/O here and pure legacy decoding in Shared/LegacyModel.h.
+template<std::size_t DiskSize, class Value, class Runtime>
+static void ReadModelRecords(HANDLE file, Runtime* out, int count,
+    bool (*decode)(const std::uint8_t*, std::size_t, Value&),
+    void (*adapt)(const Value&, Runtime&), const char* what)
+{
+  std::array<std::uint8_t, DiskSize * 64> bytes{};
+  for (int at = 0; at < count;)
+  {
+    const int batch = (std::min)(64, count - at);
+    ReadModelExact(file, bytes.data(), static_cast<DWORD>(batch * DiskSize), what);
+    for (int i = 0; i < batch; ++i)
+    {
+      Value value;
+      if (!decode(bytes.data() + i * DiskSize, DiskSize, value))
+        DoHalt("Model loading error: invalid legacy record.");
+      adapt(value, out[at + i]);
+    }
+    at += batch;
+  }
+}
+
+static void ReadModelGeometry(HANDLE file, TModel& model)
+{
+  ReadModelRecords<LegacyModel::FaceSize>(file, model.gFace, model.FCount,
+    LegacyModel::DecodeFace, EngineModel::ToRuntime, "model faces");
+  ReadModelRecords<LegacyModel::VertexSize>(file, model.gVertex.get(), model.VCount,
+    LegacyModel::DecodeVertex, EngineModel::ToRuntime, "model vertices");
+}
+
+static LegacyModel::Header ReadModelHeader(HANDLE file)
+{
+  std::array<std::uint8_t, LegacyModel::HeaderSize> bytes{};
+  ReadModelExact(file, bytes.data(), static_cast<DWORD>(bytes.size()), "model header");
+  LegacyModel::Header header;
+  LegacyModel::DecodeHeader(bytes.data(), bytes.size(), header);
+  return header;
 }
 
 // Face indices must address loaded vertices; renderer and lighting code
@@ -431,11 +472,11 @@ void LoadModel(unique_obj_ptr<TModel> &mptr, MemoryTag tag)
   TModel* raw = (TModel*) _HeapAlloc(Heap, 0, sizeof(TModel));
   mptr.reset(new(raw) TModel());
 
-  if (!ReadExact(hfile, &mptr->VCount, 4) ||
-      !ReadExact(hfile, &mptr->FCount, 4) ||
-      !ReadExact(hfile, &OCount, 4) ||
-      !ReadExact(hfile, &mptr->TextureSize, 4))
-    DoHalt("Model loading error: truncated model header.");
+  const auto header = ReadModelHeader(hfile);
+  mptr->VCount = header.vertices;
+  mptr->FCount = header.faces;
+  OCount = header.objects;
+  mptr->TextureSize = header.textureBytes;
   l = 4;
   if (!IsValidCount(OCount, 1024))
     ModelLoadFail("OCount exceeds gObj capacity", OCount, 1024);
@@ -444,9 +485,9 @@ void LoadModel(unique_obj_ptr<TModel> &mptr, MemoryTag tag)
 
   AllocateMemoryForModel(mptr.get(), tag);
 
-  ReadModelExact(hfile, mptr->gFace, (DWORD)(mptr->FCount * 64), "model faces");
-  ReadModelExact(hfile, mptr->gVertex.get(), (DWORD)(mptr->VCount * 16), "model vertices");
-  ReadModelExact(hfile, gObj, (DWORD)(OCount * 48), "model object records");
+  ReadModelGeometry(hfile, *mptr);
+  ReadModelRecords<LegacyModel::ObjectSize>(hfile, gObj, OCount,
+    LegacyModel::DecodeObject, EngineModel::ToRuntime, "model object records");
   ValidateFaceIndices(mptr.get());
 
   if (HARD3D) CalcLights(mptr.get());
@@ -532,11 +573,11 @@ void LoadModelEx(unique_obj_ptr<TModel> &mptr, char* FName, MemoryTag tag)
   TModel* raw = (TModel*) _HeapAlloc(Heap, 0, sizeof(TModel), tag);
   mptr.reset(new(raw) TModel());
 
-  if (!ReadExact(hfile, &mptr->VCount, 4) ||
-      !ReadExact(hfile, &mptr->FCount, 4) ||
-      !ReadExact(hfile, &OCount, 4) ||
-      !ReadExact(hfile, &mptr->TextureSize, 4))
-    DoHalt("Model loading error: truncated model header.");
+  const auto header = ReadModelHeader(hfile);
+  mptr->VCount = header.vertices;
+  mptr->FCount = header.faces;
+  OCount = header.objects;
+  mptr->TextureSize = header.textureBytes;
   l = 4;
 
   AllocateMemoryForModel(mptr.get(), tag);
@@ -546,9 +587,9 @@ void LoadModelEx(unique_obj_ptr<TModel> &mptr, char* FName, MemoryTag tag)
   if (mptr->TextureSize < 0)
     ModelLoadFail("negative TextureSize", mptr->TextureSize, 0);
 
-  ReadModelExact(hfile, mptr->gFace, (DWORD)(mptr->FCount * 64), "model faces");
-  ReadModelExact(hfile, mptr->gVertex.get(), (DWORD)(mptr->VCount * 16), "model vertices");
-  ReadModelExact(hfile, gObj, (DWORD)(OCount * 48), "model object records");
+  ReadModelGeometry(hfile, *mptr);
+  ReadModelRecords<LegacyModel::ObjectSize>(hfile, gObj, OCount,
+    LegacyModel::DecodeObject, EngineModel::ToRuntime, "model object records");
   ValidateFaceIndices(mptr.get());
 
   int ts = mptr->TextureSize;
@@ -828,10 +869,13 @@ void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
     DoHalt(sz);
   }
 
-  if (!ReadExact(hfile, chinfo.ModelName, 32) ||
-      !ReadExact(hfile, &chinfo.AniCount, 4) ||
-      !ReadExact(hfile, &chinfo.SfxCount, 4))
-    DoHalt("Model loading error: truncated character header.");
+  std::array<std::uint8_t, LegacyModel::CharacterHeaderSize> headerBytes{};
+  ReadModelExact(hfile, headerBytes.data(), static_cast<DWORD>(headerBytes.size()), "character header");
+  LegacyModel::CharacterHeader header;
+  LegacyModel::DecodeCharacterHeader(headerBytes.data(), headerBytes.size(), header);
+  memcpy(chinfo.ModelName, header.name.data(), 32);
+  chinfo.AniCount = header.animations;
+  chinfo.SfxCount = header.sounds;
   l = 4;
   // Animation/sound counts index fixed 64-entry arrays (GameTypes.h).
   if (!IsValidCount(chinfo.AniCount, 64))
@@ -844,20 +888,16 @@ void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
   TModel* chraw = (TModel*) _HeapAlloc(Heap, 0, sizeof(TModel), tag);
   chinfo.mptr.reset(new(chraw) TModel());
 
-  if (!ReadExact(hfile, &chinfo.mptr->VCount, 4) ||
-      !ReadExact(hfile, &chinfo.mptr->FCount, 4) ||
-      !ReadExact(hfile, &chinfo.mptr->TextureSize, 4))
-    DoHalt("Model loading error: truncated character model header.");
+  chinfo.mptr->VCount = header.vertices;
+  chinfo.mptr->FCount = header.faces;
+  chinfo.mptr->TextureSize = header.textureBytes;
   l = 4;
   if (chinfo.mptr->TextureSize < 0)
     ModelLoadFail("negative TextureSize", chinfo.mptr->TextureSize, 0);
 
   AllocateMemoryForModel(chinfo.mptr.get(), tag);
 
-  ReadModelExact(hfile, chinfo.mptr->gFace,
-                 (DWORD)(chinfo.mptr->FCount * 64), "character faces");
-  ReadModelExact(hfile, chinfo.mptr->gVertex.get(),
-                 (DWORD)(chinfo.mptr->VCount * 16), "character vertices");
+  ReadModelGeometry(hfile, *chinfo.mptr);
   ValidateFaceIndices(chinfo.mptr.get());
 
   int ts = chinfo.mptr->TextureSize;

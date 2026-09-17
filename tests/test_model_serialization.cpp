@@ -25,3 +25,28 @@ TEST(ModelLayout, GoldenGeometryMatchesStableRuntime)
     EXPECT_EQ(samples[0],-32768); EXPECT_EQ(samples[1],32767); EXPECT_EQ(samples[2],-1);
     EXPECT_EQ(samples[3],0); EXPECT_EQ(samples[4],4660); EXPECT_EQ(samples[5],-4660);
 }
+
+#include "../Hunt/Loaders/ModelSerialization.h"
+TEST(ModelLayout, ExplicitAdaptersMatchEveryLegacyByteBeforeCorrection)
+{
+    const auto vb=ModelGolden::Vertex(); LegacyModel::Vertex v; TPoint3d vertex;
+    ASSERT_TRUE(LegacyModel::DecodeVertex(vb.data(),vb.size(),v));
+    EngineModel::ToRuntime(v,vertex); EXPECT_EQ(std::memcmp(&vertex,vb.data(),16),0);
+    const auto fb=ModelGolden::Face(); LegacyModel::Face f; TFace face;
+    ASSERT_TRUE(LegacyModel::DecodeFace(fb.data(),fb.size(),f));
+    EngineModel::ToRuntime(f,face); EXPECT_EQ(std::memcmp(&face,fb.data(),64),0);
+    // The old and new inputs to BOTH unchanged renderer conversions are identical.
+    // Use unsigned arithmetic to express x86 wrapping without signed-shift UB.
+    const auto checkUV=[](const auto& field, std::int32_t expected) {
+        std::int32_t raw; std::memcpy(&raw,&field,4);
+        EXPECT_EQ(raw,expected);
+        EXPECT_EQ(static_cast<float>(raw),static_cast<float>(expected));
+        EXPECT_EQ((static_cast<std::uint32_t>(raw)<<16)+0x8000u,
+                  (static_cast<std::uint32_t>(expected)<<16)+0x8000u);
+    };
+    checkUV(face.tax,-1); checkUV(face.tbx,0); checkUV(face.tcx,255);
+    checkUV(face.tay,128); checkUV(face.tby,17); checkUV(face.tcy,0x12345678);
+    const auto ob=ModelGolden::Object(); LegacyModel::Object o; TObj object;
+    ASSERT_TRUE(LegacyModel::DecodeObject(ob.data(),ob.size(),o));
+    EngineModel::ToRuntime(o,object); EXPECT_EQ(std::memcmp(&object,ob.data(),48),0);
+}
