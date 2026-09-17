@@ -395,9 +395,9 @@ void AllocateMemoryForModel(TModel* mptr, MemoryTag tag) {
 	// hostile files while leaving legitimate mods effectively unlimited.
 	if (mptr->VCount <= 0 || mptr->VCount > (1 << 20) ||
 	    !IsValidCount(mptr->FCount, 1 << 20) ||
-	    !CheckedBytes2((size_t)mptr->VCount, 16, vbytes) ||
-	    !CheckedBytes2((size_t)mptr->FCount, 64, fbytes) ||
-	    !CheckedBytes3((size_t)mptr->VCount, 4, sizeof(float), lbytes))
+	    !CheckedTransferBytes2((size_t)mptr->VCount, 16, vbytes) ||
+	    !CheckedTransferBytes2((size_t)mptr->FCount, 64, fbytes) ||
+	    !CheckedTransferBytes3((size_t)mptr->VCount, 4, sizeof(float), lbytes))
 	  ModelLoadFail("VCount/FCount size overflow", mptr->VCount, mptr->FCount);
 	mptr->gVertex.reset((TPoint3d*)_HeapAlloc(Heap, 0, (DWORD)vbytes, tag));
 	mptr->gFace = (TFace*)_HeapAlloc(Heap, 0, (DWORD)fbytes, tag);
@@ -496,7 +496,7 @@ void LoadAnimation(TVTL &vtl, int modelVertexCount)
   vtl.FramesCount = storedFrameCount + 1;
 
   size_t anibytes = 0;
-  if (!CheckedBytes3((size_t)vertexCount, (size_t)vtl.FramesCount, 6, anibytes))
+  if (!CheckedTransferBytes3((size_t)vertexCount, (size_t)vtl.FramesCount, 6, anibytes))
     ModelLoadFail("animation size overflow", vertexCount, vtl.FramesCount);
   if (!CheckedAnimationDuration(vtl.FramesCount, vtl.aniKPS, vtl.AniTime))
     ModelLoadFail("animation duration is invalid", vtl.FramesCount, vtl.aniKPS);
@@ -878,9 +878,9 @@ void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
       ModelLoadFail("animation frame count out of range", fileFrames, maxAnimationFrames);
     const int storageFrames = fileFrames == 1 ? 2 : fileFrames;
     size_t fileAniBytes = 0, storageAniBytes = 0;
-    if (!CheckedBytes3((size_t)chinfo.mptr->VCount,
+    if (!CheckedTransferBytes3((size_t)chinfo.mptr->VCount,
                        (size_t)fileFrames, 6, fileAniBytes) ||
-        !CheckedBytes3((size_t)chinfo.mptr->VCount,
+        !CheckedTransferBytes3((size_t)chinfo.mptr->VCount,
                        (size_t)storageFrames, 6, storageAniBytes))
       ModelLoadFail("animation size overflow", fileFrames, 0);
     if (!CheckedAnimationDuration(fileFrames,

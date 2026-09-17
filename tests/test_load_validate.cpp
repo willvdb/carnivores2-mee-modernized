@@ -22,15 +22,86 @@ TEST(LoadValidate, CountsFitFixedArrays) {
     EXPECT_FALSE(IsValidCount(1025, 1024));  // gObj capacity
 }
 
-TEST(LoadValidate, CheckedSizesRejectWrap) {
+TEST(LoadValidate, NativeByteSizesCoverArchitectureBoundaries) {
+    const size_t limit = (std::numeric_limits<size_t>::max)();
+    size_t out = 17;
+    EXPECT_TRUE(CheckedBytes2(0, limit, out));
+    EXPECT_EQ(out, 0u);
+    EXPECT_TRUE(CheckedBytes2(limit, 0, out));
+    EXPECT_EQ(out, 0u);
+    EXPECT_TRUE(CheckedBytes2(1, limit, out));
+    EXPECT_EQ(out, limit);
+    EXPECT_TRUE(CheckedBytes2(limit, 1, out));
+    EXPECT_EQ(out, limit);
+    EXPECT_FALSE(CheckedBytes2(limit, 2, out));
+    EXPECT_EQ(out, limit);  // failure does not publish a wrapped result
+    const size_t highBit = size_t(1) << (std::numeric_limits<size_t>::digits - 1);
+    EXPECT_FALSE(CheckedBytes2(highBit, 2, out));  // 1 << 63 on x64
+    EXPECT_TRUE(CheckedBytes2(limit / 2, 2, out));
+    EXPECT_EQ(out, limit - 1);
+}
+
+TEST(LoadValidate, ThreeFactorSizesCheckBothMultiplications) {
+    const size_t limit = (std::numeric_limits<size_t>::max)();
+    size_t out = 17;
+    EXPECT_FALSE(CheckedBytes3(limit, 2, 1, out));
+    EXPECT_EQ(out, 17u);
+    EXPECT_FALSE(CheckedBytes3(limit / 2 + 1, 1, 2, out));
+    EXPECT_EQ(out, 17u);
+    EXPECT_TRUE(CheckedBytes3(limit, 1, 1, out));
+    EXPECT_EQ(out, limit);
+    EXPECT_TRUE(CheckedBytes3(0, limit, limit, out));
+    EXPECT_EQ(out, 0u);
+    EXPECT_TRUE(CheckedBytes3(limit, 0, limit, out));
+    EXPECT_EQ(out, 0u);
+    EXPECT_TRUE(CheckedBytes3(limit, limit, 0, out));
+    EXPECT_EQ(out, 0u);
+}
+
+TEST(LoadValidate, TransferSizesRetain32BitLimit) {
+    const size_t nativeLimit = (std::numeric_limits<size_t>::max)();
+    size_t out = 17;
+    EXPECT_TRUE(CheckedTransferBytes2(0, nativeLimit, out));
+    EXPECT_EQ(out, 0u);
+    EXPECT_TRUE(CheckedTransferBytes2(1, UINT32_MAX, out));
+    EXPECT_EQ(out, UINT32_MAX);
+    EXPECT_TRUE(CheckedTransferBytes2(UINT32_MAX, 1, out));
+    EXPECT_EQ(out, UINT32_MAX);
+    EXPECT_TRUE(CheckedTransferBytes3(UINT32_MAX, 1, 1, out));
+    EXPECT_EQ(out, UINT32_MAX);
+    EXPECT_FALSE(CheckedTransferBytes2(UINT32_MAX, 2, out));
+    EXPECT_EQ(out, UINT32_MAX);
+    // 2^32: one byte beyond the transfer limit, also native overflow on x86.
+    EXPECT_FALSE(CheckedTransferBytes2(65536, 65536, out));
+    EXPECT_FALSE(CheckedTransferBytes3(65536, 65536, 1, out));
+    EXPECT_FALSE(CheckedTransferBytes3(65536, 1, 65536, out));
+    EXPECT_FALSE(CheckedTransferBytes2(nativeLimit, 2, out));
+    EXPECT_TRUE(CheckedTransferBytes3(nativeLimit, nativeLimit, 0, out));
+    EXPECT_EQ(out, 0u);
+#if SIZE_MAX > UINT32_MAX
+    const size_t beyondTransfer = size_t(UINT32_MAX) + 1;
+    EXPECT_TRUE(CheckedBytes2(beyondTransfer, 1, out));
+    EXPECT_EQ(out, beyondTransfer);
+    EXPECT_FALSE(CheckedTransferBytes2(beyondTransfer, 1, out));
+    EXPECT_FALSE(CheckedTransferBytes3(beyondTransfer, 1, 1, out));
+    EXPECT_FALSE(CheckedTransferBytes2(size_t(1) << 63, 2, out));
+#endif
+}
+
+TEST(LoadValidate, NormalContentByteSizesAreUnchanged) {
     size_t out = 0;
     EXPECT_TRUE(CheckedBytes2(1989, 16, out));  // shipped max VCount * 16
     EXPECT_EQ(out, 1989u * 16u);
+    EXPECT_TRUE(CheckedTransferBytes2(1488, 64, out));
+    EXPECT_EQ(out, 1488u * 64u);
     EXPECT_TRUE(CheckedBytes3(1989, 365, 6, out));
-    EXPECT_FALSE(CheckedBytes2(0xFFFFFFFFu, 2, out));  // 32-bit wrap
-    EXPECT_FALSE(CheckedBytes2(1 << 20, 1 << 20, out));
-    EXPECT_FALSE(CheckedBytes3(65536, 65536, 65536, out));
-    EXPECT_FALSE(CheckedBytes2(static_cast<size_t>(-1), 2, out));
+    EXPECT_EQ(out, 1989u * 365u * 6u);
+    EXPECT_TRUE(CheckedTransferBytes3(1989, 365, 6, out));
+    EXPECT_EQ(out, 1989u * 365u * 6u);
+    EXPECT_TRUE(CheckedTransferBytes2(255, 20, out));
+    EXPECT_EQ(out, 5100u);
+    EXPECT_TRUE(CheckedBytes3(256, 256, 2, out));
+    EXPECT_EQ(out, 131072u);
 }
 
 TEST(LoadValidate, VertexIndicesStayInRange) {
