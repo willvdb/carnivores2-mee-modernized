@@ -54,11 +54,16 @@ heritage, and third-party credits. The original Carnivores 2 game is by
 ## Quick Start
 
 ### Prerequisites
-- CMake 3.20+
+- CMake 3.21+ (presets)
 - Visual Studio 2019/2022 (or MSVC build tools)
 - Python 3.8+
 
 ### Building
+Run the existing presets below from an **x86 Native Tools Command Prompt**.
+For explicit Windows x86/x64 OpenGL Debug/Release builds and validation status,
+see [Windows OpenGL builds](docs/WINDOWS_BUILDS.md). The software renderer remains
+Windows x86-only.
+
 ```bash
 # OpenGL release build
 cmake -S . -B build/ogl-release --preset ogl-release
