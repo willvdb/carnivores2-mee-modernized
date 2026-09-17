@@ -6,9 +6,11 @@
 int g_ResCount=0; TRes g_ResolutionList[128]{};
 void ShowErrorMessage(const std::string& m) { throw std::runtime_error(m); }
 TEST(MenuMedia, TgaHeaderBytesOrderAndOpaquePictures) {
-    auto b=MediaGolden::Tga();b[0]=3;b.insert(b.begin()+18,{'I','D',0});b.push_back(99);
+    auto b=MediaGolden::Tga();b[0]=3;MediaGolden::Put(b,3,0x1234,2);MediaGolden::Put(b,5,0x5678,2);b[7]=24;MediaGolden::Put(b,8,0x9abc,2);MediaGolden::Put(b,10,0xdef0,2);b.insert(b.begin()+18,{'I','D',0});b.push_back(99);
     MediaFile f(b);TargaImage t;ASSERT_TRUE(ReadTGAFile(f.path,t));
     EXPECT_EQ(t.m_Header.tgaWidth,3);EXPECT_EQ(t.m_Header.tgaHeight,2);EXPECT_EQ(t.m_Header.tgaDescriptor,1);
+    EXPECT_EQ(t.m_Header.tgaColorMapOffset,0x1234);EXPECT_EQ(t.m_Header.tgaColorMapLength,0x5678);
+    EXPECT_EQ(t.m_Header.tgaColorMapBits,24);EXPECT_EQ(t.m_Header.tgaXStart,0x9abc);EXPECT_EQ(t.m_Header.tgaYStart,0xdef0);
     for(size_t i=0;i<12;++i) EXPECT_EQ(t.m_Data[i],b[21+i]);
     Picture p;ASSERT_TRUE(LoadPicture(p,f.path));
     const unsigned words[]{0x8000,0x8001,0x9234,0x9234,0xffff,0x8000};
