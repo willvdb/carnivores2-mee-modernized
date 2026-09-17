@@ -7,6 +7,7 @@
 
 #include "Hunt.h"
 #include "GLShader.h"
+#include "Platform/Files.h"
 
 #ifdef _gl
 
@@ -19,7 +20,7 @@
 // --------------------------------------------------------------------------
 static std::string ReadTextFile(const char* path)
 {
-    FILE* fp = std::fopen(path, "rb");
+    FILE* fp = std::fopen(Platform::FindShader(path).c_str(), "rb");
     if (!fp) {
         LOG_ERROR("GLShader: failed to open '%s'", path);
         return {};

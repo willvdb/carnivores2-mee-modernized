@@ -18,7 +18,7 @@ static void PicLoadFail(const char* what, int value, int limit)
 int conv_xGx(int c)
 {
   if (!NightVisionOn) return c;
-  DWORD a = c;
+  std::uint32_t a = c;
   int r = ((c>> 0) & 0xFF);
   int g = ((c>> 8) & 0xFF);
   int b = ((c>>16) & 0xFF);
@@ -41,17 +41,17 @@ void LoadPicture(TPicture &pic, LPSTR pname, MemoryTag tag)
   byte fRGB[800][3];
   std::array<std::uint8_t,LegacyImage::BmpHeaderSize> headerBytes;
   LegacyImage::BmpHeader header;
-  HANDLE hfile;
+  Platform::FileHandle hfile;
 
-  hfile = CreateFile(pname, GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr );
-  if( hfile==INVALID_HANDLE_VALUE )
+  hfile = Platform::OpenFile(pname, Platform::FileMode::Read, false);
+  if( hfile==Platform::InvalidFile )
   {
     char sz[512];
     sprintf_s(sz, sizeof(sz), "Error opening file\n%s.", pname );
     DoHalt(sz);
   }
 
-  if (!ReadExact(hfile, headerBytes.data(), static_cast<DWORD>(headerBytes.size())) ||
+  if (!ReadExact(hfile, headerBytes.data(), static_cast<std::uint32_t>(headerBytes.size())) ||
       !LegacyImage::DecodeBmpHeader(headerBytes.data(), headerBytes.size(), header))
     DoHalt("Picture loading error: truncated BMP header.");
 
@@ -68,11 +68,11 @@ void LoadPicture(TPicture &pic, LPSTR pname, MemoryTag tag)
     PicLoadFail("BMP width exceeds row buffer", pic.W, 800);
   if (!CheckedPictureBytes(pic.W, pic.H, pxbytes))
     PicLoadFail("BMP dimensions out of range", pic.H, 0);
-  pic.lpImage.reset(static_cast<WORD*>(_HeapAlloc(Heap, 0, pxbytes, tag)));
+  pic.lpImage.reset(static_cast<std::uint16_t*>(_HeapAlloc(Heap, 0, pxbytes, tag)));
 
   for (int y=0; y<pic.H; y++)
   {
-    if (!ReadExact(hfile, fRGB, (DWORD)(3 * pic.W)))
+    if (!ReadExact(hfile, fRGB, (std::uint32_t)(3 * pic.W)))
       DoHalt("Picture loading error: truncated BMP rows.");
     for (int x=0; x<pic.W; x++)
     {
@@ -81,24 +81,24 @@ void LoadPicture(TPicture &pic, LPSTR pname, MemoryTag tag)
     }
   }
 
-  CloseHandle( hfile );
+  Platform::CloseFile( hfile );
 }
 
 void LoadPictureTGA(TPicture &pic, LPSTR pname, MemoryTag tag)
 {
   std::array<std::uint8_t,LegacyImage::TgaHeaderSize> headerBytes;
   LegacyImage::TgaHeader header;
-  HANDLE hfile;
+  Platform::FileHandle hfile;
 
-  hfile = CreateFile(pname, GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr );
-  if( hfile==INVALID_HANDLE_VALUE )
+  hfile = Platform::OpenFile(pname, Platform::FileMode::Read, false);
+  if( hfile==Platform::InvalidFile )
   {
     char sz[512];
     sprintf_s(sz, sizeof(sz), "Error opening file\n%s.", pname );
     DoHalt(sz);
   }
 
-  if (!ReadExact(hfile, headerBytes.data(), static_cast<DWORD>(headerBytes.size())) ||
+  if (!ReadExact(hfile, headerBytes.data(), static_cast<std::uint32_t>(headerBytes.size())) ||
       !LegacyImage::DecodeTgaHeader(headerBytes.data(), headerBytes.size(), header))
     DoHalt("Picture loading error: truncated TGA header.");
 
@@ -113,12 +113,12 @@ void LoadPictureTGA(TPicture &pic, LPSTR pname, MemoryTag tag)
   size_t tpxbytes = 0;
   if (!CheckedPictureBytes(pic.W, pic.H, tpxbytes))
     PicLoadFail("TGA dimensions out of range", pic.W, pic.H);
-  pic.lpImage.reset(static_cast<WORD*>(_HeapAlloc(Heap, 0, tpxbytes, tag)));
+  pic.lpImage.reset(static_cast<std::uint16_t*>(_HeapAlloc(Heap, 0, tpxbytes, tag)));
 
   for (int y=0; y<pic.H; y++)
     if (!EngineImage::ReadPixels(hfile,
                    pic.lpImage.get() + (pic.H-y-1)*pic.W, pic.W, pic.W))
       DoHalt("Picture loading error: truncated TGA rows.");
 
-  CloseHandle( hfile );
+  Platform::CloseFile( hfile );
 }

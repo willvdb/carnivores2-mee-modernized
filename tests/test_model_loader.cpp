@@ -6,7 +6,7 @@
 
 // Isolate real ModelLoader Win32 I/O and conversion from the game/renderer.
 HANDLE Heap=GetProcessHeap(), hfile=INVALID_HANDLE_VALUE;
-DWORD l=0;
+std::uint32_t l=0;
 int OCount=0, MaxObjectVCount=0, OptBrightness=128;
 TObj gObj[1024]{};
 #ifdef _soft

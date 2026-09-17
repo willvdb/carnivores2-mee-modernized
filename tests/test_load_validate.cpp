@@ -269,21 +269,20 @@ TEST(LoadValidate, ExternalSlotSixAliasRespectsBufferCap) {
 TEST(LoadValidate, ReadExactDetectsTruncation) {
     const char* path = "load_validate_probe.bin";
     const unsigned char data[8] = {1, 2, 3, 4, 5, 6, 7, 8};
-    FILE* f = nullptr;
-    ASSERT_EQ(fopen_s(&f, path, "wb"), 0);
+    FILE* f = fopen(path, "wb");
+    ASSERT_NE(f, nullptr);
     ASSERT_EQ(fwrite(data, 1, sizeof(data), f), sizeof(data));
     fclose(f);
 
-    HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, nullptr,
-                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    ASSERT_NE(h, INVALID_HANDLE_VALUE);
+    auto h = Platform::OpenFile(path, Platform::FileMode::Read);
+    ASSERT_NE(h, Platform::InvalidFile);
     unsigned char buf[16];
     EXPECT_TRUE(ReadExact(h, buf, 8));
     EXPECT_EQ(memcmp(buf, data, 8), 0);
-    SetFilePointer(h, 0, nullptr, FILE_BEGIN);
+    Platform::SeekFile(h, 0, Platform::SeekOrigin::Begin);
     EXPECT_FALSE(ReadExact(h, buf, 9));  // one byte past EOF
     EXPECT_TRUE(ReadExact(h, buf, 0));   // zero-length reads succeed
-    CloseHandle(h);
+    Platform::CloseFile(h);
     remove(path);
 }
 

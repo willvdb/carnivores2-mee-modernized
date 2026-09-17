@@ -6,7 +6,7 @@
 #include <limits>
 
 namespace EngineAudio {
-inline bool ReadPCM16(HANDLE file,short* out,std::size_t capacity,std::size_t length)
+inline bool ReadPCM16(Platform::FileHandle file,short* out,std::size_t capacity,std::size_t length)
 {
     static_assert(sizeof(short)==2 && (std::numeric_limits<short>::min)()==INT16_MIN &&
                   (std::numeric_limits<short>::max)()==INT16_MAX,
@@ -16,7 +16,7 @@ inline bool ReadPCM16(HANDLE file,short* out,std::size_t capacity,std::size_t le
     std::array<std::int16_t,2048> values;
     while(length) {
         const auto n=(std::min)(length,bytes.size());
-        if(!ReadExact(file,bytes.data(),static_cast<DWORD>(n)) ||
+        if(!ReadExact(file,bytes.data(),static_cast<std::uint32_t>(n)) ||
            !LegacyAudio::DecodePCM16(bytes.data(),n,values.data(),values.size(),n)) return false;
         const auto samples=LegacyAudio::SampleCount(n);
         for(std::size_t i=0;i<samples;++i) out[i]=values[i];

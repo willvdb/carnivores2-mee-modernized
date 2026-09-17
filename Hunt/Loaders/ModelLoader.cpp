@@ -20,7 +20,7 @@ static void ModelLoadFail(const char* what, int value, int limit)
   DoHalt(sz);
 }
 
-static void ReadModelExact(HANDLE file, void* dst, DWORD bytes, const char* what)
+static void ReadModelExact(Platform::FileHandle file, void* dst, std::uint32_t bytes, const char* what)
 {
   if (!ReadExact(file, dst, bytes))
   {
@@ -33,7 +33,7 @@ static void ReadModelExact(HANDLE file, void* dst, DWORD bytes, const char* what
 // Bounded load-time byte scratch, independent of runtime strides. Keep Win32
 // I/O here and pure legacy decoding in Shared/LegacyModel.h.
 template<std::size_t DiskSize, class Value, class Runtime>
-static void ReadModelRecords(HANDLE file, Runtime* out, int count,
+static void ReadModelRecords(Platform::FileHandle file, Runtime* out, int count,
     bool (*decode)(const std::uint8_t*, std::size_t, Value&),
     void (*adapt)(const Value&, Runtime&), const char* what)
 {
@@ -41,7 +41,7 @@ static void ReadModelRecords(HANDLE file, Runtime* out, int count,
   for (int at = 0; at < count;)
   {
     const int batch = (std::min)(64, count - at);
-    ReadModelExact(file, bytes.data(), static_cast<DWORD>(batch * DiskSize), what);
+    ReadModelExact(file, bytes.data(), static_cast<std::uint32_t>(batch * DiskSize), what);
     for (int i = 0; i < batch; ++i)
     {
       Value value;
@@ -53,7 +53,7 @@ static void ReadModelRecords(HANDLE file, Runtime* out, int count,
   }
 }
 
-static void ReadModelGeometry(HANDLE file, TModel& model)
+static void ReadModelGeometry(Platform::FileHandle file, TModel& model)
 {
   ReadModelRecords<LegacyModel::FaceSize>(file, model.gFace, model.FCount,
     LegacyModel::DecodeFace, EngineModel::ToRuntime, "model faces");
@@ -61,23 +61,23 @@ static void ReadModelGeometry(HANDLE file, TModel& model)
     LegacyModel::DecodeVertex, EngineModel::ToRuntime, "model vertices");
 }
 
-static LegacyModel::Header ReadModelHeader(HANDLE file)
+static LegacyModel::Header ReadModelHeader(Platform::FileHandle file)
 {
   std::array<std::uint8_t, LegacyModel::HeaderSize> bytes{};
-  ReadModelExact(file, bytes.data(), static_cast<DWORD>(bytes.size()), "model header");
+  ReadModelExact(file, bytes.data(), static_cast<std::uint32_t>(bytes.size()), "model header");
   LegacyModel::Header header;
   LegacyModel::DecodeHeader(bytes.data(), bytes.size(), header);
   return header;
 }
 
-static void ReadModelTexture(HANDLE file, WORD* out, size_t fileBytes)
+static void ReadModelTexture(Platform::FileHandle file, std::uint16_t* out, size_t fileBytes)
 {
   std::array<std::uint8_t, 4096> bytes{};
   std::array<std::uint16_t, 2048> words{};
   while (fileBytes)
   {
     const size_t batch = (std::min)(fileBytes, bytes.size());
-    ReadModelExact(file, bytes.data(), static_cast<DWORD>(batch), "model texture");
+    ReadModelExact(file, bytes.data(), static_cast<std::uint32_t>(batch), "model texture");
     if (!LegacyModel::DecodeTexture(bytes.data(), batch, words.data(), words.size()))
       DoHalt("Model loading error: invalid texture words.");
     const size_t count = batch / 2 + batch % 2;
@@ -87,7 +87,7 @@ static void ReadModelTexture(HANDLE file, WORD* out, size_t fileBytes)
   }
 }
 
-static std::int32_t ReadModelInt32(HANDLE file, const char* what)
+static std::int32_t ReadModelInt32(Platform::FileHandle file, const char* what)
 {
   std::array<std::uint8_t, 4> bytes{};
   ReadModelExact(file, bytes.data(), 4, what);
@@ -96,14 +96,14 @@ static std::int32_t ReadModelInt32(HANDLE file, const char* what)
   return value;
 }
 
-static void ReadModelSamples(HANDLE file, short* out, size_t fileBytes, const char* what)
+static void ReadModelSamples(Platform::FileHandle file, short* out, size_t fileBytes, const char* what)
 {
   std::array<std::uint8_t, 4096> bytes{};
   std::array<std::int16_t, 2048> samples{};
   while (fileBytes)
   {
     const size_t batch = (std::min)(fileBytes, bytes.size());
-    ReadModelExact(file, bytes.data(), static_cast<DWORD>(batch), what);
+    ReadModelExact(file, bytes.data(), static_cast<std::uint32_t>(batch), what);
     if (!LegacyModel::DecodeSamples(bytes.data(), batch, samples.data(), batch / 2))
       DoHalt("Model loading error: invalid animation samples.");
     std::copy_n(samples.data(), batch / 2, out);
@@ -128,8 +128,8 @@ static void ValidateFaceIndices(const TModel* mptr)
 // Forward declarations (from original Resources.cpp)
 void GenerateModelMipMaps(TModel *mptr, MemoryTag tag);
 void GenerateAlphaFlags(TModel *mptr);
-void CreateMipMapMT(WORD* dst, WORD* src, int H);
-void CreateMipMapMT2(WORD* dst, WORD* src, int H);
+void CreateMipMapMT(std::uint16_t* dst, std::uint16_t* src, int H);
+void CreateMipMapMT2(std::uint16_t* dst, std::uint16_t* src, int H);
 
 int DitherHi(int C)
 {
@@ -145,7 +145,7 @@ void GenerateModelMipMaps(TModel *mptr, MemoryTag tag);
 void GenerateAlphaFlags(TModel *mptr);
 
 
-void CreateMipMap(WORD* src, WORD* dst, int Ls, int Ld)
+void CreateMipMap(std::uint16_t* src, std::uint16_t* dst, int Ls, int Ld)
 {
   int scale = Ls / Ld;
 
@@ -158,7 +158,7 @@ void CreateMipMap(WORD* src, WORD* dst, int Ls, int Ld)
   for (int y=0; y<Ls; y++)
     for (int x=0; x<Ls; x++)
     {
-      WORD C = *(src + x + y*Ls);
+      std::uint16_t C = *(src + x + y*Ls);
       B[ y/scale ][ x/scale ]+= (C>> 0) & 31;
       G[ y/scale ][ x/scale ]+= (C>> 5) & 31;
       R[ y/scale ][ x/scale ]+= (C>>10) & 31;
@@ -176,14 +176,14 @@ void CreateMipMap(WORD* src, WORD* dst, int Ls, int Ld)
     }
 }
 
-int CalcImageDifference(WORD* A, WORD* B, int L)
+int CalcImageDifference(std::uint16_t* A, std::uint16_t* B, int L)
 {
   int r = 0;
   L*=L;
   for (int l=0; l<L; l++)
   {
-    WORD C1 = *(A + l);
-    WORD C2 = *(B + l);
+    std::uint16_t C1 = *(A + l);
+    std::uint16_t C2 = *(B + l);
     int R1 = (C1>>10) & 31;
     int G1 = (C1>> 5) & 31;
     int B1 = (C1>> 0) & 31;
@@ -199,20 +199,20 @@ int CalcImageDifference(WORD* A, WORD* B, int L)
   return r;
 }
 
-void RotateImage(WORD* src, WORD* dst, int L)
+void RotateImage(std::uint16_t* src, std::uint16_t* dst, int L)
 {
   for (int y=0; y<L; y++)
     for (int x=0; x<L; x++)
       *(dst + x*L + (L-1-y) ) = *(src + x + y*L);
 }
 
-void BrightenTexture(WORD* A, int L)
+void BrightenTexture(std::uint16_t* A, int L)
 {
   int factor=OptBrightness + 128;
   //if (factor > 256) factor = (factor-256)*3/2 + 256;
   for (int c=0; c<L; c++)
   {
-    WORD w = *(A +  c);
+    std::uint16_t w = *(A +  c);
     int B = (w>> 0) & 31;
     int G = (w>> 5) & 31;
     int R = (w>>10) & 31;
@@ -227,7 +227,7 @@ void BrightenTexture(WORD* A, int L)
   }
 }
 
-void GenerateMipMap(WORD* A, WORD* D, int L)
+void GenerateMipMap(std::uint16_t* A, std::uint16_t* D, int L)
 {
   for (int y=0; y<L; y++)
     for (int x=0; x<L; x++)
@@ -248,7 +248,7 @@ void GenerateMipMap(WORD* A, WORD* D, int L)
     }
 }
 
-int CalcColorSum(WORD* A, int L)
+int CalcColorSum(std::uint16_t* A, int L)
 {
   int R = 0, G = 0, B = 0;
   for (int x=0; x<L; x++)
@@ -260,7 +260,7 @@ int CalcColorSum(WORD* A, int L)
   return HiColor(R/L, G/L, B/L);
 }
 
-void GenerateShadedMipMap(WORD* src, WORD* dst, int L)
+void GenerateShadedMipMap(std::uint16_t* src, std::uint16_t* dst, int L)
 {
   for (int x=0; x<16*16; x++)
   {
@@ -274,7 +274,7 @@ void GenerateShadedMipMap(WORD* src, WORD* dst, int L)
   }
 }
 
-void GenerateShadedSkyMipMap(WORD* src, WORD* dst, int L)
+void GenerateShadedSkyMipMap(std::uint16_t* src, std::uint16_t* dst, int L)
 {
   for (int x=0; x<128*128; x++)
   {
@@ -288,7 +288,7 @@ void GenerateShadedSkyMipMap(WORD* src, WORD* dst, int L)
   }
 }
 
-void DATASHIFT(WORD* d, int cnt)
+void DATASHIFT(std::uint16_t* d, int cnt)
 {
   cnt>>=1;
   /*
@@ -302,7 +302,7 @@ void DATASHIFT(WORD* d, int cnt)
 
 }
 
-void ApplyAlphaFlags(WORD* tptr, int cnt)
+void ApplyAlphaFlags(std::uint16_t* tptr, int cnt)
 {
 #ifdef _d3d
   for (int w=0; w<cnt; w++)
@@ -310,11 +310,11 @@ void ApplyAlphaFlags(WORD* tptr, int cnt)
 #endif
 }
 
-void CalcMidColor(WORD* tptr, int l, int &mr, int &mg, int &mb)
+void CalcMidColor(std::uint16_t* tptr, int l, int &mr, int &mg, int &mb)
 {
   for (int w=0; w<l; w++)
   {
-    WORD c = *(tptr + w);
+    std::uint16_t c = *(tptr + w);
     mb+=((c>> 0) & 31)*8;
     mg+=((c>> 5) & 31)*8;
     mr+=((c>>10) & 31)*8;
@@ -358,10 +358,10 @@ void LoadTexture(unique_obj_ptr<TEXTURE> &T)
 
 void LoadSky()
 {
-  SetFilePointer(hfile, 256*512*OptDayNight, nullptr, FILE_CURRENT);
+  Platform::SeekFile(hfile, 256*512*OptDayNight, Platform::SeekOrigin::Current);
   if (!EngineResource::ReadTexture(hfile, SkyPic, 256*256, 256*256))
     DoHalt("Model loading error: truncated sky texture.");
-  SetFilePointer(hfile, 256*512*(2-OptDayNight), nullptr, FILE_CURRENT);
+  Platform::SeekFile(hfile, 256*512*(2-OptDayNight), Platform::SeekOrigin::Current);
 
   BrightenTexture(SkyPic, 256*256);
 
@@ -545,7 +545,7 @@ void LoadModel(unique_obj_ptr<TModel> &mptr, MemoryTag tag)
 
   mptr->TextureSize = mptr->TextureHeight*512;
 
-  mptr->lpTexture.reset(static_cast<WORD*>(_HeapAlloc(Heap, 0, mptr->TextureSize, tag)));
+  mptr->lpTexture.reset(static_cast<std::uint16_t*>(_HeapAlloc(Heap, 0, mptr->TextureSize, tag)));
 
   // On HARD3D the allocation is normalized to 131072 bytes while ts is the
   // original file size: a malformed ts larger than the buffer would overflow
@@ -570,7 +570,7 @@ void LoadModel(unique_obj_ptr<TModel> &mptr, MemoryTag tag)
 void LoadAnimation(TVTL &vtl, int modelVertexCount)
 {
   std::array<std::uint8_t, LegacyModel::ObjectAnimationHeaderSize> bytes{};
-  ReadModelExact(hfile, bytes.data(), static_cast<DWORD>(bytes.size()), "animation header");
+  ReadModelExact(hfile, bytes.data(), static_cast<std::uint32_t>(bytes.size()), "animation header");
   LegacyModel::ObjectAnimationHeader header;
   LegacyModel::DecodeObjectAnimationHeader(bytes.data(), bytes.size(), header);
   const int vertexCount = header.vertices;
@@ -606,11 +606,9 @@ void LoadAnimation(TVTL &vtl, int modelVertexCount)
 void LoadModelEx(unique_obj_ptr<TModel> &mptr, char* FName, MemoryTag tag)
 {
 
-  hfile = CreateFile(FName,
-                     GENERIC_READ, FILE_SHARE_READ,
-                     nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+  hfile = Platform::OpenFile(FName, Platform::FileMode::Read);
 
-  if (hfile==INVALID_HANDLE_VALUE)
+  if (hfile==Platform::InvalidFile)
   {
     char sz[512];
     sprintf_s(sz, sizeof(sz), "Error opening file\n%s.", FName );
@@ -644,7 +642,7 @@ void LoadModelEx(unique_obj_ptr<TModel> &mptr, char* FName, MemoryTag tag)
   else  mptr->TextureHeight = mptr->TextureSize>>9;
   mptr->TextureSize = mptr->TextureHeight*512;
 
-  mptr->lpTexture.reset(static_cast<WORD*>(_HeapAlloc(Heap, 0, mptr->TextureSize, tag)));
+  mptr->lpTexture.reset(static_cast<std::uint16_t*>(_HeapAlloc(Heap, 0, mptr->TextureSize, tag)));
 
   if (ts < 0 || (size_t)ts > (size_t)mptr->TextureSize)
     ModelLoadFail("texture byte count exceeds buffer", ts, mptr->TextureSize);
@@ -683,7 +681,7 @@ void GenerateAlphaFlags(TModel *mptr)
 
   int w;
   BOOL Opacity = false;
-  WORD* tptr = mptr->lpTexture.get();
+  std::uint16_t* tptr = mptr->lpTexture.get();
 
   for (w=0; w<mptr->FCount; w++)
     if ((mptr->gFace[w].Flags & sfOpacity)>0) Opacity = true;
@@ -730,17 +728,17 @@ void GenerateModelMipMaps(TModel *mptr, MemoryTag tag)
     ModelLoadFail("negative mipmap height", mptr->TextureHeight, 0);
   int th = (mptr->TextureHeight) / 2;
   size_t mipBytes = 0;
-  if (!CheckedBytes3(static_cast<size_t>(th) + 1, 128, sizeof(WORD), mipBytes))
+  if (!CheckedBytes3(static_cast<size_t>(th) + 1, 128, sizeof(std::uint16_t), mipBytes))
     ModelLoadFail("mipmap size overflow", th, 0);
   mptr->lpTexture2.reset(
-    static_cast<WORD*>(_HeapAlloc(Heap, HEAP_ZERO_MEMORY, mipBytes, tag)));
+    static_cast<std::uint16_t*>(_HeapAlloc(Heap, HEAP_ZERO_MEMORY, mipBytes, tag)));
   CreateMipMapMT(mptr->lpTexture2.get(), mptr->lpTexture.get(), th);
 
   th = (mptr->TextureHeight) / 4;
-  if (!CheckedBytes3(static_cast<size_t>(th) + 1, 64, sizeof(WORD), mipBytes))
+  if (!CheckedBytes3(static_cast<size_t>(th) + 1, 64, sizeof(std::uint16_t), mipBytes))
     ModelLoadFail("mipmap size overflow", th, 0);
   mptr->lpTexture3.reset(
-    static_cast<WORD*>(_HeapAlloc(Heap, HEAP_ZERO_MEMORY, mipBytes, tag)));
+    static_cast<std::uint16_t*>(_HeapAlloc(Heap, HEAP_ZERO_MEMORY, mipBytes, tag)));
   CreateMipMapMT2(mptr->lpTexture3.get(), mptr->lpTexture2.get(), th);
 }
 
@@ -753,7 +751,7 @@ void GenerateMapImage()
     for (int x=0; x<256; x++)
     {
       int t;
-      WORD c;
+      std::uint16_t c;
 
       if (FMap[y<<2][x<<2] & fmWater)
       {
@@ -776,9 +774,9 @@ void LoadBMPModel(TObject &obj)
 {
   // Phase 5E follow-up (Gap #2): LoadBMPModel is per-level (called from
   // LoadResources). Tag as Level so the arena reclaims this allocation.
-  obj.bmpmodel.lpTexture.reset(static_cast<WORD*>(_HeapAlloc(Heap, 0, 128 * 128 * 2, MemoryTag::Level)));
-  //WORD * lpT             = static_cast<WORD*>(_HeapAlloc(Heap, 0, 256 * 256 * 2));
-  //ReadFile(hfile, lpT, 256*256*2, &l, nullptr);
+  obj.bmpmodel.lpTexture.reset(static_cast<std::uint16_t*>(_HeapAlloc(Heap, 0, 128 * 128 * 2, MemoryTag::Level)));
+  //std::uint16_t * lpT             = static_cast<std::uint16_t*>(_HeapAlloc(Heap, 0, 256 * 256 * 2));
+  //Platform::ReadFile(hfile, lpT, 256*256*2, &l);
   //DATASHIFT(obj.bmpmodel.lpTexture.get(), 128*128*2);
   //BrightenTexture(lpT, 256*256);
   if (!EngineResource::ReadTexture(hfile, obj.bmpmodel.lpTexture.get(), 128*128, 128*128))
@@ -906,11 +904,9 @@ void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
 {
   ReleaseCharacterInfo(chinfo);
 
-  HANDLE hfile = CreateFile(FName,
-                            GENERIC_READ, FILE_SHARE_READ,
-                            nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+  Platform::FileHandle hfile = Platform::OpenFile(FName, Platform::FileMode::Read);
 
-  if (hfile==INVALID_HANDLE_VALUE)
+  if (hfile==Platform::InvalidFile)
   {
     char sz[512];
     sprintf_s(sz, sizeof(sz), "Error opening character file:\n%s.", FName );
@@ -918,7 +914,7 @@ void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
   }
 
   std::array<std::uint8_t, LegacyModel::CharacterHeaderSize> headerBytes{};
-  ReadModelExact(hfile, headerBytes.data(), static_cast<DWORD>(headerBytes.size()), "character header");
+  ReadModelExact(hfile, headerBytes.data(), static_cast<std::uint32_t>(headerBytes.size()), "character header");
   LegacyModel::CharacterHeader header;
   LegacyModel::DecodeCharacterHeader(headerBytes.data(), headerBytes.size(), header);
   memcpy(chinfo.ModelName, header.name.data(), 32);
@@ -953,7 +949,7 @@ void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
   else  chinfo.mptr->TextureHeight = chinfo.mptr->TextureSize>>9;
   chinfo.mptr->TextureSize = chinfo.mptr->TextureHeight*512;
 
-  chinfo.mptr->lpTexture.reset(static_cast<WORD*>(_HeapAlloc(Heap, 0, chinfo.mptr->TextureSize, tag)));
+  chinfo.mptr->lpTexture.reset(static_cast<std::uint16_t*>(_HeapAlloc(Heap, 0, chinfo.mptr->TextureSize, tag)));
 
   if (ts < 0 || (size_t)ts > (size_t)chinfo.mptr->TextureSize)
     ModelLoadFail("texture byte count exceeds buffer", ts, chinfo.mptr->TextureSize);
@@ -971,7 +967,7 @@ void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
   for (int a=0; a<chinfo.AniCount; a++)
   {
     std::array<std::uint8_t, LegacyModel::AnimationHeaderSize> bytes{};
-    ReadModelExact(hfile, bytes.data(), static_cast<DWORD>(bytes.size()), "character animation header");
+    ReadModelExact(hfile, bytes.data(), static_cast<std::uint32_t>(bytes.size()), "character animation header");
     LegacyModel::AnimationHeader animation;
     LegacyModel::DecodeAnimationHeader(bytes.data(), bytes.size(), animation);
     memcpy(chinfo.Animation[a].aniName, animation.name.data(), 32);
@@ -1036,15 +1032,15 @@ void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
 
   std::array<std::uint8_t, LegacyModel::AssociationsSize> associationBytes{};
   std::array<std::int32_t, 64> associations{};
-  if (!ReadExact(hfile, associationBytes.data(), static_cast<DWORD>(associationBytes.size())) ||
+  if (!ReadExact(hfile, associationBytes.data(), static_cast<std::uint32_t>(associationBytes.size())) ||
       !LegacyModel::DecodeAssociations(associationBytes.data(), associationBytes.size(), associations))
     associations.fill(-1);
   std::copy(associations.begin(), associations.end(), chinfo.Anifx);
-  CloseHandle(hfile); 
+  Platform::CloseFile(hfile);
 }
 
 
-void CreateMipMapMT(WORD* dst, WORD* src, int H)
+void CreateMipMapMT(std::uint16_t* dst, std::uint16_t* src, int H)
 {
   for (int y=0; y<H; y++)
     for (int x=0; x<127; x++)
@@ -1086,7 +1082,7 @@ void CreateMipMapMT(WORD* dst, WORD* src, int H)
     }
 }
 
-void CreateMipMapMT2(WORD* dst, WORD* src, int H)
+void CreateMipMapMT2(std::uint16_t* dst, std::uint16_t* src, int H)
 {
   for (int y=0; y<H; y++)
     for (int x=0; x<63; x++)

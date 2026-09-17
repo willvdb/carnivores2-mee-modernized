@@ -357,15 +357,15 @@ void LoadTrophy2(int RegNumber) {
     TrophyRoom2 = {};
     char fname2[128];
     sprintf_s(fname2, sizeof(fname2), "trophy0%d.sab", RegNumber);
-    HANDLE hfile2 = CreateFile(fname2, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (hfile2 == INVALID_HANDLE_VALUE) {
+    Platform::FileHandle hfile2 = Platform::OpenFile(fname2, Platform::FileMode::Read);
+    if (hfile2 == Platform::InvalidFile) {
         PrintLog("===> Error loading trophyB!\n");
         return;
     }
     LegacyProfile::RoomBytes bytes{};
-    DWORD count = 0;
-    const BOOL ok = ReadFile(hfile2, bytes.data(), LegacyProfile::RoomSize, &count, nullptr);
-    CloseHandle(hfile2);
+    std::uint32_t count = 0;
+    const BOOL ok = Platform::ReadFile(hfile2, bytes.data(), LegacyProfile::RoomSize, &count);
+    Platform::CloseFile(hfile2);
     if (!ok || !EngineProfile::LoadRoom(bytes.data(), count, TrophyRoom2)) {
         PrintLog("===> Short or invalid trophyB!\n");
         return;
@@ -380,15 +380,15 @@ void LoadTrophy()
     TrophyRoom.RegNumber = registration;
     char fname[128];
     sprintf_s(fname, sizeof(fname), "trophy0%d.sav", registration);
-    HANDLE hfile = CreateFile(fname, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (hfile == INVALID_HANDLE_VALUE) {
+    Platform::FileHandle hfile = Platform::OpenFile(fname, Platform::FileMode::Read);
+    if (hfile == Platform::InvalidFile) {
         PrintLog("===> Error loading trophy!\n");
         return;
     }
     LegacyProfile::SaveBytes bytes{};
-    DWORD count = 0;
-    const BOOL ok = ReadFile(hfile, bytes.data(), LegacyProfile::SaveSize, &count, nullptr);
-    CloseHandle(hfile);
+    std::uint32_t count = 0;
+    const BOOL ok = Platform::ReadFile(hfile, bytes.data(), LegacyProfile::SaveSize, &count);
+    Platform::CloseFile(hfile);
     if (!ok || !EngineProfile::LoadProfile(bytes.data(), count, TrophyRoom)) {
         PrintLog("===> Short or invalid trophy prefix!\n");
         return;
@@ -405,14 +405,14 @@ void SaveTrophy2(int RegNumber) {
     char fname2[128];
     sprintf_s(fname2, sizeof(fname2), "trophy0%d.sab", RegNumber);
     const auto bytes = LegacyProfile::EncodeRoom(EngineProfile::FromRuntime(TrophyRoom2));
-    HANDLE hfile2 = CreateFile(fname2, GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (hfile2 == INVALID_HANDLE_VALUE) {
+    Platform::FileHandle hfile2 = Platform::OpenFile(fname2, Platform::FileMode::Write);
+    if (hfile2 == Platform::InvalidFile) {
         PrintLog("==>> Error saving trophy!\n");
         return;
     }
-    DWORD count = 0;
-    const BOOL ok = WriteFile(hfile2, bytes.data(), LegacyProfile::RoomSize, &count, nullptr);
-    CloseHandle(hfile2);
+    std::uint32_t count = 0;
+    const BOOL ok = Platform::WriteFile(hfile2, bytes.data(), LegacyProfile::RoomSize, &count);
+    Platform::CloseFile(hfile2);
     if (!ok || count != LegacyProfile::RoomSize) {
         PrintLog("==>> Error writing trophyB!\n");
         return;
@@ -428,14 +428,14 @@ void SaveTrophy()
 
     const auto bytes = LegacyProfile::EncodeSave({EngineProfile::FromRuntime(TrophyRoom),
                                                   EngineProfile::CaptureOptions()});
-    HANDLE hfile = CreateFile(fname, GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (hfile == INVALID_HANDLE_VALUE) {
+    Platform::FileHandle hfile = Platform::OpenFile(fname, Platform::FileMode::Write);
+    if (hfile == Platform::InvalidFile) {
         PrintLog("==>> Error saving trophy!\n");
         return;
     }
-    DWORD count = 0;
-    const BOOL ok = WriteFile(hfile, bytes.data(), LegacyProfile::SaveSize, &count, nullptr);
-    CloseHandle(hfile);
+    std::uint32_t count = 0;
+    const BOOL ok = Platform::WriteFile(hfile, bytes.data(), LegacyProfile::SaveSize, &count);
+    Platform::CloseFile(hfile);
     if (!ok || count != LegacyProfile::SaveSize) {
         PrintLog("==>> Error writing trophy!\n");
         return;

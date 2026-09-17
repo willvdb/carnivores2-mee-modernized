@@ -14,6 +14,7 @@
 #include <ws2tcpip.h>
 #include <cstdint>
 #include "Memory.h"
+#include "Platform/Files.h"
 #include "Core/Constants.h"
 #include "Core/MathTypes.h"
 #include "Core/AudioTypes.h"
@@ -513,8 +514,8 @@ GLOBAL BOOL SHADOWS3D,REVERSEMS;
 GLOBAL BOOL SLOW, DEBUG, MORPHP, MORPHA;
 GLOBAL int CurDino;
 GLOBAL BOOL NewPhase;
-GLOBAL HANDLE hfile;
-GLOBAL DWORD l;
+GLOBAL Platform::FileHandle hfile;
+GLOBAL std::uint32_t l;
 GLOBAL float rav;
 GLOBAL float rbv;
 GLOBAL float BinocularPower;
@@ -532,7 +533,7 @@ GLOBAL bool g_VerboseLogging;
 // Only effective when GL_PERF_HOOKS is compiled in.
 GLOBAL bool g_glperfLoggingEnabled;
 
-GLOBAL HANDLE hlog;
+GLOBAL Platform::FileHandle hlog;
 
 GLOBAL int AudioFCount;
 

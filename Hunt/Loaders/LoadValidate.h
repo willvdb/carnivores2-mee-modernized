@@ -19,7 +19,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
-#include <windows.h>
+#include "../Platform/Files.h"
 
 // File-derived count must fit its fixed destination array.
 inline bool IsValidCount(int value, int capacity)
@@ -167,12 +167,12 @@ inline size_t WavAllocSamples(int length)
 // Exact Win32 read: success only when every requested byte arrives.
 // Truncated files previously left stack locals uninitialized and drove
 // downstream loops/allocations with garbage.
-inline bool ReadExact(HANDLE hfile, void* buffer, DWORD bytes)
+inline bool ReadExact(Platform::FileHandle hfile, void* buffer, std::uint32_t bytes)
 {
     if (bytes == 0)
         return true;
-    DWORD got = 0;
-    if (!ReadFile(hfile, buffer, bytes, &got, nullptr))
+    std::uint32_t got = 0;
+    if (!Platform::ReadFile(hfile, buffer, bytes, &got))
         return false;
     return got == bytes;
 }
@@ -228,7 +228,14 @@ inline const char* PathBasename(const char* path)
 inline bool ProjectBasenameIsExternal(const char* path)
 {
     const char* base = PathBasename(path);
-    return base ? _stricmp(base, "external") == 0 : false;
+    if (!base) return false;
+    const char* expected = "external";
+    for (; *base && *expected; ++base, ++expected) {
+        char c = *base;
+        if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
+        if (c != *expected) return false;
+    }
+    return *base == *expected;
 }
 
 // The sixth hunt slot stores its assets as external.map/.rsc in the vanilla

@@ -166,7 +166,7 @@ else()
     message(FATAL_ERROR "Unknown CARNIVORES_PLATFORM='${CARNIVORES_PLATFORM}'")
 endif()
 
-add_library(CarnivoresPlatformMemory STATIC Hunt/Platform/Memory.cpp)
+add_library(CarnivoresPlatformMemory STATIC Hunt/Platform/Memory.cpp Hunt/Platform/Files.cpp)
 
 # Core source files (excluding renderers)
 set(CORE_FILES
@@ -343,6 +343,7 @@ if(MSVC)
     endif()
 
     add_executable(Carnivores2Tests
+        tests/test_platform_files.cpp
         tests/test_billboard_math.cpp
         tests/test_math.cpp
         tests/test_trophy_mode.cpp

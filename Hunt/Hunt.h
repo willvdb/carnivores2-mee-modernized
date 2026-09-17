@@ -18,6 +18,7 @@
 #pragma comment (lib, "AdvApi32.lib")
 
 #include "Memory.h"
+#include "Platform/Files.h"
 #include "math.h"
 #include "winuser.h"
 #include "AppRes.h"

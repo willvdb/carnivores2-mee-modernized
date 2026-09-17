@@ -12,7 +12,8 @@ struct ResourceComplete {};
 struct MapComplete {};
 static bool loadMap = false;
 static DWORD closedPosition = 0;
-BOOL ResourceTestCloseHandle(HANDLE file) {
+namespace Platform { bool ResourceTestCloseFile(FileHandle file); }
+bool Platform::ResourceTestCloseFile(Platform::FileHandle file) {
     if(file==hfile) closedPosition=SetFilePointer(file,0,nullptr,FILE_CURRENT);
     return CloseHandle(file);
 }

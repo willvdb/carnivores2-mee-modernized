@@ -2662,7 +2662,7 @@ void LoadResourcesScript()
 
 //  int nextTrophySlot = 0;
 
-  stream = fopen("HUNTDAT\\_res.txt", "r");
+  stream = Platform::OpenTextFile("HUNTDAT\\_res.txt", "r");
   if (!stream) DoHalt("Can't open resources file _res.txt");
 
   TotalC = 0;

@@ -29,7 +29,7 @@ static void RequireMapRead(bool success, const char* what)
 }
 
 template<class T>
-static void ReadRscValue(HANDLE file, T& out, const char* what)
+static void ReadRscValue(Platform::FileHandle file, T& out, const char* what)
 {
   if (!EngineResource::Read(file, out))
   {
@@ -550,7 +550,7 @@ int GetObjectHWater(int x, int y)
 
 
 
-WORD conv_565(WORD c)
+std::uint16_t conv_565(std::uint16_t c)
 {
   return (c & 31) + ( (c & 0xFFE0) << 1 );
 }
@@ -728,7 +728,7 @@ void ReleaseGlobalResources()
   ReleaseModel(CompasModel);
   ReleaseModel(Binocular);
 
-  // Menu pictures -- unique_heap_ptr<WORD[]>, so .reset() is enough.
+  // Menu pictures -- unique_heap_ptr<std::uint16_t[]>, so .reset() is enough.
   PausePic.lpImage.reset();
   ExitPic.lpImage.reset();
   TrophyExit.lpImage.reset();
@@ -790,11 +790,9 @@ void LoadResources()
 
   ReleaseResources();
 
-  hfile = CreateFile(RscName,
-                     GENERIC_READ, FILE_SHARE_READ,
-                     nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+  hfile = Platform::OpenFile(RscName, Platform::FileMode::Read);
 
-  if (hfile==INVALID_HANDLE_VALUE)
+  if (hfile==Platform::InvalidFile)
   {
     char sz[512];
     sprintf_s(sz, sizeof(sz), "Error opening resource file\n%s.", RscName );
@@ -997,17 +995,15 @@ void LoadResources()
                           (Textures[WaterList[w].tindex]->mR<<16);
 #endif
   }
-  CloseHandle(hfile);
+  Platform::CloseFile(hfile);
   PrintLog(" Done.\n");
 
 //================ Load MAPs file ==================//
   PrintLoad("Loading .map...");
   PrintLog("Loading .map:");
-  hfile = CreateFile(MapName,
-                     GENERIC_READ, FILE_SHARE_READ,
-                     nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+  hfile = Platform::OpenFile(MapName, Platform::FileMode::Read);
 
-  if (hfile==INVALID_HANDLE_VALUE)
+  if (hfile==Platform::InvalidFile)
     DoHalt("Error opening map file.");
 
   RequireMapRead(EngineMap::ReadBytePlane(hfile, HMap), "height map");
@@ -1032,7 +1028,7 @@ void LoadResources()
               HMap[y*2+2][x*2+0]<FogsList[1].YBegin || HMap[y*2+2][x*2+1]<FogsList[1].YBegin || HMap[y*2+2][x*2+2] < FogsList[1].YBegin)
             FogsMap[y][x] = 1;
 
-  CloseHandle(hfile);
+  Platform::CloseFile(hfile);
   PrintLog(" Done.\n");
 
 //======= Post load rendering ==============//
@@ -1155,10 +1151,10 @@ void RenderLightMap()
 void SaveScreenShot()
 {
 
-  HANDLE hf;                  /* file handle */
+  Platform::FileHandle hf;                  /* file handle */
   BITMAPFILEHEADER hdr;       /* bitmap file-header */
   BITMAPINFOHEADER bmi;       /* bitmap info-header */
-  DWORD dwTmp;
+  std::uint32_t dwTmp;
 
   if (WinW>1024) return;
 
@@ -1177,26 +1173,20 @@ void SaveScreenShot()
   bmi.biClrUsed = 0;
 
   hdr.bfType = 0x4d42;
-  hdr.bfSize = static_cast<DWORD>((sizeof(BITMAPFILEHEADER) +
+  hdr.bfSize = static_cast<std::uint32_t>((sizeof(BITMAPFILEHEADER) +
                         bmi.biSize + bmi.biSizeImage));
   hdr.bfReserved1 = 0;
   hdr.bfReserved2 = 0;
-  hdr.bfOffBits = static_cast<DWORD>(sizeof(BITMAPFILEHEADER)) +
+  hdr.bfOffBits = static_cast<std::uint32_t>(sizeof(BITMAPFILEHEADER)) +
                   bmi.biSize;
 
   char t[12];
   sprintf_s(t, sizeof(t),"HUNT%004d.BMP",++_shotcounter);
-  hf = CreateFile(t,
-                  GENERIC_READ | GENERIC_WRITE,
-                  static_cast<DWORD>(0),
-                  (LPSECURITY_ATTRIBUTES) nullptr,
-                  CREATE_ALWAYS,
-                  FILE_ATTRIBUTE_NORMAL,
-                  (HANDLE) nullptr);
+  hf = Platform::OpenFile(t, Platform::FileMode::Write, false);
 
-  WriteFile(hf, static_cast<LPVOID>(&hdr), sizeof(BITMAPFILEHEADER), static_cast<LPDWORD>(&dwTmp), (LPOVERLAPPED) nullptr);
+  Platform::WriteFile(hf, static_cast<LPVOID>(&hdr), sizeof(BITMAPFILEHEADER), &dwTmp);
 
-  WriteFile(hf, &bmi, sizeof(BITMAPINFOHEADER), static_cast<LPDWORD>(&dwTmp), (LPOVERLAPPED) nullptr);
+  Platform::WriteFile(hf, &bmi, sizeof(BITMAPINFOHEADER), &dwTmp);
 
   byte fRGB[1024][3];
 
@@ -1204,7 +1194,7 @@ void SaveScreenShot()
   {
     for (int x=0; x<WinW; x++)
     {
-      WORD C = *(static_cast<WORD*>(lpVideoBuf) + (WinEY-y)*VideoPitch+x);
+      std::uint16_t C = *(static_cast<std::uint16_t*>(lpVideoBuf) + (WinEY-y)*VideoPitch+x);
       fRGB[x][0] = (C       & 31)<<3;
 #if defined(_gl)
       fRGB[x][1] = ((C>> 5) & 31)<<3;
@@ -1222,10 +1212,10 @@ void SaveScreenShot()
       }
 #endif
     }
-    WriteFile( hf, fRGB, 3*WinW, &dwTmp, nullptr );
+    Platform::WriteFile(hf, fRGB, 3*WinW, &dwTmp);
   }
 
-  CloseHandle(hf);
+  Platform::CloseFile(hf);
   //MessageBeep(0xFFFFFFFF);
 }
 
@@ -1235,10 +1225,7 @@ void SaveScreenShot()
 void CreateLog()
 {
 
-  hlog = CreateFile("render.log",
-                    GENERIC_WRITE,
-                    FILE_SHARE_READ, nullptr,
-                    CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  hlog = Platform::OpenFile("render.log", Platform::FileMode::Write);
 
 #ifdef _d3d
   PrintLog("CarnivoresII  D3D video driver.");
@@ -1256,18 +1243,18 @@ void CreateLog()
 
 void PrintLog(LPSTR l)
 {
-  DWORD w;
+  std::uint32_t w;
 
   if (l[strlen(l)-1]==0x0A)
   {
     BYTE b = 0x0D;
-    WriteFile(hlog, l, strlen(l)-1, &w, nullptr);
-    WriteFile(hlog, &b, 1, &w, nullptr);
+    Platform::WriteFile(hlog, l, strlen(l)-1, &w);
+    Platform::WriteFile(hlog, &b, 1, &w);
     b = 0x0A;
-    WriteFile(hlog, &b, 1, &w, nullptr);
+    Platform::WriteFile(hlog, &b, 1, &w);
   }
   else
-    WriteFile(hlog, l, strlen(l), &w, nullptr);
+    Platform::WriteFile(hlog, l, strlen(l), &w);
 
 }
 
@@ -1279,5 +1266,5 @@ void PrintLogVerbose(LPSTR l)
 
 void CloseLog()
 {
-  CloseHandle(hlog);
+  Platform::CloseFile(hlog);
 }
