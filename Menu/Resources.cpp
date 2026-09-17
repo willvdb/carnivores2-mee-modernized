@@ -7,6 +7,7 @@
 */
 
 #include "Hunt.h"
+#include "ProfileSerialization.h"
 #include "Targa.h"
 
 #include <iostream>
@@ -1026,7 +1027,7 @@ void TrophyLoad(Profile& profile, int pr)
 		return;
 	}
 #else
-	if (file_size != 1660)
+	if (file_size != LegacyProfile::SaveSize)
 	{
 		ShowErrorMessage("Not a compatible Carnivores 2 save file!");
 		fs.close();
@@ -1036,6 +1037,14 @@ void TrophyLoad(Profile& profile, int pr)
 
 	fs.seekg(0, std::ios::beg);
 
+#ifndef _iceage
+	LegacyProfile::SaveBytes bytes{};
+	fs.read(reinterpret_cast<char*>(bytes.data()), bytes.size());
+	if (!fs || !MenuProfile::LoadProfile(bytes.data(), bytes.size(), profile, g_Options)) {
+		ShowErrorMessage("Not a compatible Carnivores 2 save file!");
+		return;
+	}
+#else
 	fs.read(reinterpret_cast<char*>(&profile), sizeof(Profile));
 
 	fs.read(reinterpret_cast<char*>(&g_Options.Aggression), 4);
@@ -1043,6 +1052,7 @@ void TrophyLoad(Profile& profile, int pr)
 	fs.read(reinterpret_cast<char*>(&g_Options.Sensitivity), 4);
 
 	fs.read(reinterpret_cast<char*>(&g_Options.Resolution), 4);
+#endif
 	// The old menu (StartLegacy.exe) used a hardcoded 8-entry resolution
 	// table (320x240..1600x1200). Our dynamic list may differ. Convert
 	// the old index to an actual resolution, then find the matching index
@@ -1079,6 +1089,7 @@ void TrophyLoad(Profile& profile, int pr)
 			}
 		}
 	}
+#ifdef _iceage
 	// Bool fields are 1 byte in the struct but 4 bytes on disk.
 	// Read into temporary int32_t to avoid adjacent-field overflow.
 	{ int32_t tmp; fs.read(reinterpret_cast<char*>(&tmp), 4); g_Options.Fog = (bool)tmp; }
@@ -1101,6 +1112,7 @@ void TrophyLoad(Profile& profile, int pr)
 	fs.read(reinterpret_cast<char*>(&g_Options.OptSys), 4);
 	fs.read(reinterpret_cast<char*>(&g_Options.SoundAPI), 4);
 	fs.read(reinterpret_cast<char*>(&g_Options.RenderAPI), 4);
+#endif
 	g_Options.RenderAPI = NormalizeMenuRenderAPI(g_Options.RenderAPI);
 	g_Options.SoundAPI = NormalizeAudioBackend(g_Options.SoundAPI);
 
@@ -1113,10 +1125,7 @@ void TrophyLoad(Profile& profile, int pr)
 
 	//Temporary:
 	int r = profile.Rank;
-	profile.Rank = RANK_BEGINNER;
-	if (profile.Score >= 100) profile.Rank = RANK_ADVANCED;
-	if (profile.Score >= 300) profile.Rank = RANK_MASTER;
-	if (profile.Score >= 10000) profile.Rank = 1000;
+	MenuProfile::UpdateRank(profile);
 
 	std::cout << "Profile Loaded." << std::endl;
 }
@@ -1128,10 +1137,7 @@ void TrophySave(Profile& profile)
 	fname << "trophy" << std::setfill('0') << std::setw(2) << profile.RegNumber << ".sav";
 
 	int r = profile.Rank;
-	profile.Rank = RANK_BEGINNER;
-	if (profile.Score >= 100) profile.Rank = RANK_ADVANCED;
-	if (profile.Score >= 300) profile.Rank = RANK_MASTER;
-	if (profile.Score >= 10000) profile.Rank = 1000;
+	MenuProfile::UpdateRank(profile);
 
 	/*
 	// Taken from Carnivores 1
@@ -1147,6 +1153,15 @@ void TrophySave(Profile& profile)
 		return;
 	}
 
+#ifndef _iceage
+	const auto bytes = LegacyProfile::EncodeSave({MenuProfile::FromRuntime(profile),
+	                                            MenuProfile::CaptureOptions(g_Options)});
+	fs.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+	if (!fs) {
+		std::cout << "Profile: Error writing trophy!" << std::endl;
+		return;
+	}
+#else
 	fs.write(reinterpret_cast<char*>(&profile), sizeof(Profile));
 
 	fs.write(reinterpret_cast<char*>(&g_Options.Aggression), 4);
@@ -1171,6 +1186,8 @@ void TrophySave(Profile& profile)
 	fs.write(reinterpret_cast<char*>(&g_Options.OptSys), 4);
 	fs.write(reinterpret_cast<char*>(&g_Options.SoundAPI), 4);
 	fs.write(reinterpret_cast<char*>(&g_Options.RenderAPI), 4);
+
+#endif
 
 	// FOV and other extended settings live in config.cfg, not here.
 
