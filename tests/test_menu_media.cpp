@@ -58,3 +58,73 @@ TEST(MenuMedia, BackgroundPreservesAlphaFileOrderAndChecksCapacity) {
     {MediaFile f(b);ASSERT_TRUE(LoadMenuBackground(pixels,f.path));EXPECT_EQ(pixels[0],0);EXPECT_EQ(pixels[1],1);EXPECT_EQ(pixels[2],0x1234);EXPECT_EQ(pixels[3],0x9234);EXPECT_EQ(pixels[479999],0x1234);}
     b=MediaGolden::Tga();{MediaFile f(b);EXPECT_FALSE(LoadMenuBackground(pixels,f.path));}
 }
+
+#include <filesystem>
+#include <fstream>
+AreaInfo MakeOldAreaInfo(int index, int price);
+void LoadC2Maps();
+namespace {
+class MenuPaths : public testing::Test {
+protected:
+    std::filesystem::path root, previous;
+    void SetUp() override {
+        char dir[MAX_PATH], name[MAX_PATH];
+        ASSERT_NE(GetTempPathA(MAX_PATH, dir), 0u);
+        ASSERT_NE(GetTempFileNameA(dir, "pth", 0, name), 0u);
+        ASSERT_TRUE(DeleteFileA(name));
+        root = name;
+        ASSERT_TRUE(std::filesystem::create_directory(root));
+        previous = std::filesystem::current_path();
+        std::filesystem::current_path(root);
+        g_AreaInfo.clear();
+    }
+    void TearDown() override {
+        g_AreaInfo.clear();
+        std::filesystem::current_path(previous);
+        std::filesystem::remove_all(root);
+    }
+    void Text(const std::filesystem::path& path, const std::string& text) {
+        std::filesystem::create_directories(path.parent_path());
+        std::ofstream out(path); out << text;
+        ASSERT_TRUE(out.good());
+    }
+};
+}
+TEST_F(MenuPaths, AreaSixKeepsExternalFirstAndAreaSixFallback) {
+    Text("HuNtDaT/ArEaS/ArEa6.MAP", "map probe");
+    auto area = MakeOldAreaInfo(6, 500);
+    EXPECT_TRUE(area.m_Valid);
+    EXPECT_EQ(area.m_ProjectName, "area6");
+    EXPECT_EQ(area.m_MapFile, "area6");
+    Text("HuNtDaT/ArEaS/ExTeRnAl.MAP", "external probe");
+    area = MakeOldAreaInfo(6, 500);
+    EXPECT_TRUE(area.m_Valid);
+    EXPECT_EQ(area.m_ProjectName, "area6");
+    EXPECT_EQ(area.m_MapFile, "external");
+    EXPECT_EQ(area.m_Price, 500);
+    // No RSC, description or thumbnail required by existing menu policy.
+}
+TEST_F(MenuPaths, ResourceScriptFallbackRetainsPrecedence) {
+    Text("HuNtDaT/_ReS.TxT", "accessories\n{\ncamo = 0.55\n}\n.\n");
+    LoadResourcesScript();
+    EXPECT_FLOAT_EQ(g_AccessoryScoreMods.at("camo"), 0.55f);
+    Text("HuNtDaT/_MeNu.TxT", "accessories\n{\ncamo = 0.77\n}\n.\n");
+    LoadResourcesScript();
+    EXPECT_FLOAT_EQ(g_AccessoryScoreMods.at("camo"), 0.77f);
+}
+TEST_F(MenuPaths, DescriptorPathsResolveWithoutChangingCandidateRules) {
+    Text("HuNtDaT/ArEaS/CuStOm.MAP", "map probe");
+    Text("HuNtDaT/MeNu/TxT/Custom.TXT", "Custom description\n");
+    Text("HuNtDaT/ArEaS/test.c2map",
+         "info\n{\nname = 'Custom'\nmapfile = 'huntdat\\areas\\custom'\n"
+         "text = 'HUNTDAT\\menu/TXT/custom.txt'\nprice = 12\n}\n.\n");
+    LoadC2Maps();
+    ASSERT_EQ(g_AreaInfo.size(), 1u);
+    EXPECT_EQ(g_AreaInfo[0].m_ProjectName, "custom");
+    EXPECT_EQ(g_AreaInfo[0].m_Description[0], "Custom description");
+    EXPECT_EQ(g_AreaInfo[0].m_Price, 12);
+    // Script-defined entries still win; missing descriptor MAPs stay skipped.
+    Text("HuNtDaT/ArEaS/missing.c2map", "info\n{\nmapfile = 'absent'\n}\n.\n");
+    LoadC2Maps();
+    EXPECT_EQ(g_AreaInfo.size(), 1u);
+}
