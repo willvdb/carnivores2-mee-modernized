@@ -38,3 +38,30 @@ jobs:
     # hunt/sound/shutdown validation remains a separate local smoke test.
     - name: Unit and serialized layout tests
       run: ctest --test-dir build/${{ matrix.preset }} -R "^Carnivores2Tests" --output-on-failure
+
+  linux:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: [linux-x64-sdl-gl-debug, linux-x64-sdl-gl-release]
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install native build and font dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ninja-build pkg-config libfreetype6-dev libfontconfig1-dev fonts-liberation \
+          libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev \
+          libwayland-dev libxkbcommon-dev libegl1-mesa-dev libgl1-mesa-dev libdecor-0-dev
+
+    # Build the real GL executable against the same pinned SDL as Windows.
+    # Synthetic assets cover the loaders; no proprietary HUNTDAT is downloaded.
+    - name: Configure CMake
+      run: cmake --preset ${{ matrix.preset }}
+
+    - name: Build native game and tests
+      run: cmake --build --preset ${{ matrix.preset }} --parallel 2
+
+    - name: Unit and serialized layout tests
+      run: ctest --preset ${{ matrix.preset }}
