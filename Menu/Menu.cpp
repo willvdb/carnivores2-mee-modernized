@@ -7,8 +7,10 @@
 */
 
 #include "Hunt.h"
+#include "../Shared/LegacyProfile.h"
 #include "SliderMath.h"
 #include <cassert>
+#include <algorithm>
 #include <cmath>
 
 #include <iostream>
@@ -1172,7 +1174,9 @@ void MenuEventStart(int32_t menu_state)
 		MenuRegistry.AddItem("");
 		g_LastListClickTime = 0;
 		g_LastListClickIndex = -1;
+#ifdef _iceage
 		char tname[128];
+#endif
 		for (auto i = 0U; i < 8U; i++) {
 			g_Profiles[i].m_Name = "";
 			g_Profiles[i].m_RegNumber = i;
@@ -1182,6 +1186,18 @@ void MenuEventStart(int32_t menu_state)
 			std::stringstream sn;
 			sn << "trophy" << std::setfill('0') << std::setw(2) << i << ".sav";
 
+#ifndef _iceage
+			std::ifstream fs(sn.str(), std::ios::binary);
+			std::array<std::uint8_t, LegacyProfile::HeaderSize> bytes{};
+			LegacyProfile::Header header;
+			if (!fs.read(reinterpret_cast<char*>(bytes.data()), bytes.size()) ||
+			    !LegacyProfile::DecodeHeader(bytes.data(), bytes.size(), header)) continue;
+			g_Profiles[i].m_RegNumber = header.registration;
+			g_Profiles[i].m_Score = header.score;
+			g_Profiles[i].m_Rank = header.rank;
+			const auto end = std::find(header.name.begin(), header.name.end(), 0);
+			g_Profiles[i].m_Name.assign(header.name.begin(), end);
+#else
 			std::ifstream fs(sn.str());
 			if (!fs.is_open()) { continue; }
 
@@ -1191,6 +1207,7 @@ void MenuEventStart(int32_t menu_state)
 			fs.read(reinterpret_cast<char*>(&g_Profiles[i].m_Rank), 4);
 
 			g_Profiles[i].m_Name = tname;
+#endif
 		}
 	} break;
 	case MENU_OPTIONS: {
