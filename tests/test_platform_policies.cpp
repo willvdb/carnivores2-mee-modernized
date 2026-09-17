@@ -7,6 +7,14 @@
 #error Portable platform headers must not include windows.h
 #endif
 #include <gtest/gtest.h>
+
+TEST(PlatformTiming, LegacyMillisecondsWrapAt32Bits)
+{
+    EXPECT_EQ(Platform::WrapMilliseconds(0), 0u);
+    EXPECT_EQ(Platform::WrapMilliseconds(0xffffffffULL), 0xffffffffu);
+    EXPECT_EQ(Platform::WrapMilliseconds(0x100000000ULL), 0u);
+    EXPECT_EQ(Platform::WrapMilliseconds(0x100000031ULL), 49u);
+}
 #include <type_traits>
 
 static_assert(sizeof(Platform::Tick) == 8);

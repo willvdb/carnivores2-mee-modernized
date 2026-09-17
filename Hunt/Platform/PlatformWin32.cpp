@@ -97,6 +97,7 @@ Tick Counter()
 
 void BeginFrameTiming() { timeBeginPeriod(1); }
 void SleepMilliseconds(std::uint32_t milliseconds) { Sleep(milliseconds); }
+std::uint32_t Milliseconds() { return timeGetTime(); }
 
 bool PollKeyboardState(KeyboardState& state)
 {

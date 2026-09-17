@@ -436,3 +436,6 @@ TEST_F(ResourceLoader, MapReferencesAtRowEdgesAndSentinelRequiresTextureOne)
     EXPECT_EQ(FMap[1023][1023],0xc4a3);
     EXPECT_EQ(WMap[1023][1023],0);
 }
+#include "../Hunt/Platform/Platform.h"
+// Loader tests use a deterministic clock; gameplay timing is tested separately.
+std::uint32_t Platform::Milliseconds() { return 0; }

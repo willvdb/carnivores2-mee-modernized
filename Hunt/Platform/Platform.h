@@ -22,6 +22,12 @@ Tick CounterFrequency();
 Tick Counter();
 void BeginFrameTiming(); // Preserve the legacy process-life 1 ms timer request.
 void SleepMilliseconds(std::uint32_t milliseconds);
+// Legacy gameplay clock: milliseconds modulo 2^32, backend epoch unspecified.
+constexpr std::uint32_t WrapMilliseconds(std::uint64_t ticks)
+{
+    return static_cast<std::uint32_t>(ticks);
+}
+std::uint32_t Milliseconds();
 
 // Compatibility boundary: legacy virtual-key indices, bit 7 down / bit 0
 // toggled, including sided modifiers and mouse buttons. Never SDL scancodes.

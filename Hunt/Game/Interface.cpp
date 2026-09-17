@@ -193,8 +193,8 @@ void SetFullScreen()
 
 void Wait(int time)
 {
-  unsigned int t = timeGetTime() + time;
-  while (t>timeGetTime()) ;
+  unsigned int t = Platform::Milliseconds() + time;
+  while (t>Platform::Milliseconds()) ;
 }
 
 

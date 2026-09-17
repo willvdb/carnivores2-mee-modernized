@@ -1,4 +1,5 @@
 #include "Hunt.h"
+#include "Platform/Platform.h"
 #include "LoadValidate.h"
 #include "ResourceIO.h"
 #include "MapIO.h"
@@ -400,7 +401,7 @@ void ClearTagAllocations(MemoryTag tag)
 
 void AddMessage(LPSTR mt)
 {
-  MessageList.timeleft = timeGetTime() + 2 * 1000;
+  MessageList.timeleft = Platform::Milliseconds() + 2 * 1000;
   lstrcpy(MessageList.mtext, mt);
 }
 
@@ -423,7 +424,7 @@ void PlaceHunter()
 	  return;
   }
 
-  int p = (timeGetTime() % LandingList.PCount);
+  int p = (Platform::Milliseconds() % LandingList.PCount);
   PlayerX = static_cast<float>(LandingList.list[p].x) * 256+128;
   PlayerZ = static_cast<float>(LandingList.list[p].y) * 256+128;
   PlayerY = GetLandQH(PlayerX, PlayerZ);

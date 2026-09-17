@@ -4,6 +4,7 @@
 // ==========================================================================
 
 #include "Hunt.h"
+#include "Platform/Platform.h"
 #include <mmsystem.h>
 #include <cerrno>
 #include <cstdlib>
@@ -659,7 +660,7 @@ void ShutDownEngine()
 }
 void ProcessSyncro()
 {
-  RealTime = timeGetTime();
+  RealTime = Platform::Milliseconds();
   srand( (unsigned) RealTime );
   if (SLOW) RealTime/=4;
   TimeDt = RealTime - PrevTime;
