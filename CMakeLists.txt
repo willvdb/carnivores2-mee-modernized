@@ -267,6 +267,7 @@ if(MSVC)
         tests/test_map_scaling.cpp
         tests/test_memory_arena.cpp
         tests/test_menu_slider.cpp
+        tests/test_serialized_layout.cpp
         tests/test_projectile_math.cpp
         tests/test_terrain_fog.cpp
         tests/test_water_object_visibility.cpp
@@ -278,6 +279,12 @@ if(MSVC)
     )
     target_link_libraries(Carnivores2Tests PRIVATE gtest_main)
     add_test(NAME Carnivores2Tests COMMAND Carnivores2Tests)
+
+    # Menu and engine headers define different global types. Keep the menu
+    # record checks in a separate executable and compare against the same bytes.
+    add_executable(Carnivores2MenuLayoutTests tests/test_menu_serialized_layout.cpp)
+    target_link_libraries(Carnivores2MenuLayoutTests PRIVATE gtest_main)
+    add_test(NAME Carnivores2Tests.MenuLayout COMMAND Carnivores2MenuLayoutTests)
 
     # Exercise the production world-model sampler without a GL context.
     # Engine globals / CalcFogLevel are controlled test doubles in this target.
