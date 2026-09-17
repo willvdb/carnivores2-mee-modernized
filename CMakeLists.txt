@@ -292,6 +292,11 @@ if(MSVC)
     set(FETCHCONTENT_QUIET OFF)
     FetchContent_MakeAvailable(googletest)
 
+    add_executable(Carnivores2PlatformTests tests/test_platform_policies.cpp
+        tests/test_platform_win32.cpp Hunt/Platform/PlatformWin32.cpp)
+    target_link_libraries(Carnivores2PlatformTests PRIVATE gtest_main user32 gdi32 winmm)
+    add_test(NAME Carnivores2Tests.Platform COMMAND Carnivores2PlatformTests)
+
     add_executable(Carnivores2Tests
         tests/test_billboard_math.cpp
         tests/test_math.cpp
