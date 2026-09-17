@@ -48,55 +48,22 @@
 #include "d3d.h"
 #endif
 
-// ----------------------------------------------------------------------------
-// Phase 5 sizeof() verification (Gap #3 follow-up)
-//
-// These static_asserts lock the sizes of structs whose fields were migrated
-// from raw pointers to smart pointers in Phase 5B.2. The checks prevent
-// silent size regressions (e.g., if EBO fails on a unique_ptr alias, the
-// struct would double in size). Expected values are for MSVC x86 with
-// empty-base-optimization on HeapDeleter; adjust if the STL or compiler
-// changes.
-//
-// See memory-system-migration.md §5 for the full verification protocol.
-// ----------------------------------------------------------------------------
+// Runtime layout checks for the supported Windows x86/x64 ABIs. These objects
+// own native pointers and are never serialized whole. Fixed disk record checks
+// are kept separately in Core/GameTypes.h and tests/test_serialized_layout.cpp.
+// Memory.h checks that the smart-pointer deleters add no storage overhead.
+static_assert(sizeof(TAni) == (sizeof(void*) == 8 ? 56 : 48), "TAni runtime layout changed");
+static_assert(sizeof(TVTL) == (sizeof(void*) == 8 ? 24 : 16), "TVTL runtime layout changed");
+static_assert(sizeof(TPicture) == (sizeof(void*) == 8 ? 16 : 12), "TPicture runtime layout changed");
+static_assert(sizeof(TBMPModel) == (sizeof(void*) == 8 ? 56 : 52), "TBMPModel runtime layout changed");
+static_assert(sizeof(TModel) == (sizeof(void*) == 8 ? 88 : 52), "TModel runtime layout changed");
 
-// TAni: 32 (aniName) + 3 ints (12) + unique_heap_ptr (4) = 48
-static_assert(sizeof(TAni) == 48,
-              "TAni size changed — verify unique_heap_ptr EBO is still active");
-
-// TVTL: 3 ints (12) + unique_heap_ptr (4) = 16
-static_assert(sizeof(TVTL) == 16,
-              "TVTL size changed — verify unique_heap_ptr EBO is still active");
-
-// TPicture: 2 ints (8) + unique_heap_ptr (4) = 12
-static_assert(sizeof(TPicture) == 12,
-              "TPicture size changed — verify unique_heap_ptr EBO is still active");
-
-// TBMPModel: gVertex[4] (48) + unique_heap_ptr (4) = 52
-static_assert(sizeof(TBMPModel) == 52,
-              "TBMPModel size changed — verify unique_heap_ptr EBO is still active");
-
-// TModel: 4 ints (16) + gVertex (4) + gFace union (4) + 3*lpTexture (12)
-//         + VLight[4] (16) = 52 on both d3d and non-d3d (int* and float*
-//         are both 4 bytes on x86)
-static_assert(sizeof(TModel) == 52,
-              "TModel size changed — this affects MObjects[256] layout and "
-              "would shift the entire object array");
-
-// TObject: contains TObjInfo + TBound[8] + TBMPModel + model + TVTL + ...
-// Expected ~140 bytes. Range check catches catastrophic bloat without
-// failing on minor alignment differences across toolchains.
+// Containers can vary with STL debug settings; these bounds are runtime sanity
+// checks, not file sizes or offsets into a serialized object array.
 static_assert(sizeof(TObject) >= 300 && sizeof(TObject) <= 400,
-              "TObject size is outside expected range — MObjects[256] "
-              "layout has shifted");
-
-// TCharacterInfo: contains ModelName[32] + mptr + TAni[64] + TSFX[64] + ...
-// The TAni[64] alone is 48*64 = 3072; TSFX[64] with vector is ~28*64 = 1792.
-// Total is several KiB. Range check verifies no unexpected reordering.
+              "TObject runtime size is outside expected range");
 static_assert(sizeof(TCharacterInfo) >= 3000 && sizeof(TCharacterInfo) <= 8000,
-              "TCharacterInfo size is outside expected range — ChInfo[128] "
-              "layout is affected");
+              "TCharacterInfo runtime size is outside expected range");
 
 // The world-zoom factor Controls.cpp applies to CameraW/H each frame: the
 // optic magnification while a scoped weapon is raised, 1 otherwise. HUD
