@@ -1788,6 +1788,9 @@ int RunGame()
 
   ProcessSyncro();
   blActive = true;
+  // SDL reports initial focus asynchronously; the reference WndProc already
+  // set active priority during creation, before the first game frame.
+  Platform::SetProcessActive(true);
 
   alreadyFired = false;
 

@@ -141,3 +141,17 @@ TEST(LegacySDL, UnknownScancodesCannotWriteOutsideLegacyBuffer)
     Platform::KeyboardState state{}; keyboard.Copy(state,0,0);
     for(auto value:state) EXPECT_EQ(value,0);
 }
+
+TEST(LegacySDL, AltGrRestoresSyntheticLeftControlWithoutConfusingRightControl)
+{
+    Keyboard keyboard;
+    const auto e=Key(SDL_SCANCODE_RALT,SDLK_RALT,SDL_KMOD_RALT);
+    Apply(keyboard,e);
+    Platform::KeyboardState state{}; keyboard.Copy(state,0,0,true);
+    EXPECT_EQ(state[0xa5],0x80); EXPECT_EQ(state[0x12],0x80);
+    EXPECT_EQ(state[0xa2],0x80); EXPECT_EQ(state[0x11],0x80); EXPECT_EQ(state[0xa3],0);
+    EXPECT_FALSE(TranslateKey(e,0xa5,true).system);
+    EXPECT_TRUE(TranslateKey(e,0xa5,false).system); // Ordinary right Alt on US layout.
+    Apply(keyboard,Key(SDL_SCANCODE_RALT,SDLK_RALT,0,false));
+    keyboard.Copy(state,0,0,true); EXPECT_EQ(state[0xa2],0); EXPECT_EQ(state[0x11],0);
+}

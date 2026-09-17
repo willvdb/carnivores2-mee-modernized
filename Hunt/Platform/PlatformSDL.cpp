@@ -3,6 +3,7 @@
 #include "PlatformSDLInternal.h"
 #include "../Debug/Log.h"
 #include <algorithm>
+#include <optional>
 
 namespace {
 SDL_Window* gameWindow = nullptr;
@@ -10,6 +11,20 @@ SDL_GLContext context = nullptr;
 SDL_Cursor* arrowCursor = nullptr;
 Platform::SDLInput::Keyboard keyboard;
 bool quitRequested = false;
+bool altGrLayout = false;
+std::optional<Platform::Event> pendingKey;
+
+bool HasAltGrLayout()
+{
+    // Ask SDL's current layout, not the host's asynchronous keyboard state.
+    for (int i = SDL_SCANCODE_A; i <= SDL_SCANCODE_SLASH; ++i) {
+        const auto scan = static_cast<SDL_Scancode>(i);
+        const auto base = SDL_GetKeyFromScancode(scan, SDL_KMOD_NONE, false);
+        const auto alternate = SDL_GetKeyFromScancode(scan, SDL_KMOD_MODE, false);
+        if (alternate && !(alternate & SDLK_SCANCODE_MASK) && alternate != base) return true;
+    }
+    return false;
+}
 
 void Check(bool ok, const char* operation)
 {
@@ -56,12 +71,16 @@ bool InitializeApplication()
     EnableDpiAwareness();
     SDL_SetHint(SDL_HINT_MOUSE_EMULATE_WARP_WITH_RELATIVE, "0");
     SDL_SetHint(SDL_HINT_MOUSE_AUTO_CAPTURE, "0");
+    SDL_SetHint(SDL_HINT_WINDOWS_RAW_KEYBOARD, "0"); // Match the message-based reference.
     SDL_SetHint(SDL_HINT_WINDOWS_CLOSE_ON_ALT_F4, "0"); // Old SYSKEY handler swallows it.
     // Preserve exclusive focus loss without SDL's additional minimize policy.
     SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");
     quitRequested = false;
+    pendingKey.reset();
     keyboard.ClearDown();
-    return SDL_Init(SDL_INIT_VIDEO);
+    if (!SDL_Init(SDL_INIT_VIDEO)) return false;
+    altGrLayout = HasAltGrLayout();
+    return true;
 }
 const char* LastError() { return SDL_GetError(); }
 void ShutdownApplication()
@@ -70,6 +89,7 @@ void ShutdownApplication()
     if (arrowCursor) { SDL_DestroyCursor(arrowCursor); arrowCursor = nullptr; }
     if (gameWindow) { SDL_DestroyWindow(gameWindow); gameWindow = nullptr; }
     SDL_Quit();
+    LOG_INFO("SDL application shutdown completed");
 }
 
 bool CreateGameWindow()
@@ -127,17 +147,23 @@ std::uint32_t Milliseconds() { return WrapMilliseconds(SDL_GetTicks()); }
 
 bool PollKeyboardState(KeyboardState& state)
 {
-    keyboard.Copy(state, SDL_GetModState(), SDL_GetGlobalMouseState(nullptr, nullptr));
+    keyboard.Copy(state, SDL_GetModState(), SDL_GetGlobalMouseState(nullptr, nullptr), altGrLayout);
     return true;
 }
 PumpResult PumpOneEvent(int& quitCode, Event* output)
 {
     if (output) *output = {};
     if (quitRequested) { quitCode = 0; return PumpResult::Quit; }
+    if (pendingKey) {
+        if (output) *output = *pendingKey;
+        pendingKey.reset();
+        return PumpResult::Dispatched;
+    }
     SDL_Event native;
     if (!SDL_PollEvent(&native)) return PumpResult::Idle;
     const auto windowID = gameWindow ? SDL_GetWindowID(gameWindow) : 0;
     Event event;
+    if (native.type == SDL_EVENT_KEYMAP_CHANGED) altGrLayout = HasAltGrLayout();
     if (native.type == SDL_EVENT_QUIT ||
         (native.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && native.window.windowID == windowID)) {
         quitCode = 0;
@@ -155,7 +181,13 @@ PumpResult PumpOneEvent(int& quitCode, Event* output)
         keyboard.Key(native.key, key);
         if (native.type == SDL_EVENT_KEY_DOWN && key) {
             event.type = EventType::KeyDown;
-            event.key = SDLInput::TranslateKey(native.key, key);
+            event.key = SDLInput::TranslateKey(native.key, key, altGrLayout);
+            if (altGrLayout && key == 0xa5 && !native.key.repeat && !(native.key.mod & SDL_KMOD_CTRL)) {
+                // Preserve the synthetic LCtrl key-down used by legacy toggle
+                // bindings, followed by RAlt on the next event-only iteration.
+                pendingKey = event;
+                event.key = {0x11, 0xa2, false, false, event.key.shift};
+            }
         }
     }
     if (output) *output = event;
@@ -261,6 +293,7 @@ void DestroyGLContext()
     if (SDL_GL_GetCurrentContext() == context) SDL_GL_MakeCurrent(gameWindow, nullptr);
     Check(SDL_GL_DestroyContext(context), "SDL_GL_DestroyContext");
     context = nullptr;
+    LOG_INFO("SDL OpenGL context destroyed");
 }
 void* GLProcAddress(const char* name) { return reinterpret_cast<void*>(SDL_GL_GetProcAddress(name)); }
 void SwapGLBuffers() { if (gameWindow && context) Check(SDL_GL_SwapWindow(gameWindow), "SDL_GL_SwapWindow"); }

@@ -328,7 +328,8 @@ if(MSVC)
 
     if(CARNIVORES_PLATFORM STREQUAL "SDL3")
         add_executable(Carnivores2SDLTests tests/test_legacy_keyboard_sdl.cpp
-            tests/test_platform_sdl.cpp Hunt/Platform/LegacyKeyboardSDL.cpp
+            tests/test_platform_sdl.cpp tests/test_platform_sdl_win32.cpp
+            Hunt/Platform/LegacyKeyboardSDL.cpp
             Hunt/Platform/PlatformSDL.cpp Hunt/Platform/PlatformSDLWin32.cpp)
         target_link_libraries(Carnivores2SDLTests PRIVATE gtest_main SDL3::SDL3 user32)
         add_test(NAME Carnivores2Tests.SDL COMMAND Carnivores2SDLTests)

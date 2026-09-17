@@ -104,7 +104,7 @@ std::uint8_t MouseKey(std::uint8_t button)
     }
 }
 
-KeyEvent TranslateKey(const SDL_KeyboardEvent& event, std::uint8_t legacyKey)
+KeyEvent TranslateKey(const SDL_KeyboardEvent& event, std::uint8_t legacyKey, bool altGrLayout)
 {
     std::uint8_t generic = legacyKey;
     if (legacyKey == 0xa0 || legacyKey == 0xa1) generic = 0x10;
@@ -112,8 +112,8 @@ KeyEvent TranslateKey(const SDL_KeyboardEvent& event, std::uint8_t legacyKey)
     if (legacyKey == 0xa4 || legacyKey == 0xa5) generic = 0x12;
     // Ctrl+Alt (including AltGr) is a normal WM_KEYDOWN; F10 is always a
     // system key. SDL has no separate SYSKEY event, so preserve that category.
-    const bool system = generic == 0x79 ||
-        ((event.mod & SDL_KMOD_ALT) && !(event.mod & SDL_KMOD_CTRL));
+    const bool control = (event.mod & SDL_KMOD_CTRL) || (altGrLayout && (event.mod & SDL_KMOD_RALT));
+    const bool system = generic == 0x79 || ((event.mod & SDL_KMOD_ALT) && !control);
     return {generic, legacyKey, event.repeat, system, (event.mod & SDL_KMOD_SHIFT) != 0};
 }
 
@@ -127,10 +127,13 @@ void Keyboard::Key(const SDL_KeyboardEvent& event, std::uint8_t legacyKey)
 }
 void Keyboard::ClearDown() { held.fill(0); }
 
-void Keyboard::Copy(KeyboardState& out, SDL_Keymod toggles, SDL_MouseButtonFlags mouse) const
+void Keyboard::Copy(KeyboardState& out, SDL_Keymod toggles, SDL_MouseButtonFlags mouse, bool altGrLayout) const
 {
     std::fill(std::begin(out), std::end(out), std::uint8_t{0});
     for (auto key : held) if (key) out[key] = 0x80;
+    // Windows exposes AltGr as synthetic left Ctrl + right Alt. SDL removes
+    // that Ctrl; restore its legacy binding slot without polling native input.
+    if (altGrLayout && out[0xa5]) out[0xa2] = 0x80;
     out[0x10] = out[0xa0] | out[0xa1];
     out[0x11] = out[0xa2] | out[0xa3];
     out[0x12] = out[0xa4] | out[0xa5];
