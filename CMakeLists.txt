@@ -345,6 +345,17 @@ if(MSVC)
     target_link_libraries(Carnivores2ModelTests PRIVATE gtest_main)
     add_test(NAME Carnivores2Tests.ModelLoader COMMAND Carnivores2ModelTests)
 
+    # Complete production RSC path; the test's PrintLoad stops at the existing
+    # MAP notification. Unused engine/platform functions are discarded.
+    add_executable(Carnivores2ResourceTests tests/test_resource_loader.cpp
+        Hunt/Loaders/Resources.cpp Hunt/Loaders/ModelLoader.cpp Hunt/Core/StateDefs.cpp)
+    target_include_directories(Carnivores2ResourceTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Hunt ${CMAKE_CURRENT_SOURCE_DIR}/deps)
+    target_compile_definitions(Carnivores2ResourceTests PRIVATE ${RENDER_DEFINES})
+    target_compile_options(Carnivores2ResourceTests PRIVATE /Gy)
+    target_link_options(Carnivores2ResourceTests PRIVATE /OPT:REF /INCREMENTAL:NO)
+    target_link_libraries(Carnivores2ResourceTests PRIVATE gtest_main winmm)
+    add_test(NAME Carnivores2Tests.ResourceLoader COMMAND Carnivores2ResourceTests)
+
     # Exercise the production world-model sampler without a GL context.
     # Engine globals / CalcFogLevel are controlled test doubles in this target.
     add_executable(Carnivores2FogTests
