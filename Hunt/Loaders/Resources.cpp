@@ -485,7 +485,7 @@ void CreateDivTable()
 
   for (int y=0; y<32; y++)
     for (int x=0; x<32; x++)
-      RandomMap[y][x] = rand() * 1024 / RAND_MAX;
+      RandomMap[y][x] = static_cast<int>(static_cast<std::int64_t>(rand()) * 1024 / RAND_MAX);
 }
 
 void CreateVideoDIB()

@@ -135,7 +135,7 @@ int DitherHi(int C)
 {
   int d = C & 255;
   C = C / 256;
-  if (rand() * 255 / RAND_MAX < d) C++;
+  if (static_cast<std::int64_t>(rand()) * 255 / RAND_MAX < d) C++;
   if (C>31) C=31;
   return C;
 }

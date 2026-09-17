@@ -506,6 +506,12 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     endif()
     add_test(NAME Carnivores2Tests.UIText COMMAND Carnivores2UITests)
 
+    add_executable(Carnivores2RandomTests tests/test_random_scaling.cpp Hunt/Math/Vector.cpp)
+    target_include_directories(Carnivores2RandomTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Hunt ${CMAKE_CURRENT_SOURCE_DIR}/deps)
+    target_compile_definitions(Carnivores2RandomTests PRIVATE ${RENDER_DEFINES})
+    target_link_libraries(Carnivores2RandomTests PRIVATE gtest_main)
+    add_test(NAME Carnivores2Tests.RandomScaling COMMAND Carnivores2RandomTests)
+
     add_library(CarnivoresTestLibrary SHARED tests/shared_library_fixture.cpp)
     add_executable(Carnivores2LibraryTests tests/test_shared_library.cpp Hunt/Audio/OpenAL_Loader.cpp)
     target_compile_definitions(Carnivores2LibraryTests PRIVATE TEST_LIBRARY_PATH="$<TARGET_FILE:CarnivoresTestLibrary>")

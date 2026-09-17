@@ -110,7 +110,7 @@ float VectorLength(Vector3d v)
 int siRand(int R)
 {
   if (R == RAND_MAX) return 0;
-  return (rand() * (R * 2 +1)) / RAND_MAX - R;
+  return static_cast<int>((static_cast<std::int64_t>(rand()) * (static_cast<std::int64_t>(R) * 2 + 1)) / RAND_MAX - R);
 }
 int rRand(int r)
 {

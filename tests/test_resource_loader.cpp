@@ -440,3 +440,14 @@ TEST_F(ResourceLoader, MapReferencesAtRowEdgesAndSentinelRequiresTextureOne)
 #include "../Hunt/Platform/Platform.h"
 // Loader tests use a deterministic clock; gameplay timing is tested separately.
 std::uint32_t Platform::Milliseconds() { return 0; }
+
+TEST(ResourceRandomMap, ValuesRemainInTheLegacyRangeWithLargeRandMax) {
+    std::srand(1);
+    CreateDivTable();
+    int high=0;
+    for(const auto& row:RandomMap) for(auto value:row) {
+        ASSERT_GE(value,0); ASSERT_LE(value,1024);
+        high=std::max(high,static_cast<int>(value));
+    }
+    EXPECT_GT(high,800);
+}

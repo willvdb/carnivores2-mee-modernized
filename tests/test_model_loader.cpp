@@ -177,3 +177,15 @@ TEST(ModelLoader, CharacterPCMRejectsBadLengthAndTruncation)
         ReleaseCharacterInfo(ch);
     }
 }
+
+int DitherHi(int);
+TEST(ModelDither, ScaledRandomKeepsTheIntendedFractionOnLinux) {
+    std::srand(1);
+    int raised=0;
+    for(int i=0;i<10000;++i) {
+        const int value=DitherHi(15*256+128);
+        ASSERT_TRUE(value==15 || value==16);
+        raised += value==16;
+    }
+    EXPECT_GT(raised,4000); EXPECT_LT(raised,6000);
+}
