@@ -5,6 +5,7 @@
 #include "Hunt.h"
 #include "LoadValidate.h"
 #include "ResourceIO.h"
+#include "AudioIO.h"
 #include "ModelSerialization.h"
 
 // Corrupt/modded-model fail-fast. All shipped .CAR files pass these checks
@@ -1018,8 +1019,9 @@ void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
     if (!IsValidWavLength(chinfo.SoundFX[s].length))
       ModelLoadFail("sound effect length out of range", chinfo.SoundFX[s].length, 16 << 20);
     chinfo.SoundFX[s].lpData.assign(WavAllocSamples(chinfo.SoundFX[s].length), 0);
-    ReadModelExact(hfile, chinfo.SoundFX[s].lpData.data(),
-                   (DWORD)chinfo.SoundFX[s].length, "sound effect data");
+    if (!EngineAudio::ReadPCM16(hfile, chinfo.SoundFX[s].lpData.data(),
+                               chinfo.SoundFX[s].lpData.size(), chinfo.SoundFX[s].length))
+      DoHalt("Model loading error: truncated sound effect data.");
   }
 
   for (int v=0; v<chinfo.mptr->VCount; v++)
