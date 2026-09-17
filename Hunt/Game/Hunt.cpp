@@ -1046,7 +1046,7 @@ static void ConfirmExitMenu() // Y/Enter: start evacuation, restore the view
   g_GameMode = DismissMenuRestore();
 }
 
-LONG APIENTRY MainWndProc( HWND hWnd, UINT message, UINT wParam, LONG lParam)
+LRESULT CALLBACK MainWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
   BOOL A = (GetActiveWindow() == hWnd);
 
@@ -1501,7 +1501,7 @@ BOOL CreateMainWindow()
   PrintLog("Creating main window...");
   WNDCLASS wc;
   wc.style = CS_OWNDC;
-  wc.lpfnWndProc = (WNDPROC)MainWndProc;
+  wc.lpfnWndProc = MainWndProc;
   wc.cbClsExtra = 0;
   wc.cbWndExtra = 0;
   wc.hInstance = hInst;

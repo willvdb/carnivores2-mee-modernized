@@ -681,46 +681,47 @@ struct TMenuDinoInfo
 	TPicture CallIcon;
 };
 
-// Phase 1.3 — Binary struct layout assertions
-// These lock the sizes of I/O-sensitive structs to prevent silent
-// binary format breakage. Update if struct fields change intentionally.
-// Values are for MSVC x86 (32-bit).
-
+// Serialized records: fixed byte contracts on both Windows x86 and x64.
+// Do not condition these checks on native pointer width.
 static_assert(sizeof(TTrophyRoom)    == 1516, "TTrophyRoom size changed — trophy .sav binary compat break");
 static_assert(sizeof(TTrophyItem)    == 56,   "TTrophyItem size changed — trophy item binary compat break");
 static_assert(sizeof(TTrophyRoom2)   == 7176, "TTrophyRoom2 size changed — trophy .sab binary compat break");
 static_assert(sizeof(TTrophyItem2)   == 56,   "TTrophyItem2 size changed — trophy item2 binary compat break");
-static_assert(sizeof(TCharacter)     == 344,  "TCharacter size changed — character state save compat break");
-static_assert(sizeof(TBullet)        == 96,   "TBullet size changed — projectile state");
-static_assert(sizeof(TDinoInfo)      == 13800,"TDinoInfo size changed — dino configuration data compat");
-static_assert(sizeof(TWeapInfo)      == 468,  "TWeapInfo size changed — weapon configuration");
-static_assert(sizeof(TPack)          == 8,    "TPack size changed — pack state");
-static_assert(sizeof(TTrophyType)    == 580,  "TTrophyType size changed — trophy type data");
-static_assert(sizeof(TDinoKill)      == 32,   "TDinoKill size changed — kill tracking record");
 static_assert(sizeof(TStats)         == 16,   "TStats size changed — statistics record");
 static_assert(sizeof(TObjInfo)       == 64,   "TObjInfo size changed — object info binary compat");
-static_assert(sizeof(TWind)          == 20,   "TWind size changed — wind state");
 static_assert(sizeof(TWaterEntity)   == 16,   "TWaterEntity size changed — water entity");
+
+// Runtime objects with native pointers; no whole-object disk/wire consumers.
+static_assert(sizeof(TCharacter) == (sizeof(void*) == 8 ? 352 : 344), "TCharacter runtime layout changed");
+static_assert(sizeof(TPack) == (sizeof(void*) == 8 ? 16 : 8), "TPack runtime layout changed");
+static_assert(sizeof(TLevelDef) == (sizeof(void*) == 8 ? 208 : 200), "TLevelDef runtime layout changed");
+// Preserve the x86 Release baseline. TWeapon contains STL containers whose
+// sizes also depend on architecture and iterator debugging.
+#ifndef _DEBUG
+static_assert(sizeof(void*) != 4 || sizeof(TWeapon) == 88248, "TWeapon x86 runtime layout changed");
+#endif
+
+// Pointer-free runtime sanity checks, not serialized format contracts.
+static_assert(sizeof(TBullet)        == 96,   "TBullet size changed — projectile state");
+static_assert(sizeof(TDinoInfo)      == 13800,"TDinoInfo size changed — runtime dino configuration");
+static_assert(sizeof(TWeapInfo)      == 468,  "TWeapInfo size changed — weapon configuration");
+static_assert(sizeof(TTrophyType)    == 580,  "TTrophyType size changed — trophy type data");
+static_assert(sizeof(TDinoKill)      == 32,   "TDinoKill size changed — kill tracking record");
+static_assert(sizeof(TWind)          == 20,   "TWind size changed — wind state");
 static_assert(sizeof(TElements)      == 1072, "TElements size changed — elements state");
 static_assert(sizeof(TBloodP)        == 20,   "TBloodP size changed — blood particle");
-static_assert(sizeof(TBTrail)        == 10244,"TBTrail size changed — blood trail (affects save format)");
+static_assert(sizeof(TBTrail)        == 10244,"TBTrail size changed — runtime blood trail");
 static_assert(sizeof(THitBox)        == 32,   "THitBox size changed — hitbox data");
 static_assert(sizeof(TBag)           == 32,   "TBag size changed — bag state");
 static_assert(sizeof(TShip)          == 96,   "TShip size changed — ship state");
 static_assert(sizeof(TDemoPoint)     == 20,   "TDemoPoint size changed — demo playback");
-static_assert(sizeof(TLevelDef)      == 200,  "TLevelDef size changed — level definition");
 static_assert(sizeof(TSpawnGroup)    == 1568, "TSpawnGroup size changed — spawn group config");
 static_assert(sizeof(TSpawnInfo)     == 8,    "TSpawnInfo size changed — spawn info");
 static_assert(sizeof(TSpawnRegion)   == 16,   "TSpawnRegion size changed — spawn region");
 static_assert(sizeof(TAIInfo)        == 92,   "TAIInfo size changed — AI info");
-// TCharacterInfo size is range-checked in Hunt.h (Phase 5 — ~3KB–8KB)
 static_assert(sizeof(TPackType)      == 532,  "TPackType size changed — pack type config");
 static_assert(sizeof(TPackMember)    == 8,    "TPackMember size changed — pack member");
 static_assert(sizeof(TPackMember2)   == 8,    "TPackMember2 size changed — pack member 2");
-#ifndef _DEBUG
-static_assert(sizeof(TWeapon)        == 88248,"TWeapon size changed — weapon instance (large arrays)");
-#endif
 static_assert(sizeof(TElement)       == 32,   "TElement size changed — world element");
 static_assert(sizeof(TSnowType)      == 28,   "TSnowType size changed — snow type");
 static_assert(sizeof(TSnowElement)   == 20,   "TSnowElement size changed — snow element");
-

@@ -304,10 +304,10 @@ private:
 
 // The smart-pointer types are designed to be drop-in replacements for raw
 // pointers: their sizeof must match sizeof(void*) so adopting them in
-// TModel, TObject, TPicture, TAni, TCharacterInfo, etc. in later phases
-// doesn't bloat the structures or shift the MObjects[256] global.
-static_assert(sizeof(void*) == 4,
-              "C2 ME x86 build expected (see doc §9 hand-off #5)");
+// TModel, TObject, TPicture, TAni, TCharacterInfo, etc. adds no ownership
+// overhead. Runtime pointers may grow on x64; they are not serialized.
+static_assert(sizeof(void*) == 4 || sizeof(void*) == 8,
+              "Expected a 32-bit or 64-bit runtime");
 static_assert(sizeof(unique_heap_ptr<WORD[]>) == sizeof(void*),
               "unique_heap_ptr<WORD[]> must be the same size as a raw pointer "
               "(empty base optimization on HeapDeleter must apply)");
