@@ -169,3 +169,23 @@ TEST(SerializedLayout, VertexAndAnimationUseLegacyScalarEncoding)
     EXPECT_EQ(xyz[1], 32767);
     EXPECT_EQ(xyz[2], -1);
 }
+
+#include "legacy_profile_fixtures.h"
+TEST(SerializedLayout, CompleteLegacyProfileFixture)
+{
+    ProfileGolden::CheckLegacySave<TTrophyRoom, decltype(KeyMap)>();
+}
+
+TEST(SerializedLayout, CompleteLegacyTrophyRoomFixture)
+{
+    const auto bytes = ProfileGolden::Room();
+    TTrophyRoom2 room{};
+    std::memcpy(&room, bytes.data(), bytes.size());
+    EXPECT_EQ(room.versionID, 0x12345678);
+    EXPECT_EQ(room.survivalHighScore, 98765);
+    EXPECT_EQ(room.Body[0].ctype, 1000);
+    EXPECT_EQ(room.Body[127].ctype, 13700);
+    EXPECT_EQ(room.Body[127].phase, -2);
+    EXPECT_EQ(room.Body[127].r4, 13713);
+    EXPECT_EQ(std::memcmp(&room, bytes.data(), bytes.size()), 0);
+}
