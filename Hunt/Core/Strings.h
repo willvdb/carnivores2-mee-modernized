@@ -12,6 +12,17 @@ inline int Compare(const char* a, const char* b, std::size_t limit = static_cast
     }
     return 0;
 }
+inline char* Token(char* text, const char* separators, char** next)
+{
+    char* begin = text ? text : *next;
+    if (!begin) return nullptr;
+    begin += std::strspn(begin, separators);
+    if (!*begin) { *next = begin; return nullptr; }
+    char* end = begin + std::strcspn(begin, separators);
+    if (*end) *end++ = 0;
+    *next = end;
+    return begin;
+}
 inline bool Copy(char* dst, std::size_t size, const char* src)
 {
     if (!dst || !size || !src) return false;

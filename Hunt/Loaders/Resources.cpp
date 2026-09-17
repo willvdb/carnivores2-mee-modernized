@@ -1,6 +1,7 @@
 #include "Hunt.h"
 #ifndef _WIN32
 #include "Renderer/CPUTextRaster.h"
+#include "Platform/Screenshot.h"
 static CPUText::Buffer videoBuffer;
 #endif
 #include "Platform/Platform.h"
@@ -8,7 +9,7 @@ static CPUText::Buffer videoBuffer;
 #include "ResourceIO.h"
 #include "MapIO.h"
 #include "stdio.h"
-#include "timeapi.h"
+
 
 // Corrupt/modded-.RSC fail-fast. Shipped areas scan clean (audit); anything
 // rejected here previously overflowed fixed arrays (MObjects[256],
@@ -406,7 +407,7 @@ void ClearTagAllocations(MemoryTag tag)
 void AddMessage(const char* mt)
 {
   MessageList.timeleft = Platform::Milliseconds() + 2 * 1000;
-  lstrcpy(MessageList.mtext, mt);
+  strcpy(MessageList.mtext, mt);
 }
 
 void PlaceHunter()
@@ -866,10 +867,10 @@ void LoadResources()
 
     if (MObjects[mm].info.flags & ofNOLIGHT)
     {
-        FillMemory(MObjects[mm].model->VLight[0], 4 * MObjects[mm].model->VCount, 0);
-        FillMemory(MObjects[mm].model->VLight[1], 4 * MObjects[mm].model->VCount, 0);
-        FillMemory(MObjects[mm].model->VLight[2], 4 * MObjects[mm].model->VCount, 0);
-        FillMemory(MObjects[mm].model->VLight[3], 4 * MObjects[mm].model->VCount, 0);
+        memset(MObjects[mm].model->VLight[0], 0, 4 * MObjects[mm].model->VCount);
+        memset(MObjects[mm].model->VLight[1], 0, 4 * MObjects[mm].model->VCount);
+        memset(MObjects[mm].model->VLight[2], 0, 4 * MObjects[mm].model->VCount);
+        memset(MObjects[mm].model->VLight[3], 0, 4 * MObjects[mm].model->VCount);
     }
 
     if (MObjects[mm].info.flags & ofANIMATED)
@@ -1162,6 +1163,15 @@ void RenderLightMap()
 void SaveScreenShot()
 {
 
+#ifndef _WIN32
+  if (WinW > 1024) return; // Preserve the legacy screenshot size limit.
+  CopyHARDToDIB();
+  char path[32];
+  snprintf(path, sizeof(path), "HUNT%004d.BMP", ++_shotcounter);
+  if (!Platform::SaveBitmap555(path, static_cast<const std::uint16_t*>(lpVideoBuf), WinW, WinH, VideoPitch))
+    PrintLog("Screenshot write failed.\n");
+#else
+
   Platform::FileHandle hf;                  /* file handle */
   BITMAPFILEHEADER hdr;       /* bitmap file-header */
   BITMAPINFOHEADER bmi;       /* bitmap info-header */
@@ -1228,6 +1238,7 @@ void SaveScreenShot()
 
   Platform::CloseFile(hf);
   //MessageBeep(0xFFFFFFFF);
+#endif
 }
 
 //===============================================================================================

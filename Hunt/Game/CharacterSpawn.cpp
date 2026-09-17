@@ -4,6 +4,7 @@
 // Extracted from Characters.cpp.
 
 #include "Hunt.h"
+#include "Platform/Platform.h"
 #include "Game/CharacterInternal.h"
 
 void PlaceTrophy()
@@ -498,7 +499,7 @@ void dispSighting(int dii, int xx, int zz) {
 
 	sprintf(buff, "Sighting:\n%s", DinoInfo[dii].Name);
 	sprintf(buff + strlen(buff), " %s", loc);
-	MessageBox(hwndMain, buff, "TEST", IDOK);
+	Platform::ShowMessage("TEST", buff);
 
 }
 
@@ -865,13 +866,13 @@ void PlaceCharacters()
 				SpwnMax *= 10;
 				char buff[100];
 				snprintf(buff, "Influx:%s", DinoInfo[DinoInfoIndex].Name);
-				MessageBox(hwndMain, buff, "TEST", IDOK);
+				Platform::ShowMessage("TEST", buff);
 				}
 				else if (Region[RegionNo].SpawnRate * 1000 > rRand(100000)) {
 					SpwnMax *= 50;
 					char buff[100];
 					snprintf(buff, "Unprecidented Influx:%s", DinoInfo[DinoInfoIndex].Name);
-					MessageBox(hwndMain, buff, "TEST", IDOK);
+					Platform::ShowMessage("TEST", buff);
 				}
 			}
 			int spawnNo = Region[RegionNo].SpawnMin;

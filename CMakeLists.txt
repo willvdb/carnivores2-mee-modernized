@@ -166,7 +166,8 @@ else()
     message(FATAL_ERROR "Unknown CARNIVORES_PLATFORM='${CARNIVORES_PLATFORM}'")
 endif()
 
-add_library(CarnivoresPlatformMemory STATIC Hunt/Platform/Memory.cpp Hunt/Platform/Files.cpp Hunt/Platform/SharedLibrary.cpp)
+add_library(CarnivoresPlatformMemory STATIC Hunt/Platform/Memory.cpp Hunt/Platform/Files.cpp Hunt/Platform/SharedLibrary.cpp
+    Hunt/Platform/System.cpp Hunt/Platform/Screenshot.cpp)
 if(NOT WIN32)
     target_link_libraries(CarnivoresPlatformMemory PUBLIC ${CMAKE_DL_LIBS})
 endif()
@@ -349,6 +350,7 @@ if(MSVC)
 
     add_executable(Carnivores2Tests
         tests/test_platform_files.cpp
+        tests/test_platform_system.cpp
         tests/test_billboard_math.cpp
         tests/test_math.cpp
         tests/test_trophy_mode.cpp

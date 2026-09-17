@@ -77,6 +77,7 @@ FileHandle OpenFile(const char* path, FileMode mode, bool shareRead)
             if (!file) close(fd);
         }
     } else file = std::fopen(resolved.c_str(), mode == FileMode::Read ? "rb" : mode == FileMode::Update ? "r+b" : "wb");
+    if (file && mode != FileMode::Read) std::setvbuf(file, nullptr, _IONBF, 0);
     return file ? file : InvalidFile;
 #endif
 }

@@ -83,6 +83,7 @@ bool InitializeApplication()
     return true;
 }
 const char* LastError() { return SDL_GetError(); }
+void ShowMessage(const char* title, const char* text) { SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title, text, gameWindow); }
 void ShutdownApplication()
 {
     SetMouseCapture(false);

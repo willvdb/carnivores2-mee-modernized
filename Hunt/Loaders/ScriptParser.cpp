@@ -3,6 +3,7 @@
 // ==========================================================================
 
 #include "Hunt.h"
+#include "Platform/System.h"
 #include "LoadValidate.h"
 
 // _RES.TXT string safety. Name/file fields are fixed char arrays
@@ -418,9 +419,9 @@ void ReadSpawnGroup(FILE *stream, char line[256], int mode) {
 	//area
 	char tempProjectName[128];
 	int timeOfDay, dinSelect;
-	for (int a = 0; a < __argc; a++)
+	for (const auto& argument : Platform::Arguments())
 	{
-		const char* s = __argv[a];
+		const char* s = argument.c_str();
 		if (strstr(s, "prj="))
 		{
 			CopyProjectName(tempProjectName, (s + 4));
@@ -430,9 +431,9 @@ void ReadSpawnGroup(FILE *stream, char line[256], int mode) {
 	}
 
 	//time
-	for (int a = 0; a < __argc; a++)
+	for (const auto& argument : Platform::Arguments())
 	{
-		const char* s = __argv[a];
+		const char* s = argument.c_str();
 	}
 
 	char *value;
@@ -646,9 +647,9 @@ void ReadPackGroup(FILE *stream, char line[256], int mode) {
 	//area
 	char tempProjectName[128];
 	int timeOfDay, dinSelect;
-	for (int a = 0; a < __argc; a++)
+	for (const auto& argument : Platform::Arguments())
 	{
-		const char* s = __argv[a];
+		const char* s = argument.c_str();
 		if (strstr(s, "prj="))
 		{
 			CopyProjectName(tempProjectName, (s + 4));
@@ -658,9 +659,9 @@ void ReadPackGroup(FILE *stream, char line[256], int mode) {
 	}
 
 	//time
-	for (int a = 0; a < __argc; a++)
+	for (const auto& argument : Platform::Arguments())
 	{
-		const char* s = __argv[a];
+		const char* s = argument.c_str();
 	}
 
 	char *value;
@@ -1097,9 +1098,9 @@ void ReadWeapons(FILE *stream)
 	//area
 	char tempProjectName[128];
 	int timeOfDay, dinSelect;
-	for (int a = 0; a < __argc; a++)
+	for (const auto& argument : Platform::Arguments())
 	{
-		const char* s = __argv[a];
+		const char* s = argument.c_str();
 		if (strstr(s, "prj="))
 		{
 			CopyProjectName(tempProjectName, (s + 4));
@@ -1109,9 +1110,9 @@ void ReadWeapons(FILE *stream)
 	}
 
 	//time
-	for (int a = 0; a < __argc; a++)
+	for (const auto& argument : Platform::Arguments())
 	{
-		const char* s = __argv[a];
+		const char* s = argument.c_str();
 	}
 
   TotalW = 0;
@@ -1890,9 +1891,9 @@ void ReadCharacters(FILE *stream)
 	//area
 	char tempProjectName[128];
 	int timeOfDay, dinSelect;
-	for (int a = 0; a < __argc; a++)
+	for (const auto& argument : Platform::Arguments())
 	{
-		const char* s = __argv[a];
+		const char* s = argument.c_str();
 		if (strstr(s, "prj="))
 		{
 			CopyProjectName(tempProjectName, (s + 4));
@@ -1902,9 +1903,9 @@ void ReadCharacters(FILE *stream)
 	}
 
 	//time
-	for (int a = 0; a < __argc; a++)
+	for (const auto& argument : Platform::Arguments())
 	{
-		const char* s = __argv[a];
+		const char* s = argument.c_str();
 	}
 
 
@@ -2669,9 +2670,9 @@ void LoadResourcesScript()
   TotalMA = 0;
 
   char tempProjectName[128];
-  for (int a = 0; a < __argc; a++)
+  for (const auto& argument : Platform::Arguments())
   {
-	  const char* s = __argv[a];
+	  const char* s = argument.c_str();
 	  if (strstr(s, "prj="))
 	  {
 		  CopyProjectName(tempProjectName, (s + 4));

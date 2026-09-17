@@ -31,6 +31,7 @@ int MaxDino, AreaMax, LoadCount;
 
 std::int32_t NEWPLAYER = false;
 
+#ifdef _WIN32
 int  MapVKKey(int k)
 {
   if (k==LegacyKey::LBUTTON) return 124;
@@ -53,6 +54,8 @@ void wait_mouse_release()
 
 }
 
+
+#endif
 
 #ifdef _WIN32
 int GetTextW(HDC hdc, const char* s)
@@ -80,7 +83,7 @@ void DoHalt(const char* Mess)
 		PrintLog("ABNORMAL_HALT: ");
 		PrintLog(Mess);
 		PrintLog("\n");
-		MessageBox(nullptr, Mess, "Carnivores Termination", IDOK | MB_SYSTEMMODAL | MB_ICONEXCLAMATION);
+		Platform::ShowMessage("Carnivores Termination", Mess);
 	}
 
 	if (Multiplayer) {
@@ -96,12 +99,18 @@ void DoHalt(const char* Mess)
   Audio_Shutdown();
 
   ShutDown3DHardware();
+#ifdef _WIN32
   EnableWindow(hwndMain, false);
+#endif
   Platform::ShutdownApplication();
 
   CloseLog();
   LogClose();
+#ifdef _WIN32
   TerminateProcess(GetCurrentProcess(), 0);
+#else
+  std::_Exit(0);
+#endif
 }
 
 //For stopping the program before audio/3d hardware startup
@@ -112,33 +121,43 @@ void DoHalt2(const char* Mess)
 //	Audio_Shutdown();
 
 //	ShutDown3DHardware();
-	EnableWindow(hwndMain, false);
+#ifdef _WIN32
+  EnableWindow(hwndMain, false);
+#endif
 	Platform::ShutdownApplication();
 	if (strlen(Mess))
 	{
 		PrintLog("ABNORMAL_HALT: ");
 		PrintLog(Mess);
 		PrintLog("\n");
-		MessageBox(nullptr, Mess, "Carnivores Termination", IDOK | MB_SYSTEMMODAL | MB_ICONEXCLAMATION);
+		Platform::ShowMessage("Carnivores Termination", Mess);
 	}
 
 	CloseLog();
 	LogClose();
-	TerminateProcess(GetCurrentProcess(), 0);
+#ifdef _WIN32
+  TerminateProcess(GetCurrentProcess(), 0);
+#else
+  std::_Exit(0);
+#endif
 }
 
 
 void WaitRetrace()
 {
+#ifdef _soft
   std::int32_t bv = false;
   if (DirectActive)
     while (!bv)  lpDD->GetVerticalBlankStatus(&bv);
+#endif
 }
 
 
 void SetFullScreen()
 {
+#ifdef _soft
   HRESULT res = DD_OK;
+#endif
 
   if (!DirectActive) return;
 #ifndef _gl
@@ -260,7 +279,7 @@ void StartLoading()
 void EndLoading()
 {
 #ifdef _WIN32
-  FillMemory(lpVideoBuf, VideoPitchB*768, 0);
+  memset(lpVideoBuf, 0, VideoPitchB*768);
 #else
   memset(lpVideoBuf, 0, static_cast<size_t>(VideoPitchB)*WinH);
 #endif

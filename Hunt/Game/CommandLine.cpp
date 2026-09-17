@@ -3,7 +3,10 @@
 // ==========================================================================
 
 #include "Hunt.h"
+#include "Platform/System.h"
+#ifdef _WIN32
 #include "Network/NetworkManager.h"
+#endif
 
 static bool equals_nocase(const char* lhs, const char* rhs)
 {
@@ -47,9 +50,13 @@ void ProcessCommandLine()
   bool hasRequestedFullscreen = false;
   bool hasRequestedBorderless = false;
 
-  for (int a=0; a<__argc; a++)
+  for (const auto& argument : Platform::Arguments())
   {
-    const char* s = __argv[a];
+    const char* s = argument.c_str();
+#ifndef _WIN32
+    if (equals_nocase(s,"-multiplayer") || equals_nocase(s,"-host") || starts_with_nocase(s,"server="))
+      DoHalt2("Multiplayer is not available in the Linux build.");
+#endif
 
     if (equals_nocase(s, "/nofullscreen") || equals_nocase(s, "-nofullscreen") ||
         equals_nocase(s, "/windowed") || equals_nocase(s, "-windowed")) {
@@ -108,7 +115,9 @@ void ProcessCommandLine()
     if (strstr(s,"din=")) TargetDino = (atoi(&s[4])*1024);
 	if (strstr(s, "wep=")) WeaponPres = atoi(&s[4]);
 	if (strstr(s, "dtm=")) OptDayNight = atoi(&s[4]);
+#ifdef _WIN32
     if (strstr(s, "server=")) strcpy(g_Network.m_serverAddress, (s + 7));
+#endif
 
     if (strstr(s,"-debug"))   DEBUG = true;
     if (strstr(s,"-double"))  DoubleAmmo = true;

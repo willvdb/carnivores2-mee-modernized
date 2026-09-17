@@ -28,6 +28,7 @@ namespace Platform {
 bool InitializeApplication() { EnableDpiAwareness(); return true; }
 void ShutdownApplication() {} // Preserve reference window destruction ordering.
 const char* LastError() { return "Win32 platform operation failed"; }
+void ShowMessage(const char* title, const char* text) { MessageBoxA(gameWindow, text, title, MB_OK | MB_SYSTEMMODAL | MB_ICONEXCLAMATION); }
 
 void EnableDpiAwareness()
 {

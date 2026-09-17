@@ -27,7 +27,9 @@ void SwitchMode(const char* lps, std::int32_t& b)
   char buf[200];
   if (b) snprintf(buf, sizeof(buf),"%s is ON", lps);
   else snprintf(buf, sizeof(buf),"%s is OFF", lps);
+#ifdef _WIN32
   MessageBeep(0xFFFFFFFF);
+#endif
   AddMessage(buf);
 }
 

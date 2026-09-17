@@ -60,6 +60,7 @@ void EnableDpiAwareness();
 bool InitializeApplication();
 void ShutdownApplication(); // After renderer, audio and native-window borrowers.
 const char* LastError();
+void ShowMessage(const char* title, const char* text);
 // The Win32 reference entry supplies its instance/WndProc separately. SDL owns
 // its application entry/window. False reports backend window setup failure.
 bool CreateGameWindow();
