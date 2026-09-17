@@ -334,6 +334,15 @@ if(MSVC)
     target_link_libraries(Carnivores2MenuLayoutTests PRIVATE gtest_main)
     add_test(NAME Carnivores2Tests.MenuLayout COMMAND Carnivores2MenuLayoutTests)
 
+    # Real model file I/O/conversion against synthetic files, with heap/lighting
+    # test doubles, using the selected renderer's real UV correction path.
+    add_executable(Carnivores2ModelTests tests/test_model_loader.cpp
+        tests/test_model_serialization.cpp Hunt/Loaders/ModelLoader.cpp)
+    target_include_directories(Carnivores2ModelTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Hunt ${CMAKE_CURRENT_SOURCE_DIR}/deps)
+    target_compile_definitions(Carnivores2ModelTests PRIVATE ${RENDER_DEFINES})
+    target_link_libraries(Carnivores2ModelTests PRIVATE gtest_main)
+    add_test(NAME Carnivores2Tests.ModelLoader COMMAND Carnivores2ModelTests)
+
     # Exercise the production world-model sampler without a GL context.
     # Engine globals / CalcFogLevel are controlled test doubles in this target.
     add_executable(Carnivores2FogTests
