@@ -8,7 +8,9 @@
 #include <cmath>
 #include <algorithm>
 #include "Platform/Platform.h"
+#ifdef _WIN32
 #include "Platform/PlatformWin32.h"
+#endif
 #include "Game/FrameTiming.h"
 
 // Near-model overlays were authored for a 4:3 viewport. Scale them far

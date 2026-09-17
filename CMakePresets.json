@@ -191,6 +191,30 @@
       "cacheVariables": {
         "CARNIVORES_PLATFORM": "SDL3"
       }
+    },
+    {
+      "name": "linux-x64-sdl-gl-debug",
+      "displayName": "Linux x86_64 SDL3 OpenGL (Debug)",
+      "inherits": [
+        "base",
+        "gl-debug-base"
+      ],
+      "cacheVariables": {
+        "CARNIVORES_ARCH": "x64",
+        "CARNIVORES_PLATFORM": "SDL3"
+      }
+    },
+    {
+      "name": "linux-x64-sdl-gl-release",
+      "displayName": "Linux x86_64 SDL3 OpenGL (Release)",
+      "inherits": [
+        "base",
+        "gl-release-base"
+      ],
+      "cacheVariables": {
+        "CARNIVORES_ARCH": "x64",
+        "CARNIVORES_PLATFORM": "SDL3"
+      }
     }
   ],
   "buildPresets": [
@@ -257,6 +281,14 @@
     {
       "name": "windows-x64-sdl-gl-release",
       "configurePreset": "windows-x64-sdl-gl-release"
+    },
+    {
+      "name": "linux-x64-sdl-gl-debug",
+      "configurePreset": "linux-x64-sdl-gl-debug"
+    },
+    {
+      "name": "linux-x64-sdl-gl-release",
+      "configurePreset": "linux-x64-sdl-gl-release"
     }
   ],
   "testPresets": [
@@ -347,6 +379,30 @@
     {
       "name": "windows-x64-sdl-gl-release",
       "configurePreset": "windows-x64-sdl-gl-release",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "name": "^Carnivores2Tests"
+        }
+      }
+    },
+    {
+      "name": "linux-x64-sdl-gl-debug",
+      "configurePreset": "linux-x64-sdl-gl-debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "name": "^Carnivores2Tests"
+        }
+      }
+    },
+    {
+      "name": "linux-x64-sdl-gl-release",
+      "configurePreset": "linux-x64-sdl-gl-release",
       "output": {
         "outputOnFailure": true
       },

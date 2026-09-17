@@ -55,9 +55,11 @@ void CenterWindow(Platform::Size size)
 }
 
 // Internal native bridge; not part of the portable or renderer interface.
+#ifdef _WIN32
 namespace Platform::Win32 {
 SDL_Window* SDLGameWindow() { return gameWindow; }
 }
+#endif
 
 namespace Platform {
 void EnableDpiAwareness()
@@ -120,7 +122,7 @@ void ShowAndFocusGameWindow()
     Check(SDL_ShowWindow(gameWindow), "SDL_ShowWindow");
     FocusGameWindow();
 }
-void SetProcessActive(bool active) { SDLWindows::SetProcessActive(active); }
+void SetProcessActive(bool active) { SDLCompatibility::SetProcessActive(active); }
 
 DisplayInfo QueryDisplayInfo()
 {
@@ -137,7 +139,7 @@ DisplayInfo QueryDisplayInfo()
     for (int i = 0; i < count; ++i)
         info.modes.push_back({{modes[i]->w, modes[i]->h}, static_cast<std::uint32_t>(SDL_BITSPERPIXEL(modes[i]->format))});
     SDL_free(modes);
-    SDLWindows::OrderDisplayModes(info);
+    SDLCompatibility::OrderDisplayModes(info);
     return info;
 }
 Tick CounterFrequency() { return static_cast<Tick>(SDL_GetPerformanceFrequency()); }
@@ -148,7 +150,12 @@ std::uint32_t Milliseconds() { return WrapMilliseconds(SDL_GetTicks()); }
 
 bool PollKeyboardState(KeyboardState& state)
 {
-    keyboard.Copy(state, SDL_GetModState(), SDL_GetGlobalMouseState(nullptr, nullptr), altGrLayout);
+#ifdef _WIN32
+    const auto mouse = SDL_GetGlobalMouseState(nullptr, nullptr);
+#else
+    const auto mouse = SDL_GetMouseState(nullptr, nullptr);
+#endif
+    keyboard.Copy(state, SDL_GetModState(), mouse, altGrLayout);
     return true;
 }
 PumpResult PumpOneEvent(int& quitCode, Event* output)
@@ -190,7 +197,7 @@ PumpResult PumpOneEvent(int& quitCode, Event* output)
         if (!event.focused) keyboard.ClearDown();
     }
     if ((native.type == SDL_EVENT_KEY_DOWN || native.type == SDL_EVENT_KEY_UP) && native.key.windowID == windowID) {
-        const auto key = SDLWindows::LayoutKey(native.key,
+        const auto key = SDLCompatibility::LayoutKey(native.key,
             SDLInput::LegacyKey(native.key.scancode, native.key.key, native.key.mod));
         keyboard.Key(native.key, key);
         if (native.type == SDL_EVENT_KEY_DOWN && key) {
@@ -223,8 +230,12 @@ Point PointerInClient()
 {
     float x=0, y=0;
     int wx=0, wy=0;
+#ifdef _WIN32
     SDL_GetGlobalMouseState(&x, &y);
     if (gameWindow) SDL_GetWindowPosition(gameWindow, &wx, &wy);
+#else
+    SDL_GetMouseState(&x, &y); // Window-relative; Wayland has no global pointer query.
+#endif
     return {static_cast<std::int32_t>(x) - wx, static_cast<std::int32_t>(y) - wy};
 }
 void LoadArrowCursor() { arrowCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_DEFAULT); }
@@ -277,8 +288,12 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter)
     } else CenterWindow(size);
     Check(SDL_SyncWindow(gameWindow), "SDL_SyncWindow");
     Check(SDL_ShowWindow(gameWindow), "SDL_ShowWindow");
+#ifdef _WIN32
     if (mode != WindowMode::Windowed)
         Check(SDL_WarpMouseGlobal(static_cast<float>(videoCenter.x), static_cast<float>(videoCenter.y)), "SDL_WarpMouseGlobal");
+#else
+    if (mode != WindowMode::Windowed) WarpPointerInClient(videoCenter);
+#endif
 }
 
 bool CreateGLContext()

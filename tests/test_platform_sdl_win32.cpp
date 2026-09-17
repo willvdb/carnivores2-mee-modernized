@@ -15,15 +15,15 @@ TEST(SDLWindowsCompatibility, FrenchLayoutKeepsLegacyLetterNumberAndOEMBindings)
     } restore{previous, french};
     SDL_KeyboardEvent key{};
     key.raw=0x10; // QWERTY Q position is French A.
-    EXPECT_EQ(Platform::SDLWindows::LayoutKey(key, 'Q'),'A');
+    EXPECT_EQ(Platform::SDLCompatibility::LayoutKey(key, 'Q'),'A');
     key.raw=0x1e;
-    EXPECT_EQ(Platform::SDLWindows::LayoutKey(key, 'A'),'Q');
+    EXPECT_EQ(Platform::SDLCompatibility::LayoutKey(key, 'A'),'Q');
     key.raw=0x02; // Unshifted '&' is still VK_1.
-    EXPECT_EQ(Platform::SDLWindows::LayoutKey(key, 0),'1');
+    EXPECT_EQ(Platform::SDLCompatibility::LayoutKey(key, 0),'1');
     key.raw=0x0d; // French '=' key is VK_OEM_PLUS.
-    EXPECT_EQ(Platform::SDLWindows::LayoutKey(key, 0),VK_OEM_PLUS);
+    EXPECT_EQ(Platform::SDLCompatibility::LayoutKey(key, 0),VK_OEM_PLUS);
     key.raw=0; // Synthetic SDL event without a native scan uses portable adapter.
-    EXPECT_EQ(Platform::SDLWindows::LayoutKey(key, 'W'),'W');
+    EXPECT_EQ(Platform::SDLCompatibility::LayoutKey(key, 'W'),'W');
 
     ASSERT_TRUE(SDL_SetHint(SDL_HINT_VIDEO_DRIVER,"windows"));
     ASSERT_TRUE(Platform::InitializeApplication()) << Platform::LastError();

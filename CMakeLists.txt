@@ -14,7 +14,7 @@ set_property(CACHE RENDERER PROPERTY STRINGS SOFT GL "")
 # architecture metadata alone does not switch an already active MSVC toolchain.
 set(CARNIVORES_ARCH "" CACHE STRING "Expected Windows MSVC target: x86 or x64")
 set_property(CACHE CARNIVORES_ARCH PROPERTY STRINGS "" x86 x64)
-if(CARNIVORES_ARCH OR RENDERER STREQUAL "SOFT")
+if(WIN32 AND (CARNIVORES_ARCH OR RENDERER STREQUAL "SOFT"))
     if(NOT WIN32 OR NOT MSVC)
         message(FATAL_ERROR "Architecture presets and the software renderer require Windows MSVC.")
     endif()
@@ -40,6 +40,14 @@ int main() { return 0; }" CARNIVORES_COMPILER_IS_X64)
         endif()
     elseif(CARNIVORES_ARCH AND NOT CARNIVORES_ARCH STREQUAL "x86")
         message(FATAL_ERROR "Unknown CARNIVORES_ARCH='${CARNIVORES_ARCH}'; expected x86 or x64.")
+    endif()
+endif()
+
+if(NOT WIN32)
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8 OR
+       NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$" OR
+       NOT RENDERER STREQUAL "GL" OR (CARNIVORES_ARCH AND NOT CARNIVORES_ARCH STREQUAL "x64"))
+        message(FATAL_ERROR "Native non-Windows builds require x86_64 Linux and the GL renderer.")
     endif()
 endif()
 
@@ -147,17 +155,27 @@ endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Only the Windows GL game uses SDL in this milestone. Menu/SOFT stay native.
-set(CARNIVORES_PLATFORM "WIN32" CACHE STRING "Game platform backend: WIN32 or SDL3")
+# Menu/SOFT stay Windows-only; Linux uses the same SDL GL backend.
+if(WIN32)
+    set(default_platform WIN32)
+else()
+    set(default_platform SDL3)
+endif()
+set(CARNIVORES_PLATFORM "${default_platform}" CACHE STRING "Game platform backend: WIN32 or SDL3")
 set_property(CACHE CARNIVORES_PLATFORM PROPERTY STRINGS WIN32 SDL3)
 if(CARNIVORES_PLATFORM STREQUAL "SDL3")
-    if(NOT WIN32 OR NOT RENDERER STREQUAL "GL")
-        message(FATAL_ERROR "SDL3 currently requires the Windows GL game target.")
+    if(NOT RENDERER STREQUAL "GL")
+        message(FATAL_ERROR "SDL3 requires the GL game target.")
     endif()
     include(cmake/SDL3.cmake)
-    set(PLATFORM_SRC Hunt/Platform/PlatformSDL.cpp Hunt/Platform/PlatformSDLWin32.cpp
+    if(WIN32)
+        set(SDL_COMPAT_SRC Hunt/Platform/PlatformSDLWin32.cpp)
+    else()
+        set(SDL_COMPAT_SRC Hunt/Platform/PlatformSDLLinux.cpp)
+    endif()
+    set(PLATFORM_SRC Hunt/Platform/PlatformSDL.cpp ${SDL_COMPAT_SRC}
         Hunt/Platform/LegacyKeyboardSDL.cpp Hunt/Platform/EntrySDL.cpp)
-elseif(CARNIVORES_PLATFORM STREQUAL "WIN32")
+elseif(CARNIVORES_PLATFORM STREQUAL "WIN32" AND WIN32)
     set(PLATFORM_SRC Hunt/Platform/PlatformWin32.cpp Hunt/Platform/EntryWin32.cpp)
     if(RENDERER STREQUAL "GL")
         list(APPEND PLATFORM_SRC Hunt/Platform/PlatformGLWin32.cpp)
@@ -166,8 +184,8 @@ else()
     message(FATAL_ERROR "Unknown CARNIVORES_PLATFORM='${CARNIVORES_PLATFORM}'")
 endif()
 
-add_library(CarnivoresPlatformMemory STATIC Hunt/Platform/Memory.cpp Hunt/Platform/Files.cpp Hunt/Platform/SharedLibrary.cpp
-    Hunt/Platform/System.cpp Hunt/Platform/Screenshot.cpp)
+add_library(CarnivoresPlatformMemory STATIC Hunt/Platform/Memory.cpp Hunt/Platform/Files.cpp
+    Hunt/Platform/System.cpp Hunt/Platform/SharedLibrary.cpp Hunt/Platform/Screenshot.cpp)
 if(NOT WIN32)
     target_link_libraries(CarnivoresPlatformMemory PUBLIC ${CMAKE_DL_LIBS})
 endif()
@@ -268,8 +286,17 @@ if(MSVC AND CMAKE_BUILD_TYPE STREQUAL "Release")
     set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /LTCG")
 endif()
 
-# Menu subdirectory (always built - renderer-agnostic)
-add_subdirectory(Menu)
+# The independent launcher and legacy networking stay on Windows.
+if(WIN32)
+    add_subdirectory(Menu)
+else()
+    list(REMOVE_ITEM CORE_FILES Hunt/Game/Network.cpp Hunt/Network/NetworkManager.cpp
+        Hunt/AppRes.rc Hunt/Carnivores1.manifest Hunt/Renderer/CPUTextWin32.cpp)
+    list(APPEND CORE_FILES Hunt/Network/NetworkDisabled.cpp Hunt/Renderer/CPUTextRaster.cpp)
+    find_package(Freetype REQUIRED)
+    find_package(Fontconfig REQUIRED)
+    find_package(Threads REQUIRED)
+endif()
 
 # Game executable (only when a renderer is selected)
 if(RENDERER)
@@ -287,6 +314,7 @@ if(RENDERER)
     )
 
     # Link libraries
+    if(WIN32)
     target_link_libraries(Carnivores1 PRIVATE
         kernel32
         user32
@@ -295,6 +323,12 @@ if(RENDERER)
         ddraw
         opengl32
     )
+    else()
+        target_link_libraries(Carnivores1 PRIVATE Freetype::Freetype Fontconfig::Fontconfig Threads::Threads)
+        if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR MEM_DEBUG)
+            target_compile_definitions(Carnivores1 PRIVATE MEM_DEBUG)
+        endif()
+    endif()
 
     if(CARNIVORES_PLATFORM STREQUAL "SDL3")
         target_compile_definitions(Carnivores1 PRIVATE CARNIVORES_SDL3)

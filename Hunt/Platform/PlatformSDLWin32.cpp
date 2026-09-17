@@ -13,7 +13,7 @@ HWND GameWindow()
 }
 }
 
-namespace Platform::SDLWindows {
+namespace Platform::SDLCompatibility {
 void SetProcessActive(bool active)
 {
     // SDL has thread priority, not the legacy process-wide priority operation.

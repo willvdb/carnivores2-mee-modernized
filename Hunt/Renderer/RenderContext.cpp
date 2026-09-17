@@ -58,8 +58,13 @@ RenderFrameContext RenderFrameContext::FromGlobals()
     // UI
     ctx.uiScale = 1.0f;
     ctx.lpVideoBuf = ::lpVideoBuf;
+#ifdef _WIN32
     ctx.hbmpVideoBuf = ::hbmpVideoBuf;
     ctx.hdcCMain = ::hdcCMain;
+#else
+    ctx.hbmpVideoBuf = nullptr;
+    ctx.hdcCMain = nullptr;
+#endif
 
     // Night vision
     ctx.nightVisionOn = ::NightVisionOn != 0;
