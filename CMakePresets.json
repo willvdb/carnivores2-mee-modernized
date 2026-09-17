@@ -2,7 +2,7 @@
   "version": 3,
   "cmakeMinimumRequired": {
     "major": 3,
-    "minor": 15,
+    "minor": 21,
     "patch": 0
   },
   "configurePresets": [
@@ -16,9 +16,53 @@
       }
     },
     {
-      "name": "soft-debug",
-      "displayName": "Software (Debug)",
+      "name": "windows-x86-base",
+      "hidden": true,
       "inherits": "base",
+      "architecture": {
+        "value": "x86",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "CARNIVORES_ARCH": "x86"
+      }
+    },
+    {
+      "name": "windows-x64-base",
+      "hidden": true,
+      "inherits": "base",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "CARNIVORES_ARCH": "x64"
+      }
+    },
+    {
+      "name": "gl-debug-base",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "RENDERER": "GL",
+        "MEM_DEBUG": "ON",
+        "ENABLE_RENDERER_LOGGING": "ON",
+        "ENABLE_TERRAIN_LOGGING": "OFF"
+      }
+    },
+    {
+      "name": "gl-release-base",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "RENDERER": "GL",
+        "GL_PERF_HOOKS": "ON"
+      }
+    },
+    {
+      "name": "soft-debug",
+      "displayName": "Windows x86 Software (Debug)",
+      "inherits": "windows-x86-base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "RENDERER": "SOFT",
@@ -29,8 +73,8 @@
     },
     {
       "name": "soft-release",
-      "displayName": "Software (Release)",
-      "inherits": "base",
+      "displayName": "Windows x86 Software (Release)",
+      "inherits": "windows-x86-base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "RENDERER": "SOFT"
@@ -39,24 +83,18 @@
     {
       "name": "ogl-debug",
       "displayName": "OpenGL (Debug)",
-      "inherits": "base",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "RENDERER": "GL",
-        "MEM_DEBUG": "ON",
-        "ENABLE_RENDERER_LOGGING": "ON",
-        "ENABLE_TERRAIN_LOGGING": "OFF"
-      }
+      "inherits": [
+        "windows-x86-base",
+        "gl-debug-base"
+      ]
     },
     {
       "name": "ogl-release",
       "displayName": "OpenGL (Release)",
-      "inherits": "base",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "RENDERER": "GL",
-        "GL_PERF_HOOKS": "ON"
-      }
+      "inherits": [
+        "windows-x86-base",
+        "gl-release-base"
+      ]
     },
     {
       "name": "ogl-release-shipping",
@@ -69,7 +107,7 @@
     {
       "name": "menu-release",
       "displayName": "Menu (Release)",
-      "inherits": "base",
+      "inherits": "windows-x86-base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
@@ -89,6 +127,38 @@
       "cacheVariables": {
         "CMAKE_CXX_FLAGS_RELEASE": "/GL /O2 /Ob2 /DNDEBUG /USEPROFILE"
       }
+    },
+    {
+      "name": "windows-x86-gl-debug",
+      "displayName": "Windows x86 OpenGL (Debug)",
+      "inherits": [
+        "windows-x86-base",
+        "gl-debug-base"
+      ]
+    },
+    {
+      "name": "windows-x86-gl-release",
+      "displayName": "Windows x86 OpenGL (Release)",
+      "inherits": [
+        "windows-x86-base",
+        "gl-release-base"
+      ]
+    },
+    {
+      "name": "windows-x64-gl-debug",
+      "displayName": "Windows x64 OpenGL (Debug)",
+      "inherits": [
+        "windows-x64-base",
+        "gl-debug-base"
+      ]
+    },
+    {
+      "name": "windows-x64-gl-release",
+      "displayName": "Windows x64 OpenGL (Release)",
+      "inherits": [
+        "windows-x64-base",
+        "gl-release-base"
+      ]
     }
   ],
   "buildPresets": [
@@ -123,6 +193,72 @@
     {
       "name": "ogl-pgo-opt",
       "configurePreset": "ogl-pgo-opt"
+    },
+    {
+      "name": "windows-x86-gl-debug",
+      "configurePreset": "windows-x86-gl-debug"
+    },
+    {
+      "name": "windows-x86-gl-release",
+      "configurePreset": "windows-x86-gl-release"
+    },
+    {
+      "name": "windows-x64-gl-debug",
+      "configurePreset": "windows-x64-gl-debug"
+    },
+    {
+      "name": "windows-x64-gl-release",
+      "configurePreset": "windows-x64-gl-release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "windows-x86-gl-debug",
+      "configurePreset": "windows-x86-gl-debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "name": "^Carnivores2Tests"
+        }
+      }
+    },
+    {
+      "name": "windows-x86-gl-release",
+      "configurePreset": "windows-x86-gl-release",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "name": "^Carnivores2Tests"
+        }
+      }
+    },
+    {
+      "name": "windows-x64-gl-debug",
+      "configurePreset": "windows-x64-gl-debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "name": "^Carnivores2Tests"
+        }
+      }
+    },
+    {
+      "name": "windows-x64-gl-release",
+      "configurePreset": "windows-x64-gl-release",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "name": "^Carnivores2Tests"
+        }
+      }
     }
   ]
 }

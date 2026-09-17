@@ -6,11 +6,23 @@ jobs:
   build:
     runs-on: windows-latest
     strategy:
+      fail-fast: false
       matrix:
-        preset: [ogl-debug, ogl-release, soft-release, menu-release]
+        include:
+          - { preset: windows-x86-gl-debug, arch: x86 }
+          - { preset: windows-x86-gl-release, arch: x86 }
+          - { preset: windows-x64-gl-debug, arch: x64 }
+          - { preset: windows-x64-gl-release, arch: x64 }
+          - { preset: soft-release, arch: x86 }
+          - { preset: menu-release, arch: x86 }
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Activate MSVC target environment
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: ${{ matrix.arch }}
 
     - name: Configure CMake
       run: cmake --preset ${{ matrix.preset }}
@@ -18,23 +30,7 @@ jobs:
     - name: Build
       run: cmake --build --preset ${{ matrix.preset }}
 
-    - name: Smoke Test (GL only)
-      if: matrix.preset == 'ogl-release'
-      shell: powershell
-      run: |
-        & ./tests/smoke_test.ps1 -ExePath build/ogl-release/bin/Carnivores1_GL.exe -Duration 10
-
-    - name: Unit Tests (debug builds)
-      if: matrix.preset == 'ogl-debug'
-      shell: powershell
-      run: |
-        cd build/ogl-debug
-        ctest --output-on-failure
-
-    - name: Memory Leak Report (debug)
-      if: matrix.preset == 'ogl-debug'
-      shell: powershell
-      run: |
-        & ./tests/smoke_test.ps1 -ExePath build/ogl-debug/bin/Carnivores1_GL.exe -Duration 10
-        Select-String -Path carnivor.log -Pattern "No memory leaks detected"
-        if ($LASTEXITCODE -ne 0) { throw "Memory leaks detected!" }
+    # Hosted CI has no user-owned HUNTDAT. Run only asset-free tests here;
+    # hunt/sound/shutdown validation remains a separate local smoke test.
+    - name: Unit and serialized layout tests
+      run: ctest --test-dir build/${{ matrix.preset }} -R "^Carnivores2Tests" --output-on-failure
