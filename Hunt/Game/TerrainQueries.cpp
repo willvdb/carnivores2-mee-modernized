@@ -122,7 +122,7 @@ void CalcModelGroundLight(TModel *mptr, float x0, float z0, int FI)
   }
 }
 
-BOOL PointOnBound(float &H, float px, float py, float cx, float cy, float oy, TBound *bound, int angle)
+std::int32_t PointOnBound(float &H, float px, float py, float cx, float cy, float oy, TBound *bound, int angle)
 {
   px-=cx;
   py-=cy;
@@ -130,7 +130,7 @@ BOOL PointOnBound(float &H, float px, float py, float cx, float cy, float oy, TB
   float ca = static_cast<float>(cos(angle*pi / 2.f));
   float sa = static_cast<float>(sin(angle*pi / 2.f));
 
-  BOOL _on = false;
+  std::int32_t _on = false;
   H=-1000;
 
   for (int o=0; o<8; o++)
@@ -164,7 +164,7 @@ BOOL PointOnBound(float &H, float px, float py, float cx, float cy, float oy, TB
   return _on;
 }
 
-BOOL PointUnBound(float &H, float px, float py, float cx, float cy, float oy, TBound *bound, int angle)
+std::int32_t PointUnBound(float &H, float px, float py, float cx, float cy, float oy, TBound *bound, int angle)
 {
   px-=cx;
   py-=cy;
@@ -172,7 +172,7 @@ BOOL PointUnBound(float &H, float px, float py, float cx, float cy, float oy, TB
   float ca = static_cast<float>(cos(angle*pi / 2.f));
   float sa = static_cast<float>(sin(angle*pi / 2.f));
 
-  BOOL _on = false;
+  std::int32_t _on = false;
   H=+1000;
 
   for (int o=0; o<8; o++)

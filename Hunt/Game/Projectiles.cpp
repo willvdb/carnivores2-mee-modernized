@@ -6,9 +6,9 @@
 #include "Hunt.h"
 #include "Core/ProjectileMath.h"
 
-DWORD ColorSum(DWORD C1, DWORD C2)
+std::uint32_t ColorSum(std::uint32_t C1, std::uint32_t C2)
 {
-  DWORD R,G,B;
+  std::uint32_t R,G,B;
   R = MIN(255, ((C1>> 0) & 0xFF) + ((C2>> 0) & 0xFF));
   G = MIN(255, ((C1>> 8) & 0xFF) + ((C2>> 8) & 0xFF));
   B = MIN(255, ((C1>>16) & 0xFF) + ((C2>>16) & 0xFF));

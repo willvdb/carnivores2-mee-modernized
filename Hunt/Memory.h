@@ -86,8 +86,8 @@ extern Platform::HeapHandle Heap;
 [[nodiscard]] void* _HeapAlloc(Platform::HeapHandle hHeap, std::uint32_t dwFlags, size_t bytes);
 [[nodiscard]] void* _HeapAlloc(Platform::HeapHandle hHeap, std::uint32_t dwFlags, size_t bytes, MemoryTag tag);
 [[nodiscard]] std::int32_t   _HeapFree(Platform::HeapHandle hHeap, std::uint32_t dwFlags, void* lpMem);
-[[noreturn]] void   DoHalt(char* msg);
-void   PrintLog(char* msg);
+[[noreturn]] void   DoHalt(const char* msg);
+void   PrintLog(const char* msg);
 
 
 // ----------------------------------------------------------------------------

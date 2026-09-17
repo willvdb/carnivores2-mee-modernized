@@ -25,8 +25,9 @@ extern "C" void glperf_set_logging(bool) {}
 
 #include "glad/glad.h"
 
-#include <windows.h>
 
+
+#include <filesystem>
 #include <array>
 #include <chrono>
 #include <cstdio>
@@ -636,9 +637,10 @@ void InitializePerfOutput() {
     if (FILE* file = std::fopen(g_state.logFilename, "w")) {
         std::fprintf(file, "GLPerf harness v2 -- started\n");
         std::fprintf(file, "  gpu_timers=%s\n", gpuOk ? "timestamp" : "n/a");
-        char cwd[MAX_PATH] = {};
-        if (GetCurrentDirectoryA(MAX_PATH, cwd) > 0) {
-            std::fprintf(file, "  log_path=%s\\%s\n", cwd, g_state.logFilename);
+        std::error_code ec;
+        const auto cwd = std::filesystem::current_path(ec).string();
+        if (!ec) {
+            std::fprintf(file, "  log_path=%s/%s\n", cwd.c_str(), g_state.logFilename);
         }
         std::fprintf(file,
             "  one matched frame begin/end per rendered frame; counters are "

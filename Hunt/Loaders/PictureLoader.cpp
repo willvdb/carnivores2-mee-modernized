@@ -9,7 +9,7 @@
 static void PicLoadFail(const char* what, int value, int limit)
 {
   char sz[256];
-  sprintf_s(sz, sizeof(sz),
+  snprintf(sz, sizeof(sz),
             "Picture loading error: %s (value=%d, limit=%d). File is corrupt or modded.",
             what, value, limit);
   DoHalt(sz);
@@ -35,10 +35,10 @@ void conv_pic(TPicture &pic)
       *(pic.lpImage.get() + x + y*pic.W) = conv_565(*(pic.lpImage.get() + x + y*pic.W));
 }
 
-void LoadPicture(TPicture &pic, LPSTR pname, MemoryTag tag)
+void LoadPicture(TPicture &pic, const char* pname, MemoryTag tag)
 {
   int C;
-  byte fRGB[800][3];
+  std::uint8_t fRGB[800][3];
   std::array<std::uint8_t,LegacyImage::BmpHeaderSize> headerBytes;
   LegacyImage::BmpHeader header;
   Platform::FileHandle hfile;
@@ -47,7 +47,7 @@ void LoadPicture(TPicture &pic, LPSTR pname, MemoryTag tag)
   if( hfile==Platform::InvalidFile )
   {
     char sz[512];
-    sprintf_s(sz, sizeof(sz), "Error opening file\n%s.", pname );
+    snprintf(sz, sizeof(sz), "Error opening file\n%s.", pname );
     DoHalt(sz);
   }
 
@@ -84,7 +84,7 @@ void LoadPicture(TPicture &pic, LPSTR pname, MemoryTag tag)
   Platform::CloseFile( hfile );
 }
 
-void LoadPictureTGA(TPicture &pic, LPSTR pname, MemoryTag tag)
+void LoadPictureTGA(TPicture &pic, const char* pname, MemoryTag tag)
 {
   std::array<std::uint8_t,LegacyImage::TgaHeaderSize> headerBytes;
   LegacyImage::TgaHeader header;
@@ -94,7 +94,7 @@ void LoadPictureTGA(TPicture &pic, LPSTR pname, MemoryTag tag)
   if( hfile==Platform::InvalidFile )
   {
     char sz[512];
-    sprintf_s(sz, sizeof(sz), "Error opening file\n%s.", pname );
+    snprintf(sz, sizeof(sz), "Error opening file\n%s.", pname );
     DoHalt(sz);
   }
 

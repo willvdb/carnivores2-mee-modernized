@@ -16,7 +16,7 @@ static CPUText::Buffer videoBuffer;
 static void RscLoadFail(const char* what, int value, int limit)
 {
   char sz[256];
-  sprintf_s(sz, sizeof(sz),
+  snprintf(sz, sizeof(sz),
             "Resource loading error: %s (value=%d, limit=%d). File is corrupt or modded.",
             what, value, limit);
   DoHalt(sz);
@@ -27,7 +27,7 @@ static void RequireMapRead(bool success, const char* what)
   if (!success)
   {
     char sz[256];
-    sprintf_s(sz, sizeof(sz), "Resource loading error: truncated %s.", what);
+    snprintf(sz, sizeof(sz), "Resource loading error: truncated %s.", what);
     DoHalt(sz);
   }
 }
@@ -38,7 +38,7 @@ static void ReadRscValue(Platform::FileHandle file, T& out, const char* what)
   if (!EngineResource::Read(file, out))
   {
     char sz[256];
-    sprintf_s(sz, sizeof(sz), "Resource loading error: truncated %s.", what);
+    snprintf(sz, sizeof(sz), "Resource loading error: truncated %s.", what);
     DoHalt(sz);
   }
 }
@@ -46,7 +46,7 @@ static void ReadRscValue(Platform::FileHandle file, T& out, const char* what)
 static void MapLoadFail(const char* what, int x, int y, int value, int limit)
 {
   char sz[256];
-  sprintf_s(sz, sizeof(sz),
+  snprintf(sz, sizeof(sz),
             "Map loading error: %s at (%d,%d) (value=%d, limit=%d).",
             what, x, y, value, limit);
   DoHalt(sz);
@@ -254,7 +254,7 @@ void* _HeapAllocImpl(Platform::HeapHandle hHeap,
 #pragma pop_macro("_HeapAlloc")
 #endif
 
-BOOL _HeapFree(Platform::HeapHandle hHeap,
+std::int32_t _HeapFree(Platform::HeapHandle hHeap,
                std::uint32_t dwFlags,
                void* lpMem)
 {
@@ -280,7 +280,7 @@ BOOL _HeapFree(Platform::HeapHandle hHeap,
         // heap must still be HeapFree'd.
         if (LevelArena != nullptr && LevelArena->Contains(lpMem)) {
           g_Allocations->erase(it);
-          return TRUE;
+          return true;
         }
         g_Allocations->erase(it);
       }
@@ -297,7 +297,7 @@ BOOL _HeapFree(Platform::HeapHandle hHeap,
 
   const std::size_t bytes = Platform::HeapAllocationSize(hHeap, lpMem);
 
-  BOOL res = Platform::FreeHeap(hHeap,
+  std::int32_t res = Platform::FreeHeap(hHeap,
                       dwFlags,
                       lpMem);
   if (!res)
@@ -403,7 +403,7 @@ void ClearTagAllocations(MemoryTag tag)
 }
 #endif // MEM_DEBUG
 
-void AddMessage(LPSTR mt)
+void AddMessage(const char* mt)
 {
   MessageList.timeleft = Platform::Milliseconds() + 2 * 1000;
   lstrcpy(MessageList.mtext, mt);
@@ -792,12 +792,12 @@ void LoadResources()
     // Permanent breadcrumb: which map booted and whether the room was
     // recognised (weapon gating keys off this in HideWeapon/ProcessShoot).
     char msg[192];
-    sprintf_s(msg, sizeof(msg), "Area: %s (trophy room: %s).\n",
+    snprintf(msg, sizeof(msg), "Area: %s (trophy room: %s).\n",
               ProjectName, InTrophyRoomMap() ? "yes" : "no");
     PrintLog(msg);
   }
-  sprintf_s(MapName, sizeof(MapName),"%s%s", ProjectName, ".map");
-  sprintf_s(RscName, sizeof(RscName),"%s%s", ProjectName, ".rsc");
+  snprintf(MapName, sizeof(MapName),"%s%s", ProjectName, ".map");
+  snprintf(RscName, sizeof(RscName),"%s%s", ProjectName, ".rsc");
 
   ReleaseResources();
 
@@ -806,7 +806,7 @@ void LoadResources()
   if (hfile==Platform::InvalidFile)
   {
     char sz[512];
-    sprintf_s(sz, sizeof(sz), "Error opening resource file\n%s.", RscName );
+    snprintf(sz, sizeof(sz), "Error opening resource file\n%s.", RscName );
     DoHalt(sz);
     return;
   }
@@ -1086,7 +1086,7 @@ void FillVector(int x, int y, Vector3d& v)
   v.y = static_cast<float>((static_cast<int>(HMap[y][x])))*ctHScale;
 }
 
-BOOL TraceVector(Vector3d v, Vector3d lv)
+std::int32_t TraceVector(Vector3d v, Vector3d lv)
 {
   v.y+=4;
   NormVector(lv,64);
@@ -1192,14 +1192,14 @@ void SaveScreenShot()
                   bmi.biSize;
 
   char t[12];
-  sprintf_s(t, sizeof(t),"HUNT%004d.BMP",++_shotcounter);
+  snprintf(t, sizeof(t),"HUNT%004d.BMP",++_shotcounter);
   hf = Platform::OpenFile(t, Platform::FileMode::Write, false);
 
-  Platform::WriteFile(hf, static_cast<LPVOID>(&hdr), sizeof(BITMAPFILEHEADER), &dwTmp);
+  Platform::WriteFile(hf, static_cast<void*>(&hdr), sizeof(BITMAPFILEHEADER), &dwTmp);
 
   Platform::WriteFile(hf, &bmi, sizeof(BITMAPINFOHEADER), &dwTmp);
 
-  byte fRGB[1024][3];
+  std::uint8_t fRGB[1024][3];
 
   for (int y=0; y<WinH; y++)
   {
@@ -1252,13 +1252,13 @@ void CreateLog()
   PrintLog(" Build v2.04. Sep.24 1999.\n");
 }
 
-void PrintLog(LPSTR l)
+void PrintLog(const char* l)
 {
   std::uint32_t w;
 
   if (l[strlen(l)-1]==0x0A)
   {
-    BYTE b = 0x0D;
+    std::uint8_t b = 0x0D;
     Platform::WriteFile(hlog, l, strlen(l)-1, &w);
     Platform::WriteFile(hlog, &b, 1, &w);
     b = 0x0A;
@@ -1269,7 +1269,7 @@ void PrintLog(LPSTR l)
 
 }
 
-void PrintLogVerbose(LPSTR l)
+void PrintLogVerbose(const char* l)
 {
   if (!g_VerboseLogging) return;
   PrintLog(l);

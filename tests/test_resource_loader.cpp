@@ -21,7 +21,7 @@ void PrintLoad(char* text) {
     if(std::string(text)=="Loading .map..." && !loadMap) throw ResourceComplete{};
     if(std::string(text)=="Prepearing maps...") throw MapComplete{};
 }
-[[noreturn]] void DoHalt(char* text) { throw std::runtime_error(text); }
+[[noreturn]] void DoHalt(const char* text) { throw std::runtime_error(text); }
 void CalcLights(TModel*) {}
 void CalcBoundBox(TModel*,TBound*) {}
 void ReleaseModelTexture(const TModel*) {}
@@ -29,7 +29,7 @@ void ClearRendererLevelCache() {}
 void ClearRendererTerrainCache() {}
 int rRand(int) { return 0; }
 void CreateTMap() { throw std::runtime_error("unexpected map processing"); }
-void LoadPictureTGA(TPicture&,LPSTR,MemoryTag) { throw std::runtime_error("unexpected picture loading"); }
+void LoadPictureTGA(TPicture&,const char*,MemoryTag) { throw std::runtime_error("unexpected picture loading"); }
 void conv_pic(TPicture&) { throw std::runtime_error("unexpected picture conversion"); }
 float GetLandQH(float,float) { throw std::runtime_error("unexpected map height"); }
 float GetLandH(float,float) { throw std::runtime_error("unexpected map height"); }

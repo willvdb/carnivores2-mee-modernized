@@ -24,7 +24,7 @@ void PlaceTrophy()
 		// it loudly instead of dying quietly.
 		if (TrophyRoom2.Body[c].ctype < 0 || TrophyRoom2.Body[c].ctype >= TotalC) {
 			char msg[128];
-			sprintf_s(msg, sizeof(msg),
+			snprintf(msg, sizeof(msg),
 				"Placing Trophies: slot %d has invalid ctype %d (roster holds %d) - skipped.\n",
 				c, TrophyRoom2.Body[c].ctype, TotalC);
 			PrintLog(msg);
@@ -184,7 +184,7 @@ replaceSMA:
 		Characters[ChCount].pos.x = PlayerX + siRand(10040);
 		Characters[ChCount].pos.z = PlayerZ + siRand(10040);
 
-		BOOL outside = true;
+		std::int32_t outside = true;
 		for (int sr = 0; sr < spawnGroup[Characters[ChCount].SpawnGroupType].spawnRegionCh; sr++) {
 			if (Characters[ChCount].pos.x > spawnGroup[Characters[ChCount].SpawnGroupType].spawnRegion[sr].XMin * 256 &&
 				Characters[ChCount].pos.x < spawnGroup[Characters[ChCount].SpawnGroupType].spawnRegion[sr].XMax * 256 &&
@@ -864,13 +864,13 @@ void PlaceCharacters()
 				if (Region[RegionNo].SpawnRate * 1000 > rRand(10000)){
 				SpwnMax *= 10;
 				char buff[100];
-				sprintf_s(buff, "Influx:%s", DinoInfo[DinoInfoIndex].Name);
+				snprintf(buff, "Influx:%s", DinoInfo[DinoInfoIndex].Name);
 				MessageBox(hwndMain, buff, "TEST", IDOK);
 				}
 				else if (Region[RegionNo].SpawnRate * 1000 > rRand(100000)) {
 					SpwnMax *= 50;
 					char buff[100];
-					sprintf_s(buff, "Unprecidented Influx:%s", DinoInfo[DinoInfoIndex].Name);
+					snprintf(buff, "Unprecidented Influx:%s", DinoInfo[DinoInfoIndex].Name);
 					MessageBox(hwndMain, buff, "TEST", IDOK);
 				}
 			}

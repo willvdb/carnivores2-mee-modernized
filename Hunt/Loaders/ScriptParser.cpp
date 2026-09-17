@@ -12,7 +12,7 @@
 static void ScriptFieldFail(const char* what)
 {
   char sz[256];
-  sprintf_s(sz, sizeof(sz),
+  snprintf(sz, sizeof(sz),
             "Script loading error: %s missing, too long, or malformed.", what);
   DoHalt(sz);
 }
@@ -44,7 +44,7 @@ static void RequireScriptSlot(int index, int capacity, const char* what)
   if (!IsValidIndex(index, capacity))
   {
     char sz[192];
-    sprintf_s(sz, sizeof(sz),
+    snprintf(sz, sizeof(sz),
               "Script loading error: %s capacity exceeded (index=%d, max=%d).",
               what, index, capacity - 1);
     DoHalt(sz);
@@ -74,14 +74,14 @@ static int CurrentIdlePartIndex()
   return index;
 }
 
-void readBool(char *value, BOOL &out) {
-	if (strstr(value, "TRUE")) out = true;
-	if (strstr(value, "FALSE")) out = false;
+void readBool(char *value, std::int32_t &out) {
+	if (strstr(value, "true")) out = true;
+	if (strstr(value, "false")) out = false;
 }
 
 void readBool(char *value, bool &out) {
-	if (strstr(value, "TRUE")) out = true;
-	if (strstr(value, "FALSE")) out = false;
+	if (strstr(value, "true")) out = true;
+	if (strstr(value, "false")) out = false;
 }
 
 void SkipSector(FILE *stream)
@@ -420,7 +420,7 @@ void ReadSpawnGroup(FILE *stream, char line[256], int mode) {
 	int timeOfDay, dinSelect;
 	for (int a = 0; a < __argc; a++)
 	{
-		LPSTR s = __argv[a];
+		const char* s = __argv[a];
 		if (strstr(s, "prj="))
 		{
 			CopyProjectName(tempProjectName, (s + 4));
@@ -432,7 +432,7 @@ void ReadSpawnGroup(FILE *stream, char line[256], int mode) {
 	//time
 	for (int a = 0; a < __argc; a++)
 	{
-		LPSTR s = __argv[a];
+		const char* s = __argv[a];
 	}
 
 	char *value;
@@ -648,7 +648,7 @@ void ReadPackGroup(FILE *stream, char line[256], int mode) {
 	int timeOfDay, dinSelect;
 	for (int a = 0; a < __argc; a++)
 	{
-		LPSTR s = __argv[a];
+		const char* s = __argv[a];
 		if (strstr(s, "prj="))
 		{
 			CopyProjectName(tempProjectName, (s + 4));
@@ -660,7 +660,7 @@ void ReadPackGroup(FILE *stream, char line[256], int mode) {
 	//time
 	for (int a = 0; a < __argc; a++)
 	{
-		LPSTR s = __argv[a];
+		const char* s = __argv[a];
 	}
 
 	char *value;
@@ -1099,7 +1099,7 @@ void ReadWeapons(FILE *stream)
 	int timeOfDay, dinSelect;
 	for (int a = 0; a < __argc; a++)
 	{
-		LPSTR s = __argv[a];
+		const char* s = __argv[a];
 		if (strstr(s, "prj="))
 		{
 			CopyProjectName(tempProjectName, (s + 4));
@@ -1111,7 +1111,7 @@ void ReadWeapons(FILE *stream)
 	//time
 	for (int a = 0; a < __argc; a++)
 	{
-		LPSTR s = __argv[a];
+		const char* s = __argv[a];
 	}
 
   TotalW = 0;
@@ -1892,7 +1892,7 @@ void ReadCharacters(FILE *stream)
 	int timeOfDay, dinSelect;
 	for (int a = 0; a < __argc; a++)
 	{
-		LPSTR s = __argv[a];
+		const char* s = __argv[a];
 		if (strstr(s, "prj="))
 		{
 			CopyProjectName(tempProjectName, (s + 4));
@@ -1904,7 +1904,7 @@ void ReadCharacters(FILE *stream)
 	//time
 	for (int a = 0; a < __argc; a++)
 	{
-		LPSTR s = __argv[a];
+		const char* s = __argv[a];
 	}
 
 
@@ -2671,7 +2671,7 @@ void LoadResourcesScript()
   char tempProjectName[128];
   for (int a = 0; a < __argc; a++)
   {
-	  LPSTR s = __argv[a];
+	  const char* s = __argv[a];
 	  if (strstr(s, "prj="))
 	  {
 		  CopyProjectName(tempProjectName, (s + 4));

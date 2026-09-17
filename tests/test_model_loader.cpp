@@ -27,7 +27,7 @@ LPVOID _HeapAlloc(HANDLE heap, std::uint32_t flags, size_t bytes, MemoryTag)
 LPVOID _HeapAlloc(HANDLE heap, std::uint32_t flags, size_t bytes)
 { return _HeapAlloc(heap,flags,bytes,MemoryTag::Global); }
 BOOL _HeapFree(HANDLE heap,std::uint32_t flags,LPVOID p) { return HeapFree(heap,flags,p); }
-[[noreturn]] void DoHalt(char* message) { throw std::runtime_error(message); }
+[[noreturn]] void DoHalt(const char* message) { throw std::runtime_error(message); }
 void CalcLights(TModel*) {}
 void ReleaseModelTexture(const TModel*) {}
 void LoadAnimation(TVTL&,int);

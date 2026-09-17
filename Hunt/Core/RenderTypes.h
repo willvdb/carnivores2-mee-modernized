@@ -78,7 +78,7 @@ inline constexpr std::array<Triangle, 16> kTriangles = {{
     {{{kMin, kMin}, {kMax, kMax}, {kMin, kMax}}}
 }};
 
-__forceinline const Triangle& Get(bool reverse, bool second, int direction)
+inline const Triangle& Get(bool reverse, bool second, int direction)
 {
     const std::size_t index = (reverse ? 8u : 0u) |
                               (second ? 4u : 0u) |

@@ -513,14 +513,14 @@ void ProcessPlayerMovement()
 	  }
   }
 
-  if (KeyboardState[VK_RETURN] & 128) if (TrophyDisplay && !ScoreDispTime && !Characters[TrophyDisplayC].claimed && !Tranq) AddShipTask(TrophyDisplayC);
+  if (KeyboardState[LegacyKey::RETURN] & 128) if (TrophyDisplay && !ScoreDispTime && !Characters[TrophyDisplayC].claimed && !Tranq) AddShipTask(TrophyDisplayC);
 
   if (KeyboardState [KeyMap.fkShow] & 128) HideWeapon();
 
   if (g_GameMode == GameMode::Binocular)
   {
-    if (KeyboardState[VK_ADD     ] & 128) BinocularPower+=BinocularPower * TimeDt / 4000.f;
-    if (KeyboardState[VK_SUBTRACT] & 128) BinocularPower-=BinocularPower * TimeDt / 4000.f;
+    if (KeyboardState[LegacyKey::ADD     ] & 128) BinocularPower+=BinocularPower * TimeDt / 4000.f;
+    if (KeyboardState[LegacyKey::SUBTRACT] & 128) BinocularPower-=BinocularPower * TimeDt / 4000.f;
     if (BinocularPower < 1.5f) BinocularPower = 1.5f;
     if (BinocularPower > 3.0f) BinocularPower = 3.0f;
   }
@@ -554,7 +554,7 @@ void ProcessPlayerMovement()
   if (KeyFlags & kfCall) MakeCall();
 
   if (DEBUG)
-    if (KeyboardState [VK_CONTROL] & 128)
+    if (KeyboardState [LegacyKey::CONTROL] & 128)
       if (KeyFlags & kfBackward) VSpeed =-8;
       else VSpeed = 8;
 

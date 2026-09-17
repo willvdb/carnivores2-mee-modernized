@@ -37,7 +37,7 @@ void AnimateIcthDead(TCharacter *cptr)
 
 	float wh = GetLandUpH(cptr->pos.x, cptr->pos.z);
 	float lh = GetLandH(cptr->pos.x, cptr->pos.z);
-	BOOL OnWaterQ = (wh > lh);
+	std::int32_t OnWaterQ = (wh > lh);
 	if (!DinoInfo[cptr->CType].waterDieCount) OnWaterQ = false;
 
 	cptr->FTime += TimeDt;

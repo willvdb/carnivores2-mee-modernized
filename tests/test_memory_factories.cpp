@@ -56,7 +56,7 @@ std::int32_t _HeapFree(Platform::HeapHandle heap, std::uint32_t flags, void* ptr
     ++freeCalls;
     return Platform::FreeHeap(heap, flags, ptr);
 }
-[[noreturn]] void DoHalt(char*) { throw SizeOverflow{}; }
+[[noreturn]] void DoHalt(const char*) { throw SizeOverflow{}; }
 
 namespace {
 TEST_F(MemoryFactories, ArrayKeepsNativeSizeAndHeapDeleter) {

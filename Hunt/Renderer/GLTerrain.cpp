@@ -291,7 +291,7 @@ void GLRenderer::UploadTerrainLayer(int layer, const TEXTURE& texture)
     EnsureTerrainTextureArray();
     glBindTexture(GL_TEXTURE_2D_ARRAY, m_terrainTextureArray);
 
-    const WORD* mipSources[kTerrainMipLevels] = {
+    const std::uint16_t* mipSources[kTerrainMipLevels] = {
         texture.DataA,
         texture.DataB,
         texture.DataC,

@@ -102,11 +102,13 @@ static_assert(sizeof(FogsMap) == 262144 && sizeof(AmbMap) == 262144);
 static_assert(sizeof(short[3]) == 6); // animation XYZ triplet, not sizeof(TAni)
 static_assert(sizeof(TEXTURE::DataA) == 32768); // only base mip is read
 static_assert(sizeof(TCharacterInfo::Anifx) == 256);
+#ifdef _WIN32
 RECORD_SIZE(BITMAPFILEHEADER, 14);
 RECORD_OFFSET(BITMAPFILEHEADER, bfOffBits, 10);
 RECORD_SIZE(BITMAPINFOHEADER, 40);
 RECORD_OFFSET(BITMAPINFOHEADER, biWidth, 4);
 RECORD_OFFSET(BITMAPINFOHEADER, biBitCount, 14);
+#endif
 
 TEST(SerializedLayout, EngineProfileMatchesLegacyBytes)
 {
@@ -242,7 +244,7 @@ TEST(EngineProfile, CompleteSavePreservesIgnoredEquipmentAndStoredBoolWidths)
     auto b = ProfileGolden::Save();
     TTrophyRoom p{}; p.RegNumber = 3;
     ScentMode = 17; CamoMode = 18; RadarMode = 19; Tranq = 20;
-    Multiplayer = FALSE;
+    Multiplayer = false;
     ASSERT_TRUE(EngineProfile::LoadProfile(b.data(), b.size(), p));
     EXPECT_EQ(p.RegNumber, 3);
     EXPECT_EQ(OptAgres, 30); EXPECT_EQ(OptDens, 31); EXPECT_EQ(OptSens, 32);
@@ -259,10 +261,10 @@ TEST(EngineProfile, CompleteSavePreservesIgnoredEquipmentAndStoredBoolWidths)
     for (unsigned i = 0; i < 4; ++i) ProfileGolden::Put32(b, 1628 + 4*i, 17+i);
     ProfileGolden::Put32(b, 1652, 0);
     EXPECT_EQ(LegacyProfile::EncodeSave({EngineProfile::FromRuntime(p), EngineProfile::CaptureOptions()}), b);
-    Multiplayer = TRUE;
+    Multiplayer = true;
     ASSERT_TRUE(EngineProfile::LoadProfile(b.data(), b.size(), p));
     EXPECT_EQ(OptDens, 128);
-    Multiplayer = FALSE;
+    Multiplayer = false;
 }
 TEST(EngineProfile, ShortProfileFallbackAndMalformedPrefix)
 {

@@ -113,7 +113,7 @@ void CheckAfraid()
 		/*
 		  if (kR<1.0f) {
 			  char t[32];
-		   sprintf_s(t, sizeof(t),"%d", ObjectsOnLook);
+		   snprintf(t, sizeof(t),"%d", ObjectsOnLook);
 		   AddMessage(t);
 		   kALook = 20.f;
 		  }

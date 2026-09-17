@@ -8,9 +8,9 @@
 #include <cmath>
 #include "Core/WaterColor.h"  // §3.2: water-colour-aware depth modulation
 
-void CaptureMouse(BOOL capture)
+void CaptureMouse(std::int32_t capture)
 {
-  Platform::SetMouseCapture(capture != FALSE);
+  Platform::SetMouseCapture(capture != false);
   if (capture) ResetMousePos();
 }
 
@@ -21,12 +21,12 @@ void ResetMousePos()
   }
 }
 
-void SwitchMode(LPSTR lps, BOOL& b)
+void SwitchMode(const char* lps, std::int32_t& b)
 {
   b = !b;
   char buf[200];
-  if (b) sprintf_s(buf, sizeof(buf),"%s is ON", lps);
-  else sprintf_s(buf, sizeof(buf),"%s is OFF", lps);
+  if (b) snprintf(buf, sizeof(buf),"%s is ON", lps);
+  else snprintf(buf, sizeof(buf),"%s is OFF", lps);
   MessageBeep(0xFFFFFFFF);
   AddMessage(buf);
 }
@@ -43,7 +43,7 @@ void ChangeViewR(int d1, int d2, int d3)
   if (ctViewRM < kObjectDetailMin) ctViewRM = kObjectDetailMin;
   if (ctViewRM > kObjectDetailMax) ctViewRM = kObjectDetailMax;
 
-  sprintf_s(buf, sizeof(buf),"ViewR = %d BMP at %d", ctViewR, ctViewRM);
+  snprintf(buf, sizeof(buf),"ViewR = %d BMP at %d", ctViewR, ctViewRM);
   //MessageBeep(0xFFFFFFFF);
   AddMessage(buf);
 

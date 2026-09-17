@@ -4,9 +4,11 @@
 
 #define WIN32_LEAN_AND_MEAN
 
+#ifdef _WIN32
 #include <winsock2.h>
 #include <windows.h>
 #include <ws2tcpip.h>
+#endif
 #include <stdlib.h>
 #include <stdio.h>
 #include <type_traits>
@@ -20,10 +22,16 @@
 #include "Memory.h"
 #include "Platform/Files.h"
 #include "math.h"
+#ifdef _WIN32
 #include "winuser.h"
+#endif
 #include "AppRes.h"
+#ifdef _WIN32
 #include "ddraw.h"
+#endif
 
+#include "Core/Strings.h"
+#include "Core/LegacyKeys.h"
 #include "Core/Constants.h"
 #include "Core/MathTypes.h"
 #include "Core/AudioTypes.h"

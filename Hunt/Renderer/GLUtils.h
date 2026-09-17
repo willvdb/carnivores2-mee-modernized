@@ -62,7 +62,7 @@ Vector3d GetDistanceFogColor();
 int GetFogIndexForMapPoint(int mapX, int mapY);
 Vector2df DecodeLegacyFaceUV(float tx, float ty, int texHeight);
 Vector3d TransformModelVertex(const TPoint3d& source, float x0, float y0, float z0, float ca, float sa, float cb, float sb);
-bool ShouldCullModelFace(WORD flags, const Vector3d& p0, const Vector3d& p1, const Vector3d& p2);
+bool ShouldCullModelFace(std::uint16_t flags, const Vector3d& p0, const Vector3d& p1, const Vector3d& p2);
 float DistanceToWaterPlane(const Vector3d& position);
 ModelClipVertex InterpolateClipVertex(const ModelClipVertex& a, const ModelClipVertex& b, float t);
 void ClipTriangleAgainstWater(const ModelClipVertex& a,
@@ -74,7 +74,7 @@ void ClipTriangleAgainstWater(const ModelClipVertex& a,
 #ifdef _gl
 void EnsureNightSceneTex(GLuint& tex, int& texW, int& texH, int winW, int winH);
 #endif
-WORD Conv565to555(WORD c);
+std::uint16_t Conv565to555(std::uint16_t c);
 
 // Clipping / fog helpers. Point is camera-relative WORLD space (before
 // camera rotation). The full sampler includes CPU horizon fog for consumers
@@ -87,7 +87,7 @@ FogSample SamplePocketFogAtPoint(const Vector3d& point, bool disableFog);
 // Single implementation for the public APIs and hot exact/legacy model loops.
 // The compile-time policy removes CPU horizon work from shader-fog consumers.
 template<bool DistanceFallback>
-__forceinline FogSample SampleFogAtPointInline(const Vector3d& point, bool disableFog)
+inline FogSample SampleFogAtPointInline(const Vector3d& point, bool disableFog)
 {
     if (disableFog) {
         return {0.0f, GetDistanceFogColor()};

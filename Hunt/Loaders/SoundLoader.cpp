@@ -13,7 +13,7 @@ void LoadWav(char* FName, TSFX &sfx)
   if( hfile==Platform::InvalidFile )
   {
     char sz[512];
-    sprintf_s(sz, sizeof(sz), "Error opening file\n%s.", FName );
+    snprintf(sz, sizeof(sz), "Error opening file\n%s.", FName );
     DoHalt(sz);
   }
 

@@ -242,7 +242,7 @@ int CheckPlaceCollisionMosasaurus(TCharacter *cptr, Vector3d &v, float mosaDepth
 				*/
 	return 0;
 }
-bool jumpCollision(TCharacter *cptr, Vector3d &v, BOOL wc, BOOL mc)
+bool jumpCollision(TCharacter *cptr, Vector3d &v, std::int32_t wc, std::int32_t mc)
 {
 	Vector3d p = cptr->pos;
 	float lookx = static_cast<float>(cos(cptr->tgalpha));
@@ -257,7 +257,7 @@ bool jumpCollision(TCharacter *cptr, Vector3d &v, BOOL wc, BOOL mc)
 	}
 	return true;
 }
-int CheckPlaceCollision(TCharacter *cptr, Vector3d &v, BOOL wc, BOOL mc)
+int CheckPlaceCollision(TCharacter *cptr, Vector3d &v, std::int32_t wc, std::int32_t mc)
 {
 	int ccx = static_cast<int>(v.x) / 256;
 	int ccz = static_cast<int>(v.z) / 256;
@@ -313,7 +313,7 @@ int CheckPlaceCollision(TCharacter *cptr, Vector3d &v, BOOL wc, BOOL mc)
 
 	return 0;
 }
-int CheckPlaceCollisionMicro(TCharacter *cptr, Vector3d &v, BOOL wc, BOOL mc)
+int CheckPlaceCollisionMicro(TCharacter *cptr, Vector3d &v, std::int32_t wc, std::int32_t mc)
 {
 	int ccx = static_cast<int>(v.x) / 256;
 	int ccz = static_cast<int>(v.z) / 256;
@@ -369,7 +369,7 @@ int CheckPlaceCollisionMicro(TCharacter *cptr, Vector3d &v, BOOL wc, BOOL mc)
 
 	return 0;
 }
-int CheckPlaceCollisionLandBrahi(TCharacter *cptr, Vector3d &v, BOOL wc, BOOL mc)
+int CheckPlaceCollisionLandBrahi(TCharacter *cptr, Vector3d &v, std::int32_t wc, std::int32_t mc)
 {
 	int ccx = static_cast<int>(v.x) / 256;
 	int ccz = static_cast<int>(v.z) / 256;
@@ -442,7 +442,7 @@ int CheckPlaceCollisionLandBrahi(TCharacter *cptr, Vector3d &v, BOOL wc, BOOL mc
 
 	return 0;
 }
-int CheckPlaceCollisionBrahi(TCharacter *cptr, Vector3d &v, BOOL wc, BOOL mc)
+int CheckPlaceCollisionBrahi(TCharacter *cptr, Vector3d &v, std::int32_t wc, std::int32_t mc)
 {
 	int ccx = static_cast<int>(v.x) / 256;
 	int ccz = static_cast<int>(v.z) / 256;
@@ -565,7 +565,7 @@ int CheckPlaceCollisionBrahiP(Vector3d &v)
 
 	return 0;
 }
-int CheckPlaceCollision2(TCharacter *cptr, Vector3d &v, BOOL wc)
+int CheckPlaceCollision2(TCharacter *cptr, Vector3d &v, std::int32_t wc)
 {
 	int ccx = static_cast<int>(v.x) / 256;
 	int ccz = static_cast<int>(v.z) / 256;
@@ -603,7 +603,7 @@ int CheckPlaceCollision2(TCharacter *cptr, Vector3d &v, BOOL wc)
 
 	return 0;
 }
-int CheckPossiblePath(TCharacter *cptr, BOOL wc, BOOL mc)
+int CheckPossiblePath(TCharacter *cptr, std::int32_t wc, std::int32_t mc)
 {
 	Vector3d p = cptr->pos;
 	float lookx = static_cast<float>(cos(cptr->tgalpha));
@@ -648,7 +648,7 @@ int CheckPossiblePath(TCharacter *cptr, BOOL wc, BOOL mc)
 	}
 	return c;
 }
-void LookForAWay(TCharacter *cptr, BOOL wc, BOOL mc)
+void LookForAWay(TCharacter *cptr, std::int32_t wc, std::int32_t mc)
 {
 	float alpha = cptr->tgalpha;
 	float dalpha = 15.f;

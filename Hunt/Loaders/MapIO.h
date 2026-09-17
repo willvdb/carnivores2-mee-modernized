@@ -38,7 +38,7 @@ bool ReadBytePlane(Platform::FileHandle file, unsigned char (&out)[Rows][Cols])
 {
     static_assert((Rows == LegacyMap::Width && Cols == LegacyMap::Width) ||
                   (Rows == LegacyMap::RegionWidth && Cols == LegacyMap::RegionWidth),
-                  "Legacy map byte-plane dimensions are fixed");
+                  "Legacy map std::uint8_t-plane dimensions are fixed");
     static_assert(std::numeric_limits<unsigned char>::digits == 8,
                   "Legacy map bytes require eight-bit storage");
     return ReadBytes(file, out, sizeof(out), Rows * Cols);
@@ -70,7 +70,7 @@ template<std::size_t Rows, std::size_t Cols>
 bool ReadLightPlane(Platform::FileHandle file, unsigned char (&out)[Rows][Cols], int day)
 {
     static_assert(Rows == LegacyMap::Width && Cols == LegacyMap::Width,
-                  "Legacy light maps are full-sized byte planes");
+                  "Legacy light maps are full-sized std::uint8_t planes");
     if (day < 0 || day >= static_cast<int>(LegacyMap::LightCount)) return false;
     return SkipLightBytes(file, LegacyMap::BytePlaneSize * day) &&
            ReadBytePlane(file, out) &&

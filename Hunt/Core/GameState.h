@@ -8,10 +8,12 @@
 #define GLOBAL extern
 #endif
 
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#endif
 #include <cstdint>
 #include "Memory.h"
 #include "Platform/Files.h"
@@ -21,7 +23,9 @@
 #include "Core/RenderTypes.h"
 #include "Core/ModelTypes.h"
 #include <array>
+#ifdef _WIN32
 #include "ddraw.h"
+#endif
 #include "Core/GameTypes.h"
 #include "Core/GameMode.h"
 
@@ -39,6 +43,7 @@ GLOBAL   int   UnderWaterT;
 GLOBAL   int   TotalTreeTable, TotalAreaInfo, TotalSpawnGroup, TotalC, TotalW, TotalMA, TotalTrophy;// , TotalRegion, TotalAvoid;
 
 
+#ifdef _WIN32
 GLOBAL   WSADATA wsaData;
 
 GLOBAL   int iResult;
@@ -60,13 +65,17 @@ GLOBAL   int iSendResult;
 GLOBAL   HWND    hwndMain;
 
 
+#endif
+
 GLOBAL   Platform::HeapHandle Heap;
 
+#ifdef _WIN32
 GLOBAL   HDC     hdcMain, hdcCMain;
+#endif
 
-GLOBAL   BOOL    blActive;
+GLOBAL   std::int32_t    blActive;
 
-GLOBAL   BYTE    KeyboardState[256];
+GLOBAL   std::uint8_t    KeyboardState[256];
 
 GLOBAL   int     KeyFlags, _shotcounter;
 
@@ -108,13 +117,13 @@ GLOBAL   unsigned char WMap[ctMapSize][ctMapSize];
 
 GLOBAL   unsigned char HMapO[ctMapSize][ctMapSize];
 
-GLOBAL   WORD FMap[ctMapSize][ctMapSize];
+GLOBAL   std::uint16_t FMap[ctMapSize][ctMapSize];
 
 GLOBAL   unsigned char LMap[ctMapSize][ctMapSize];
 
-GLOBAL   WORD TMap1[ctMapSize][ctMapSize];
+GLOBAL   std::uint16_t TMap1[ctMapSize][ctMapSize];
 
-GLOBAL   WORD TMap2[ctMapSize][ctMapSize];
+GLOBAL   std::uint16_t TMap2[ctMapSize][ctMapSize];
 
 GLOBAL   unsigned char OMap[ctMapSize][ctMapSize];
 
@@ -145,11 +154,11 @@ GLOBAL   Vector2df *PhongMapping;
 
 GLOBAL   TPicture TFX_SPECULAR, TFX_ENVMAP;
 
-GLOBAL   WORD SkyPic[256*256];
+GLOBAL   std::uint16_t SkyPic[256*256];
 
-GLOBAL   WORD SkyFade[9][128*128];
+GLOBAL   std::uint16_t SkyFade[9][128*128];
 
-GLOBAL   BYTE SkyMap[128*128];
+GLOBAL   std::uint8_t SkyMap[128*128];
 
 GLOBAL   std::array<unique_obj_ptr<TEXTURE>, 1024> Textures;
 
@@ -172,9 +181,9 @@ GLOBAL Vector3d answpos;
 
 GLOBAL int answtime, answcall;
 
-GLOBAL BOOL NightVisionMode, NightVisionOn;
+GLOBAL std::int32_t NightVisionMode, NightVisionOn;
 
-GLOBAL BOOL ScentMode, CamoMode,
+GLOBAL std::int32_t ScentMode, CamoMode,
           RadarMode, LockLanding,
           TrophyMode, DoubleAmmo,
           DogMode, Multiplayer,
@@ -202,7 +211,9 @@ GLOBAL TTrophyRoom2 TrophyRoom2;
 
 GLOBAL TPicture LandPic,DinoPic,DinoPicM, MapPic, WepPic;
 
+#ifdef _WIN32
 GLOBAL HFONT fnt_BIG, fnt_Small, fnt_Midd;
+#endif
 
 GLOBAL TLandingList LandingList;
 
@@ -345,12 +356,13 @@ GLOBAL TDemoPoint     DemoPoint;
 
 GLOBAL TCharacter     *killerDino;
 
-GLOBAL BOOL			 killedwater;
+GLOBAL std::int32_t			 killedwater;
 
 GLOBAL TPlayer        Players[16];
 
 GLOBAL Vector3d       PlayerPos, CameraPos;
 
+#ifdef _WIN32
 GLOBAL   LPDIRECTDRAW lpDD;
 
 GLOBAL   LPDIRECTDRAW2 lpDD2;
@@ -358,10 +370,11 @@ GLOBAL   LPDIRECTDRAW2 lpDD2;
 GLOBAL   void* lpVideoRAM;
 
 GLOBAL   LPDIRECTDRAWSURFACE lpddsPrimary;
+#endif
 
-GLOBAL   BOOL DirectActive, FULLSCREEN, BORDERLESS, RestartMode;
+GLOBAL   std::int32_t DirectActive, FULLSCREEN, BORDERLESS, RestartMode;
 
-GLOBAL   BOOL LoDetailSky;
+GLOBAL   std::int32_t LoDetailSky;
 
 GLOBAL   int  WinW,WinH,WinEX,WinEY,VideoCX,VideoCY,VideoPitch,VideoPitchB,iBytesPerLine,ts,r,MapMinY;
 
@@ -371,7 +384,7 @@ GLOBAL   CLIPPLANE ClipA,ClipB,ClipC,ClipD,ClipZ,ClipW;
 
 GLOBAL   int u,vused, CCX, CCY;
 
-GLOBAL   DWORD Mask1,Mask2;
+GLOBAL   std::uint32_t Mask1,Mask2;
 
 // Cumulative runtime accounting may exceed 4 GiB even in an x86 session.
 GLOBAL   uint64_t HeapAllocated, HeapReleased;
@@ -393,7 +406,7 @@ GLOBAL   int   rTColor;
 GLOBAL   int   SKYMin, SKYDTime, GlassL, ctViewR, ctViewRM, charViewR,
             dFacesCount, ReverseOn, TDirection;
 
-GLOBAL   WORD  FadeTab[65][0x8000];
+GLOBAL   std::uint16_t  FadeTab[65][0x8000];
 
 GLOBAL   TElements Elements[700];
 
@@ -442,7 +455,9 @@ GLOBAL   float   ca,sa,cb,sb, wpnDAlpha, wpnDBeta;
 
 GLOBAL   void    *lpVideoBuf, *lpTextureAddr;
 
+#ifdef _WIN32
 GLOBAL   HBITMAP hbmpVideoBuf;
+#endif
 
 
 GLOBAL   int     DivTbl[10240];
@@ -509,11 +524,11 @@ GLOBAL int  CurRes, ResCount;
 
 GLOBAL TRes ResolutionList[128];
 
-GLOBAL BOOL SHADOWS3D,REVERSEMS;
+GLOBAL std::int32_t SHADOWS3D,REVERSEMS;
 
-GLOBAL BOOL SLOW, DEBUG, MORPHP, MORPHA;
+GLOBAL std::int32_t SLOW, DEBUG, MORPHP, MORPHA;
 GLOBAL int CurDino;
-GLOBAL BOOL NewPhase;
+GLOBAL std::int32_t NewPhase;
 GLOBAL Platform::FileHandle hfile;
 GLOBAL std::uint32_t l;
 GLOBAL float rav;
@@ -543,7 +558,7 @@ GLOBAL void UploadGeometry();
 
 GLOBAL int Env;
 
-GLOBAL BOOL HARD3D;
+GLOBAL std::int32_t HARD3D;
 
 
 GLOBAL char KeysName[256][24];

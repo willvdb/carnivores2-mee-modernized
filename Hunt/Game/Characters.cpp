@@ -490,7 +490,7 @@ void ThinkY_Beta_Gamma(TCharacter *cptr, float blook, float glook, float blim, f
 //OLD
 
 
-BOOL ReplaceCharacterForward(TCharacter *cptr)
+std::int32_t ReplaceCharacterForward(TCharacter *cptr)
 {
 
 	if (!spawnGroup[cptr->SpawnGroupType].moveForward) return false;
@@ -508,7 +508,7 @@ BOOL ReplaceCharacterForward(TCharacter *cptr)
 	if (p.x > 1000 * 256) return false;
 	if (p.z > 1000 * 256) return false;
 
-	BOOL outside = true;
+	std::int32_t outside = true;
 	for (int sr = 0; sr < spawnGroup[cptr->SpawnGroupType].spawnRegionCh; sr++) {
 		if (p.x > spawnGroup[cptr->SpawnGroupType].spawnRegion[sr].XMin * 256 &&
 			p.x < spawnGroup[cptr->SpawnGroupType].spawnRegion[sr].XMax * 256 &&

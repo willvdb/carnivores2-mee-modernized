@@ -16,7 +16,7 @@ void AnimateHuntDead(TCharacter *cptr)
 	//if (!cptr->FTime) ActivateCharacterFx(cptr);
 
 	ProcessPrevPhase(cptr);
-	BOOL NewPhase = false;
+	std::int32_t NewPhase = false;
 	bool loopDone = false;
 
 	if (killerDino) {

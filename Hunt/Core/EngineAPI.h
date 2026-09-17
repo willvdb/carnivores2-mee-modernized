@@ -29,12 +29,14 @@ void HLineTBGlass25( void );
 
 void SetVideoMode(int, int);
 void SetFullScreen();
-void CaptureMouse(BOOL);
+void CaptureMouse(std::int32_t);
 void ResetMousePos();
 
 void CreateDivTable();
 void DrawTexturedFace();
-int GetTextW(HDC, LPSTR);
+#ifdef _WIN32
+int GetTextW(HDC, const char*);
+#endif
 void wait_mouse_release();
 
 void ShowControlElements();
@@ -52,8 +54,8 @@ void ProcessMap2 (int x, int y, int r);
 void ProcessMapW (int x, int y, int r);
 void ProcessMapW2(int x, int y, int r);
 
-void DrawTPlane(BOOL);
-void DrawTPlaneClip(BOOL);
+void DrawTPlane(std::int32_t);
+void DrawTPlaneClip(std::int32_t);
 void ClearVideoBuf();
 // Phase 5E follow-up: clear renderer-side per-level texture caches before
 // LoadResources loads new models. Only the GL renderer currently has such
@@ -148,7 +150,7 @@ void CheckCollision(float&, float&);
 // cachedFogIndex >= 0 reuses the map-cell lookup made by a caller that is
 // already walking the terrain grid; -1 preserves the general-purpose path.
 float CalcFogLevel(Vector3d v, int cachedFogIndex = -1);
-void AddMessage(LPSTR mt);
+void AddMessage(const char* mt);
 void CreateTMap();
 
 
@@ -158,12 +160,12 @@ void LoadTexture(unique_obj_ptr<TEXTURE>&);
 void LoadWav(char* FName, TSFX &sfx);
 
 
-void ApplyAlphaFlags(WORD*, int);
-WORD conv_565(WORD c);
+void ApplyAlphaFlags(std::uint16_t*, int);
+std::uint16_t conv_565(std::uint16_t c);
 int  conv_xGx(int);
 void conv_pic(TPicture &pic);
-void LoadPicture(TPicture &pic, LPSTR pname, MemoryTag tag = MemoryTag::Global);
-void LoadPictureTGA(TPicture &pic, LPSTR pname, MemoryTag tag = MemoryTag::Global);
+void LoadPicture(TPicture &pic, const char* pname, MemoryTag tag = MemoryTag::Global);
+void LoadPictureTGA(TPicture &pic, const char* pname, MemoryTag tag = MemoryTag::Global);
 void LoadCharacterInfo(TCharacterInfo&, char*, MemoryTag tag = MemoryTag::Global);
 void LoadModelEx(unique_obj_ptr<TModel> &mptr, char* FName, MemoryTag tag = MemoryTag::Global);
 void LoadModel(unique_obj_ptr<TModel> &mptr, MemoryTag tag = MemoryTag::Level);
@@ -209,7 +211,7 @@ float GetLandQHNoObj(float CameraX, float CameraZ);
 float GetLandLt(float x, float y);
 bool waterNear(float x, float y, float maxDist);
 void CalcModelGroundLight(TModel *mptr, float x0, float z0, int FI);
-BOOL PointOnBound(float &H, float px, float py, float cx, float cy, float oy, TBound *bound, int angle);
+std::int32_t PointOnBound(float &H, float px, float py, float cx, float cy, float oy, TBound *bound, int angle);
 
 // === SHIP SYSTEM ===
 void AddWCircle(float x, float z, float scale);
@@ -222,9 +224,9 @@ void InitShip(int cindex);
 void ProcessCommandLine();
 
 // === GAME CONTROLS / MOVEMENT (Hunt split) ===
-void CaptureMouse(BOOL capture);
+void CaptureMouse(std::int32_t capture);
 void ResetMousePos();
-void SwitchMode(LPSTR lps, BOOL& b);
+void SwitchMode(const char* lps, std::int32_t& b);
 void ChangeViewR(int d1, int d2, int d3);
 void ChangeCall();
 void ToggleBinocular();
@@ -282,7 +284,7 @@ void NormVector(Vector3d& v, float Scale);
 #ifdef MEM_DEBUG
 #pragma pop_macro("_HeapAlloc")
 #endif
-[[nodiscard]] BOOL _HeapFree(Platform::HeapHandle hHeap, std::uint32_t dwFlags, void* lpMem);
+[[nodiscard]] std::int32_t _HeapFree(Platform::HeapHandle hHeap, std::uint32_t dwFlags, void* lpMem);
 
 // Phase 5A: per-level arena. Constructed in InitEngine() and destroyed in
 // ShutDownEngine() (both Phase 5C). nullptr in Phase 5A — _HeapAlloc
@@ -330,12 +332,12 @@ void AddElements(float, float, float, int, int);
 void AddElementsA(float, float, float, int, int, int, bool, float);
 void AddWCircle(float, float, float);
 void AnimateProcesses();
-[[noreturn]] void DoHalt(LPSTR);
-[[noreturn]] void DoHalt2(LPSTR);
+[[noreturn]] void DoHalt(const char*);
+[[noreturn]] void DoHalt2(const char*);
 
 void CreateLog();
-void PrintLog(LPSTR l);
-void PrintLogVerbose(LPSTR l);
+void PrintLog(const char* l);
+void PrintLogVerbose(const char* l);
 void CloseLog();
 
 
@@ -468,7 +470,9 @@ void SetAmbient(int, short int*, int);
 bool IsAmbient3dOwner(short int* lpdata); // true if the shared looping channel currently plays this sample
 bool IsAmbient3dFree();                   // true if the shared looping channel is idle
 void AudioSetCameraPos(float, float, float, float, float);
+#ifdef _WIN32
 void InitAudioSystem(HWND, HANDLE, int);
+#endif
 void Audio_Restore();
 void AudioStop();
 void Audio_Shutdown();
@@ -485,7 +489,7 @@ void ShutDown3DHardware();
 void Render3DHardwarePosts();
 void CopyBackToDIB();
 void CopyHARDToDIB();
-void Hardware_ZBuffer(BOOL zb);
+void Hardware_ZBuffer(std::int32_t zb);
 void AllocateRenderTables(void);
 
 void EnumerateResolutions();

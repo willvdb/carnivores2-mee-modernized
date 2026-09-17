@@ -1554,7 +1554,7 @@ GLuint GLRenderer::UploadModelTexture(TModel* mptr)
 
     const int height = mptr->TextureHeight > 1 ? mptr->TextureHeight : 256;
     const int width = 256;
-    const size_t availableTexels = static_cast<size_t>(mptr->TextureSize) / sizeof(WORD);
+    const size_t availableTexels = static_cast<size_t>(mptr->TextureSize) / sizeof(std::uint16_t);
     const size_t texelCount = static_cast<size_t>(width) * height;
     if (availableTexels < texelCount) {
         return 0;

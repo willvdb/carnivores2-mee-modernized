@@ -149,22 +149,22 @@ void GLRenderer::DrawTrophyText(int x, int y)
 
     char tWeight[32], tLength[32], tWeapon[64], tScore[32], tRange[32], tDate[32], tTime[32];
 
-    if (OptSys) sprintf_s(tWeight, sizeof(tWeight), "%3.2ft", DinoInfo[dtype].Mass * scale * scale / 0.907f);
-    else        sprintf_s(tWeight, sizeof(tWeight), "%3.2fT", DinoInfo[dtype].Mass * scale * scale);
+    if (OptSys) snprintf(tWeight, sizeof(tWeight), "%3.2ft", DinoInfo[dtype].Mass * scale * scale / 0.907f);
+    else        snprintf(tWeight, sizeof(tWeight), "%3.2fT", DinoInfo[dtype].Mass * scale * scale);
 
-    if (OptSys) sprintf_s(tLength, sizeof(tLength), "%3.2fft", DinoInfo[dtype].Length * scale / 0.3f);
-    else        sprintf_s(tLength, sizeof(tLength), "%3.2fm", DinoInfo[dtype].Length * scale);
+    if (OptSys) snprintf(tLength, sizeof(tLength), "%3.2fft", DinoInfo[dtype].Length * scale / 0.3f);
+    else        snprintf(tLength, sizeof(tLength), "%3.2fm", DinoInfo[dtype].Length * scale);
 
-    sprintf_s(tWeapon, sizeof(tWeapon), "%s", WeapInfo[wep].Name);
-    sprintf_s(tScore,  sizeof(tScore),  "%d", score);
+    snprintf(tWeapon, sizeof(tWeapon), "%s", WeapInfo[wep].Name);
+    snprintf(tScore,  sizeof(tScore),  "%d", score);
 
-    if (OptSys) sprintf_s(tRange, sizeof(tRange), "%3.1fft", range / 0.3f);
-    else        sprintf_s(tRange, sizeof(tRange), "%3.1fm", range);
+    if (OptSys) snprintf(tRange, sizeof(tRange), "%3.1fft", range / 0.3f);
+    else        snprintf(tRange, sizeof(tRange), "%3.1fm", range);
 
-    if (OptSys) sprintf_s(tDate, sizeof(tDate), "%d.%d.%d", ((date >> 10) & 255), (date & 255), date >> 20);
-    else        sprintf_s(tDate, sizeof(tDate), "%d.%d.%d", (date & 255), ((date >> 10) & 255), date >> 20);
+    if (OptSys) snprintf(tDate, sizeof(tDate), "%d.%d.%d", ((date >> 10) & 255), (date & 255), date >> 20);
+    else        snprintf(tDate, sizeof(tDate), "%d.%d.%d", (date & 255), ((date >> 10) & 255), date >> 20);
 
-    sprintf_s(tTime, sizeof(tTime), "%d:%02d", ((time >> 10) & 255), (time & 255));
+    snprintf(tTime, sizeof(tTime), "%d:%02d", ((time >> 10) & 255), (time & 255));
 
     // Five paired rows rather than eight single-stat ones: the recessed panel
     // in trophy.tga/collect.tga is only ~76 art pixels tall, so eight rows at a
@@ -296,7 +296,7 @@ void GLRenderer::DrawHUDOverlay()
                 }
                 if (covered) continue;  // will be uploaded with current content below
 
-                const WORD* src = static_cast<const WORD*>(lpVideoBuf)
+                const std::uint16_t* src = static_cast<const std::uint16_t*>(lpVideoBuf)
                                   + static_cast<size_t>(r.y) * VideoPitch + r.x;
                 glPixelStorei(GL_UNPACK_ROW_LENGTH, VideoPitch);
                 glTexSubImage2D(GL_TEXTURE_2D, 0, r.x, r.y, r.w, r.h,
@@ -306,7 +306,7 @@ void GLRenderer::DrawHUDOverlay()
         // Then upload current frame's rects (newly drawn content)
             for (int i = 0; i < m_dirtyRectCount; i++) {
                 const DirtyRect& r = m_dirtyRects[i];
-                const WORD* src = static_cast<const WORD*>(lpVideoBuf)
+                const std::uint16_t* src = static_cast<const std::uint16_t*>(lpVideoBuf)
                                   + static_cast<size_t>(r.y) * VideoPitch + r.x;
                 glPixelStorei(GL_UNPACK_ROW_LENGTH, VideoPitch);
                 glTexSubImage2D(GL_TEXTURE_2D, 0, r.x, r.y, r.w, r.h,
@@ -354,7 +354,7 @@ void GLRenderer::DrawScaledPicture(int x, int y, int w, int h, TPicture& pic)
 {
     if (!pic.lpImage || pic.W <= 0 || pic.H <= 0 || !lpVideoBuf) return;
 
-    WORD* dst = static_cast<WORD*>(lpVideoBuf);
+    std::uint16_t* dst = static_cast<std::uint16_t*>(lpVideoBuf);
     for (int yy = 0; yy < h; yy++) {
         int dstY = yy + y;
         if (dstY < 0 || dstY >= WinH) continue;
@@ -363,7 +363,7 @@ void GLRenderer::DrawScaledPicture(int x, int y, int w, int h, TPicture& pic)
             int dstX = xx + x;
             if (dstX < 0 || dstX >= WinW) continue;
             int sx = xx * pic.W / w;
-            WORD c = pic.lpImage[sy * pic.W + sx];
+            std::uint16_t c = pic.lpImage[sy * pic.W + sx];
             if (c != 0) dst[dstY * VideoPitch + dstX] = Conv565to555(c);
         }
     }
@@ -375,7 +375,7 @@ void GLRenderer::DrawPicture(int x, int y, TPicture& pic)
 {
     if (!pic.lpImage || pic.W <= 0 || pic.H <= 0 || !lpVideoBuf) return;
 
-    WORD* dst = static_cast<WORD*>(lpVideoBuf);
+    std::uint16_t* dst = static_cast<std::uint16_t*>(lpVideoBuf);
     for (int yy = 0; yy < pic.H; yy++) {
         int dstY = yy + y;
         if (dstY < 0 || dstY >= WinH) continue;
@@ -385,8 +385,8 @@ void GLRenderer::DrawPicture(int x, int y, TPicture& pic)
         if (dstX < 0) { srcX = -dstX; copyW += dstX; dstX = 0; }
         if (dstX + copyW > WinW) copyW = WinW - dstX;
         if (copyW <= 0) continue;
-        const WORD* src = pic.lpImage.get() + yy * pic.W + srcX;
-        WORD* d = dst + dstY * VideoPitch + dstX;
+        const std::uint16_t* src = pic.lpImage.get() + yy * pic.W + srcX;
+        std::uint16_t* d = dst + dstY * VideoPitch + dstX;
         for (int i = 0; i < copyW; i++) {
             d[i] = Conv565to555(src[i]);
         }
@@ -457,7 +457,7 @@ void GLRenderer::ClearStaleHUDRegions()
     if (m_hudNeedsFullClear) {
         // A full-DIB write (CopyHARDToDIB) happened — the entire buffer
         // has non-zero scene data.  Clear it all and force full upload.
-        memset(lpVideoBuf, 0, static_cast<size_t>(VideoPitch) * WinH * sizeof(WORD));
+        memset(lpVideoBuf, 0, static_cast<size_t>(VideoPitch) * WinH * sizeof(std::uint16_t));
         m_hudNeedsFullClear = false;
         m_hudNeedsFullUpload = true;
         return;
@@ -473,9 +473,9 @@ void GLRenderer::ClearStaleHUDRegions()
         if (cy + ch > WinH) ch = WinH - cy;
         if (cw <= 0 || ch <= 0) continue;
 
-        WORD* row = static_cast<WORD*>(lpVideoBuf) + static_cast<size_t>(cy) * VideoPitch + cx;
+        std::uint16_t* row = static_cast<std::uint16_t*>(lpVideoBuf) + static_cast<size_t>(cy) * VideoPitch + cx;
         for (int yy = 0; yy < ch; yy++) {
-            memset(row, 0, static_cast<size_t>(cw) * sizeof(WORD));
+            memset(row, 0, static_cast<size_t>(cw) * sizeof(std::uint16_t));
             row += VideoPitch;
         }
     }

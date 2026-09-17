@@ -28,7 +28,7 @@ replace:
 
 	if (tr < 1024) {
 		if (spawnGroup[cptr->SpawnGroupType].stayInRegion) {
-			BOOL outside = true;
+			std::int32_t outside = true;
 			for (int sr = 0; sr < spawnGroup[cptr->SpawnGroupType].spawnRegionCh; sr++) {
 				if (p.x > spawnGroup[cptr->SpawnGroupType].spawnRegion[sr].XMin * 256 &&
 					p.x < spawnGroup[cptr->SpawnGroupType].spawnRegion[sr].XMax * 256 &&
@@ -162,7 +162,7 @@ replace:
 		if (fabs(p.x - cptr->pos.x) + fabs(p.z - cptr->pos.z) < R / 2.f) goto replace;
 
 		if (spawnGroup[cptr->SpawnGroupType].stayInRegion) {
-			BOOL outside = true;
+			std::int32_t outside = true;
 			for (int sr = 0; sr < spawnGroup[cptr->SpawnGroupType].spawnRegionCh; sr++) {
 				if (p.x > spawnGroup[cptr->SpawnGroupType].spawnRegion[sr].XMin * 256 &&
 					p.x < spawnGroup[cptr->SpawnGroupType].spawnRegion[sr].XMax * 256 &&
@@ -227,7 +227,7 @@ replace:
 		}
 		
 		if (spawnGroup[cptr->SpawnGroupType].stayInRegion) {
-			BOOL outside = true;
+			std::int32_t outside = true;
 			for (int sr = 0; sr < spawnGroup[cptr->SpawnGroupType].spawnRegionCh; sr++) {
 				if (p.x > spawnGroup[cptr->SpawnGroupType].spawnRegion[sr].XMin * 256 &&
 					p.x < spawnGroup[cptr->SpawnGroupType].spawnRegion[sr].XMax * 256 &&
@@ -278,7 +278,7 @@ replace:
 		if (fabs(p.x - cptr->pos.x) + fabs(p.z - cptr->pos.z) < R * 0.7) goto replace;
 
 		if (spawnGroup[cptr->SpawnGroupType].stayInRegion) {
-			BOOL outside = true;
+			std::int32_t outside = true;
 			for (int sr = 0; sr < spawnGroup[cptr->SpawnGroupType].spawnRegionCh; sr++) {
 				if (p.x > spawnGroup[cptr->SpawnGroupType].spawnRegion[sr].XMin * 256 &&
 					p.x < spawnGroup[cptr->SpawnGroupType].spawnRegion[sr].XMax * 256 &&
@@ -429,7 +429,7 @@ replace:
 	{
 		
 		if (spawnGroup[cptr->SpawnGroupType].stayInRegion) {
-			BOOL outside = true;
+			std::int32_t outside = true;
 			for (int sr = 0; sr < spawnGroup[cptr->SpawnGroupType].spawnRegionCh; sr++) {
 				if (p.x > spawnGroup[cptr->SpawnGroupType].spawnRegion[sr].XMin * 256 &&
 					p.x < spawnGroup[cptr->SpawnGroupType].spawnRegion[sr].XMax * 256 &&

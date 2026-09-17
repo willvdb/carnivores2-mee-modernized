@@ -21,16 +21,16 @@ static float GetScopeAspectFillScale()
 }
 
 #ifdef _soft
-BOOL PHONG = false;
-BOOL GOUR  = false;
-BOOL ENVMAP = false;
+std::int32_t PHONG = false;
+std::int32_t GOUR  = false;
+std::int32_t ENVMAP = false;
 #else
-BOOL PHONG = true;
-BOOL GOUR  = true;
-BOOL ENVMAP = true;
+std::int32_t PHONG = true;
+std::int32_t GOUR  = true;
+std::int32_t ENVMAP = true;
 #endif
 
-BOOL NeedRVM = true;
+std::int32_t NeedRVM = true;
 
 void HideWeapon();
 
@@ -43,7 +43,7 @@ void HideWeapon();
 float CalcFogLevel(Vector3d v, int cachedFogIndex)
 {
   if (!FOGON) return 0;
-  BOOL vinfog = true;
+  std::int32_t vinfog = true;
   int cf;
   if (!IsUnderwater())
   {
@@ -415,9 +415,9 @@ void DrawPostObjects()
   if (g_GameMode == GameMode::Binocular || embeddedScopeActive) goto SKIPWIND;
 
   if (g_GameMode != GameMode::TrophyMode && g_GameMode != GameMode::SurvivalMode)
-    if (!KeyboardState[VK_CAPITAL] & 1)
+    if (!KeyboardState[LegacyKey::CAPITAL] & 1)
     {
-      BOOL lr = LOWRESTX;
+      std::int32_t lr = LOWRESTX;
       LOWRESTX = true;
 
       const int hudCenter = WinW / 2;
@@ -1019,7 +1019,7 @@ static void DismissMenuMode() // Escape from menu, unpause from Pause
   g_GameMode = DismissMenuRestore();
   CaptureMouse(true);
 }
-static void EnterPauseMode() // VK_PAUSE from gameplay
+static void EnterPauseMode() // LegacyKey::PAUSE from gameplay
 {
   g_SavedOverlayMode = g_GameMode;
   g_GameMode = GameMode::Paused;
@@ -1034,7 +1034,7 @@ static void ConfirmExitMenu() // Y/Enter: start evacuation, restore the view
 
 static void HandleFocusChange(bool active)
 {
-  if (active != (blActive != FALSE))
+  if (active != (blActive != false))
   {
     blActive = active;
 
@@ -1097,12 +1097,12 @@ static void HandleKeyEvent(const Platform::KeyEvent& event)
 
 
   if (event.system) {
-    if (static_cast<int>(wParam) == VK_RETURN && g_GameMode != GameMode::SurvivalMode) {
+    if (static_cast<int>(wParam) == LegacyKey::RETURN && g_GameMode != GameMode::SurvivalMode) {
       SetFullScreen();
       return;
     }
     // F10 is a system key — handle it here, not in WM_KEYDOWN
-    if (static_cast<int>(wParam) == VK_F10) {
+    if (static_cast<int>(wParam) == LegacyKey::F10) {
       UnderwaterDebugMenu = !UnderwaterDebugMenu;
       if (UnderwaterDebugMenu) {
         AddMessage("Underwater Fog Debug: ON (Arrows=select, +/-=adjust, D=dump)");
@@ -1125,13 +1125,13 @@ static void HandleKeyEvent(const Platform::KeyEvent& event)
       float step;
 
       // Tab switching (PgUp/PgDn)
-      if (static_cast<int>(wParam) == VK_PRIOR) {  // PgUp
+      if (static_cast<int>(wParam) == LegacyKey::PRIOR) {  // PgUp
         UnderwaterDebugTab = (UnderwaterDebugTab + 1) % 3;
         UnderwaterDebugSelected = 0;
         AddMessage(UnderwaterDebugTab == 0 ? "Tab: FOG" : UnderwaterDebugTab == 1 ? "Tab: WAVES" : "Tab: SUN");
         return;
       }
-      if (static_cast<int>(wParam) == VK_NEXT) {   // PgDn
+      if (static_cast<int>(wParam) == LegacyKey::NEXT) {   // PgDn
         UnderwaterDebugTab = (UnderwaterDebugTab + 1) % 3;
         UnderwaterDebugSelected = 0;
         AddMessage(UnderwaterDebugTab == 0 ? "Tab: FOG" : UnderwaterDebugTab == 1 ? "Tab: WAVES" : "Tab: SUN");
@@ -1143,16 +1143,16 @@ static void HandleKeyEvent(const Platform::KeyEvent& event)
 
       switch (static_cast<int>(wParam))
       {
-      case VK_UP:
+      case LegacyKey::UP:
         UnderwaterDebugSelected = (UnderwaterDebugSelected + paramCount - 1) % paramCount;
         break;
-      case VK_DOWN:
+      case LegacyKey::DOWN:
         UnderwaterDebugSelected = (UnderwaterDebugSelected + 1) % paramCount;
         break;
-      case VK_LEFT:
-      case VK_RIGHT:
+      case LegacyKey::LEFT:
+      case LegacyKey::RIGHT:
       {
-        bool right = (static_cast<int>(wParam) == VK_RIGHT);
+        bool right = (static_cast<int>(wParam) == LegacyKey::RIGHT);
 
         if (UnderwaterDebugTab == 0) {
           // ── Fog parameters ──
@@ -1176,7 +1176,7 @@ static void HandleKeyEvent(const Platform::KeyEvent& event)
           if (UnderwaterDebugSelected == 5) *p = std::clamp(*p, 0.0f, 500.0f);
           if (UnderwaterDebugSelected == 6) *p = std::clamp(*p, 0.0f, 200.0f);
           const char* names[] = { "BaseDensity", "CamDepthMult", "VertRange", "VertStrength", "CurveExp", "CapBase", "CapCamBoost" };
-          sprintf_s(buf, sizeof(buf), "%s = %.2f", names[UnderwaterDebugSelected], *p);
+          snprintf(buf, sizeof(buf), "%s = %.2f", names[UnderwaterDebugSelected], *p);
         } else if (UnderwaterDebugTab == 1) {
           // ── Wave parameters ──
           float* params[] = { &WWave1Amp, &WWave2Amp, &WWave3Amp, &WWaveSpeed };
@@ -1194,7 +1194,7 @@ static void HandleKeyEvent(const Platform::KeyEvent& event)
           if (UnderwaterDebugSelected == 2) *p = std::clamp(*p, 0.0f, 30.0f);
           if (UnderwaterDebugSelected == 3) *p = std::clamp(*p, 0.1f, 4.0f);
           const char* names[] = { "Wave1Amp", "Wave2Amp", "Wave3Amp", "WaveSpeed" };
-          sprintf_s(buf, sizeof(buf), "%s = %.2f", names[UnderwaterDebugSelected], *p);
+          snprintf(buf, sizeof(buf), "%s = %.2f", names[UnderwaterDebugSelected], *p);
         } else {
           // ── Sun glare parameters (multipliers over computed values) ──
           float* params[] = { &SunGlare_Master, &SunGlare_Disc };
@@ -1202,7 +1202,7 @@ static void HandleKeyEvent(const Platform::KeyEvent& event)
           *p += right ? 0.1f : -0.1f;
           *p = std::clamp(*p, 0.0f, 2.0f);
           const char* names[] = { "GlareMaster", "GlareDisc" };
-          sprintf_s(buf, sizeof(buf), "%s = %.2f", names[UnderwaterDebugSelected], *p);
+          snprintf(buf, sizeof(buf), "%s = %.2f", names[UnderwaterDebugSelected], *p);
         }
         AddMessage(buf);
         return;
@@ -1212,22 +1212,22 @@ static void HandleKeyEvent(const Platform::KeyEvent& event)
         // Dump all values to log
         PrintLog("=== UNDERWATER DEBUG VALUES ===\n");
         PrintLog("--- Fog ---\n");
-        sprintf_s(buf, sizeof(buf), "UWFog_BaseDensityMult = %.2f", UWFog_BaseDensityMult); PrintLog(buf); PrintLog("\n");
-        sprintf_s(buf, sizeof(buf), "UWFog_CameraDepthMult = %.2f", UWFog_CameraDepthMult); PrintLog(buf); PrintLog("\n");
-        sprintf_s(buf, sizeof(buf), "UWFog_VertRange = %.1f", UWFog_VertRange); PrintLog(buf); PrintLog("\n");
-        sprintf_s(buf, sizeof(buf), "UWFog_VertStrength = %.1f", UWFog_VertStrength); PrintLog(buf); PrintLog("\n");
-        sprintf_s(buf, sizeof(buf), "UWFog_CurveExp = %.2f", UWFog_CurveExp); PrintLog(buf); PrintLog("\n");
-        sprintf_s(buf, sizeof(buf), "UWFog_CapBase = %.1f", UWFog_CapBase); PrintLog(buf); PrintLog("\n");
-        sprintf_s(buf, sizeof(buf), "UWFog_CapCameraBoost = %.1f", UWFog_CapCameraBoost); PrintLog(buf); PrintLog("\n");
-        sprintf_s(buf, sizeof(buf), "CameraWaterDepthFactor = %.3f", CameraWaterDepthFactor); PrintLog(buf); PrintLog("\n");
+        snprintf(buf, sizeof(buf), "UWFog_BaseDensityMult = %.2f", UWFog_BaseDensityMult); PrintLog(buf); PrintLog("\n");
+        snprintf(buf, sizeof(buf), "UWFog_CameraDepthMult = %.2f", UWFog_CameraDepthMult); PrintLog(buf); PrintLog("\n");
+        snprintf(buf, sizeof(buf), "UWFog_VertRange = %.1f", UWFog_VertRange); PrintLog(buf); PrintLog("\n");
+        snprintf(buf, sizeof(buf), "UWFog_VertStrength = %.1f", UWFog_VertStrength); PrintLog(buf); PrintLog("\n");
+        snprintf(buf, sizeof(buf), "UWFog_CurveExp = %.2f", UWFog_CurveExp); PrintLog(buf); PrintLog("\n");
+        snprintf(buf, sizeof(buf), "UWFog_CapBase = %.1f", UWFog_CapBase); PrintLog(buf); PrintLog("\n");
+        snprintf(buf, sizeof(buf), "UWFog_CapCameraBoost = %.1f", UWFog_CapCameraBoost); PrintLog(buf); PrintLog("\n");
+        snprintf(buf, sizeof(buf), "CameraWaterDepthFactor = %.3f", CameraWaterDepthFactor); PrintLog(buf); PrintLog("\n");
         PrintLog("--- Waves ---\n");
-        sprintf_s(buf, sizeof(buf), "WWave1Amp = %.2f", WWave1Amp); PrintLog(buf); PrintLog("\n");
-        sprintf_s(buf, sizeof(buf), "WWave2Amp = %.2f", WWave2Amp); PrintLog(buf); PrintLog("\n");
-        sprintf_s(buf, sizeof(buf), "WWave3Amp = %.2f", WWave3Amp); PrintLog(buf); PrintLog("\n");
-        sprintf_s(buf, sizeof(buf), "WWaveSpeed = %.2f", WWaveSpeed); PrintLog(buf); PrintLog("\n");
+        snprintf(buf, sizeof(buf), "WWave1Amp = %.2f", WWave1Amp); PrintLog(buf); PrintLog("\n");
+        snprintf(buf, sizeof(buf), "WWave2Amp = %.2f", WWave2Amp); PrintLog(buf); PrintLog("\n");
+        snprintf(buf, sizeof(buf), "WWave3Amp = %.2f", WWave3Amp); PrintLog(buf); PrintLog("\n");
+        snprintf(buf, sizeof(buf), "WWaveSpeed = %.2f", WWaveSpeed); PrintLog(buf); PrintLog("\n");
         PrintLog("--- Sun glare ---\n");
-        sprintf_s(buf, sizeof(buf), "SunGlare_Master = %.2f", SunGlare_Master); PrintLog(buf); PrintLog("\n");
-        sprintf_s(buf, sizeof(buf), "SunGlare_Disc = %.2f", SunGlare_Disc); PrintLog(buf); PrintLog("\n");
+        snprintf(buf, sizeof(buf), "SunGlare_Master = %.2f", SunGlare_Master); PrintLog(buf); PrintLog("\n");
+        snprintf(buf, sizeof(buf), "SunGlare_Disc = %.2f", SunGlare_Disc); PrintLog(buf); PrintLog("\n");
         PrintLog("=== END DEBUG VALUES ===\n");
         AddMessage("Values dumped to log!");
         return;
@@ -1235,7 +1235,7 @@ static void HandleKeyEvent(const Platform::KeyEvent& event)
       // Let other keys pass through when debug menu is open
     }
 
-    BOOL CTRL = event.shift;
+    std::int32_t CTRL = event.shift;
     switch( static_cast<int>(wParam) )
     {
     case '0':
@@ -1339,11 +1339,11 @@ static void HandleKeyEvent(const Platform::KeyEvent& event)
 
 //	case VK_DOWN:
 
-    case VK_TAB:
+    case LegacyKey::TAB:
       if (g_GameMode != GameMode::TrophyMode) ToggleMapMode();
       break;
 
-    case VK_PAUSE:
+    case LegacyKey::PAUSE:
 		if (g_GameMode != GameMode::SurvivalMode) {
       if (IsPaused()) {
         DismissMenuMode();
@@ -1358,7 +1358,7 @@ static void HandleKeyEvent(const Platform::KeyEvent& event)
       if (g_GameMode == GameMode::ExitCountdown) g_GameMode = DismissMenuRestore();
       break;
 
-    case VK_ESCAPE:
+    case LegacyKey::ESCAPE:
       if (InTrophyRoom() || g_GameMode == GameMode::SurvivalMode)
       {
         SaveTrophy();
@@ -1380,7 +1380,7 @@ static void HandleKeyEvent(const Platform::KeyEvent& event)
 		}
 		break;
 
-    case VK_RETURN:
+    case LegacyKey::RETURN:
       if (g_GameMode == GameMode::ExitCountdown )
       {
         ConfirmExitMenu();
@@ -1411,18 +1411,18 @@ static void HandleKeyEvent(const Platform::KeyEvent& event)
       }
       break;
 
-    case VK_F9:
+    case LegacyKey::F9:
       ShutDown3DHardware();
       AudioStop();
       DoHalt("");
       break;
 
-    case VK_F12:
+    case LegacyKey::F12:
       SaveScreenShot();
       break;
 
 #ifdef GL_PERF_HOOKS
-    case VK_F11:
+    case LegacyKey::F11:
       PerfTriggerCapture();
       break;
 #endif
@@ -1437,7 +1437,7 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
   HandleFocusChange(Platform::Win32::IsWindowActive(hWnd));
   if (message == WM_KEYDOWN || message == WM_SYSKEYDOWN) {
     HandleKeyEvent(Platform::Win32::DecodeKeyEvent(wParam, lParam,
-        message == WM_SYSKEYDOWN, (GetKeyState(VK_SHIFT) & 0x8000) != 0));
+        message == WM_SYSKEYDOWN, (GetKeyState(LegacyKey::SHIFT) & 0x8000) != 0));
     return 0;
   }
   switch (message) {
@@ -1491,7 +1491,7 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
 
 #endif // Win32 reference message bridge
 
-BOOL CreateMainWindow()
+std::int32_t CreateMainWindow()
 {
   PrintLog("Creating main window...");
   if (!Platform::CreateGameWindow()) return false;
@@ -1588,14 +1588,14 @@ void ProcessGame()
 	PrintLog(printable2);
 	PrintLog("\n");
 
-	byte tdata[4];
+	std::uint8_t tdata[4];
 	tdata[0] = static_cast<int>(((long_data >> 24) & 0xFF));
 	tdata[1] = static_cast<int>(((long_data >> 16) & 0xFF));
 	tdata[2] = static_cast<int>(((long_data >> 8) & 0XFF));
 	tdata[3] = static_cast<int>(((long_data & 0XFF)));
 
 	const char *p = reinterpret_cast<const char*>(tdata);
-	const byte *tdata2 = reinterpret_cast<const byte*>(p);
+	const std::uint8_t *tdata2 = reinterpret_cast<const std::uint8_t*>(p);
 
 	long anotherLongInt = ((tdata2[0] << 24)
 		+ (tdata2[1] << 16)

@@ -10,7 +10,7 @@ void PlaceHunter();
 
 void LoadCharacters()
 {
-  BOOL pres[DINOINFO_MAX];
+  std::int32_t pres[DINOINFO_MAX];
   FillMemory(pres, sizeof(pres), 0);
   pres[0]=true;
   for (int c=0; c<ChCount; c++)
@@ -23,7 +23,7 @@ void LoadCharacters()
 
       if (!ChInfo[c].mptr)
       {
-        sprintf_s(logt, sizeof(logt), "HUNTDAT\\%s", DinoInfo[c].FName);
+        snprintf(logt, sizeof(logt), "HUNTDAT\\%s", DinoInfo[c].FName);
         LoadCharacterInfo(ChInfo[c], logt);
         PrintLog("Loading: ");
         PrintLog(logt);
@@ -36,7 +36,7 @@ void LoadCharacters()
     if (TargetDino & (1<<c))
       if (!MenuDinoInfo[c-10].CallIcon.lpImage)
       {
-        sprintf_s(logt, sizeof(logt), "HUNTDAT\\MENU\\PICS\\call%d.tga", c-9);
+        snprintf(logt, sizeof(logt), "HUNTDAT\\MENU\\PICS\\call%d.tga", c-9);
         LoadPictureTGA(MenuDinoInfo[c - 10].CallIcon, logt, MemoryTag::Level);
         conv_pic(MenuDinoInfo[c - 10].CallIcon);
       }
@@ -48,7 +48,7 @@ void LoadCharacters()
     {
       if (!Weapon.chinfo[c].mptr)
       {
-        sprintf_s(logt, sizeof(logt), "HUNTDAT\\WEAPONS\\%s", WeapInfo[c].FName);
+        snprintf(logt, sizeof(logt), "HUNTDAT\\WEAPONS\\%s", WeapInfo[c].FName);
         LoadCharacterInfo(Weapon.chinfo[c], logt);
         PrintLog("Loading: ");
         PrintLog(logt);
@@ -56,7 +56,7 @@ void LoadCharacters()
       }
 
 	  if (WeapInfo[c].bullet) {
-		  sprintf_s(logt, sizeof(logt), "HUNTDAT\\WEAPONS\\%s", WeapInfo[c].BLName);
+		  snprintf(logt, sizeof(logt), "HUNTDAT\\WEAPONS\\%s", WeapInfo[c].BLName);
 		  LoadCharacterInfo(Weapon.Bullet[c], logt);
 		  PrintLog("Loading: ");
 		  PrintLog(logt);
@@ -67,7 +67,7 @@ void LoadCharacters()
 
       if (!Weapon.BulletPic[c].lpImage)
       {
-        sprintf_s(logt, sizeof(logt), "HUNTDAT\\WEAPONS\\%s", WeapInfo[c].BFName);
+        snprintf(logt, sizeof(logt), "HUNTDAT\\WEAPONS\\%s", WeapInfo[c].BFName);
         LoadPictureTGA(Weapon.BulletPic[c], logt, MemoryTag::Level);
         conv_pic(Weapon.BulletPic[c]);
         PrintLog("Loading: ");
@@ -77,7 +77,7 @@ void LoadCharacters()
 
 	  if (!Weapon.ChambPic[c].lpImage && WeapInfo[c].picch)
 	  {
-		  sprintf_s(logt, sizeof(logt), "HUNTDAT\\WEAPONS\\%s", WeapInfo[c].CFName);
+		  snprintf(logt, sizeof(logt), "HUNTDAT\\WEAPONS\\%s", WeapInfo[c].CFName);
 		  LoadPictureTGA(Weapon.ChambPic[c], logt, MemoryTag::Level);
 		  conv_pic(Weapon.ChambPic[c]);
 		  PrintLog("Loading: ");
@@ -86,7 +86,7 @@ void LoadCharacters()
 	  }
 
 	    if (WeapInfo[c].MGSSound) {
-			sprintf_s(logt, sizeof(logt), "MULTIPLAYER\\GUNSHOTS\\%s", WeapInfo[c].SFXName);
+			snprintf(logt, sizeof(logt), "MULTIPLAYER\\GUNSHOTS\\%s", WeapInfo[c].SFXName);
 			LoadWav(logt, fxGunShot[c]);
 			WeapInfo[c].SFXIndex = c;
 		  } else WeapInfo[c].SFXIndex = -1;
@@ -109,15 +109,15 @@ void LoadCharacters()
     if (TargetDino & (1<<c))
       if (fxCall[c-10][0].lpData.empty())
       {
-        sprintf_s(logt, sizeof(logt),"HUNTDAT\\SOUNDFX\\CALLS\\call%d_a.wav", (c-9));
+        snprintf(logt, sizeof(logt),"HUNTDAT\\SOUNDFX\\CALLS\\call%d_a.wav", (c-9));
         LoadWav(logt, fxCall[c-10][0]);
-        sprintf_s(logt, sizeof(logt),"HUNTDAT\\SOUNDFX\\CALLS\\call%d_b.wav", (c-9));
+        snprintf(logt, sizeof(logt),"HUNTDAT\\SOUNDFX\\CALLS\\call%d_b.wav", (c-9));
         LoadWav(logt, fxCall[c-10][1]);
-        sprintf_s(logt, sizeof(logt),"HUNTDAT\\SOUNDFX\\CALLS\\call%d_c.wav", (c-9));
+        snprintf(logt, sizeof(logt),"HUNTDAT\\SOUNDFX\\CALLS\\call%d_c.wav", (c-9));
         LoadWav(logt, fxCall[c-10][2]);
       }
 
-  sprintf_s(logt, sizeof(logt), "MULTIPLAYER\\AVATARS\\Hitbox.car");
+  snprintf(logt, sizeof(logt), "MULTIPLAYER\\AVATARS\\Hitbox.car");
   LoadCharacterInfo(HitBoxModel, logt);
   PrintLog("Loading: ");
   PrintLog(logt);
@@ -127,7 +127,7 @@ void LoadCharacters()
   //test - 1 other player
   //test - add custom models at some point?
   if (Multiplayer) {
-	  sprintf_s(logt, sizeof(logt), "MULTIPLAYER\\AVATARS\\Poacher.car");
+	  snprintf(logt, sizeof(logt), "MULTIPLAYER\\AVATARS\\Poacher.car");
 	  LoadCharacterInfo(MPlayerInfo[0], logt);
 	  PrintLog("Loading: ");
 	  PrintLog(logt);

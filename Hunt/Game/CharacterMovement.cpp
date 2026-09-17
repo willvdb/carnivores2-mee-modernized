@@ -26,7 +26,7 @@ replace1:
 		Characters[ChCount].pos.z);
 
 	
-	BOOL outside = true;
+	std::int32_t outside = true;
 	for (int sr = 0; sr < spawnGroup[Characters[ChCount].SpawnGroupType].spawnRegionCh; sr++) {
 		if (Characters[ChCount].pos.x > spawnGroup[Characters[ChCount].SpawnGroupType].spawnRegion[sr].XMin * 256 &&
 			Characters[ChCount].pos.x < spawnGroup[Characters[ChCount].SpawnGroupType].spawnRegion[sr].XMax * 256 &&
@@ -141,7 +141,7 @@ void MoveCharacterMosasaurus(TCharacter *cptr, float dx, float dz)
 	//if (!CheckPlaceCollision2(p)) cptr->pos = p;
 	cptr->pos = p;
 }
-void MoveCharacter(TCharacter *cptr, float dx, float dz, BOOL wc, BOOL mc)
+void MoveCharacter(TCharacter *cptr, float dx, float dz, std::int32_t wc, std::int32_t mc)
 {
 	//return;
 	Vector3d p = cptr->pos;

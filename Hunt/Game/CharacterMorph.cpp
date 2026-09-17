@@ -21,7 +21,7 @@ void CreateChMorphedModel(TCharacter *cptr)
 	CurFrame = (CurFrame >> 8);
 
 
-	BOOL PMorph = (cptr->Phase != cptr->PrevPhase) && (cptr->PPMorphTime < PMORPHTIME) && (MORPHP);
+	std::int32_t PMorph = (cptr->Phase != cptr->PrevPhase) && (cptr->PPMorphTime < PMORPHTIME) && (MORPHP);
 
 	if (PMorph)
 	{

@@ -5,7 +5,7 @@
 
 #include "Hunt.h"
 #include "ProfileSerialization.h"
-#include <mmsystem.h>
+
 
 // Constants from Projectiles.cpp
 #define partBlood   1
@@ -65,7 +65,7 @@ void ProcessTrophy()
 
   //TrophyBody = Characters[TrophyBody].State;
 }
-void RespawnSnow(int st, int s, BOOL rand)
+void RespawnSnow(int st, int s, std::int32_t rand)
 {
 	Snow[s].pos.x = PlayerX + nv.x + siRand(12 * 256);//12
 	Snow[s].pos.z = PlayerZ + nv.z + siRand(12 * 256);//12
@@ -136,7 +136,7 @@ void AnimateElements()
 
       float h;
       h = GetLandUpH(Elements[eg].EList[e].pos.x, Elements[eg].EList[e].pos.z);
-      BOOL OnWater = GetLandH(Elements[eg].EList[e].pos.x, Elements[eg].EList[e].pos.z) < h;
+      std::int32_t OnWater = GetLandH(Elements[eg].EList[e].pos.x, Elements[eg].EList[e].pos.z) < h;
 
       switch (Elements[eg].Type)
       {
@@ -356,7 +356,7 @@ void RemoveCurrentTrophy()
 void LoadTrophy2(int RegNumber) {
     TrophyRoom2 = {};
     char fname2[128];
-    sprintf_s(fname2, sizeof(fname2), "trophy0%d.sab", RegNumber);
+    snprintf(fname2, sizeof(fname2), "trophy0%d.sab", RegNumber);
     Platform::FileHandle hfile2 = Platform::OpenFile(fname2, Platform::FileMode::Read);
     if (hfile2 == Platform::InvalidFile) {
         PrintLog("===> Error loading trophyB!\n");
@@ -364,7 +364,7 @@ void LoadTrophy2(int RegNumber) {
     }
     LegacyProfile::RoomBytes bytes{};
     std::uint32_t count = 0;
-    const BOOL ok = Platform::ReadFile(hfile2, bytes.data(), LegacyProfile::RoomSize, &count);
+    const std::int32_t ok = Platform::ReadFile(hfile2, bytes.data(), LegacyProfile::RoomSize, &count);
     Platform::CloseFile(hfile2);
     if (!ok || !EngineProfile::LoadRoom(bytes.data(), count, TrophyRoom2)) {
         PrintLog("===> Short or invalid trophyB!\n");
@@ -379,7 +379,7 @@ void LoadTrophy()
     TrophyRoom = {};
     TrophyRoom.RegNumber = registration;
     char fname[128];
-    sprintf_s(fname, sizeof(fname), "trophy0%d.sav", registration);
+    snprintf(fname, sizeof(fname), "trophy0%d.sav", registration);
     Platform::FileHandle hfile = Platform::OpenFile(fname, Platform::FileMode::Read);
     if (hfile == Platform::InvalidFile) {
         PrintLog("===> Error loading trophy!\n");
@@ -387,7 +387,7 @@ void LoadTrophy()
     }
     LegacyProfile::SaveBytes bytes{};
     std::uint32_t count = 0;
-    const BOOL ok = Platform::ReadFile(hfile, bytes.data(), LegacyProfile::SaveSize, &count);
+    const std::int32_t ok = Platform::ReadFile(hfile, bytes.data(), LegacyProfile::SaveSize, &count);
     Platform::CloseFile(hfile);
     if (!ok || !EngineProfile::LoadProfile(bytes.data(), count, TrophyRoom)) {
         PrintLog("===> Short or invalid trophy prefix!\n");
@@ -403,7 +403,7 @@ void LoadTrophy()
 
 void SaveTrophy2(int RegNumber) {
     char fname2[128];
-    sprintf_s(fname2, sizeof(fname2), "trophy0%d.sab", RegNumber);
+    snprintf(fname2, sizeof(fname2), "trophy0%d.sab", RegNumber);
     const auto bytes = LegacyProfile::EncodeRoom(EngineProfile::FromRuntime(TrophyRoom2));
     Platform::FileHandle hfile2 = Platform::OpenFile(fname2, Platform::FileMode::Write);
     if (hfile2 == Platform::InvalidFile) {
@@ -411,7 +411,7 @@ void SaveTrophy2(int RegNumber) {
         return;
     }
     std::uint32_t count = 0;
-    const BOOL ok = Platform::WriteFile(hfile2, bytes.data(), LegacyProfile::RoomSize, &count);
+    const std::int32_t ok = Platform::WriteFile(hfile2, bytes.data(), LegacyProfile::RoomSize, &count);
     Platform::CloseFile(hfile2);
     if (!ok || count != LegacyProfile::RoomSize) {
         PrintLog("==>> Error writing trophyB!\n");
@@ -423,7 +423,7 @@ void SaveTrophy2(int RegNumber) {
 void SaveTrophy()
 {
     char fname[128];
-    sprintf_s(fname, sizeof(fname), "trophy0%d.sav", TrophyRoom.RegNumber);
+    snprintf(fname, sizeof(fname), "trophy0%d.sav", TrophyRoom.RegNumber);
     EngineProfile::UpdateRank(TrophyRoom);
 
     const auto bytes = LegacyProfile::EncodeSave({EngineProfile::FromRuntime(TrophyRoom),
@@ -434,7 +434,7 @@ void SaveTrophy()
         return;
     }
     std::uint32_t count = 0;
-    const BOOL ok = Platform::WriteFile(hfile, bytes.data(), LegacyProfile::SaveSize, &count);
+    const std::int32_t ok = Platform::WriteFile(hfile, bytes.data(), LegacyProfile::SaveSize, &count);
     Platform::CloseFile(hfile);
     if (!ok || count != LegacyProfile::SaveSize) {
         PrintLog("==>> Error writing trophy!\n");

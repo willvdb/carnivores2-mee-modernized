@@ -7,12 +7,12 @@
 
 static bool equals_nocase(const char* lhs, const char* rhs)
 {
-  return _stricmp(lhs, rhs) == 0;
+  return LegacyText::Compare(lhs, rhs) == 0;
 }
 
 static bool starts_with_nocase(const char* text, const char* prefix)
 {
-  return _strnicmp(text, prefix, strlen(prefix)) == 0;
+  return LegacyText::Compare(text, prefix, strlen(prefix)) == 0;
 }
 
 void ProcessCommandLine()
@@ -41,15 +41,15 @@ void ProcessCommandLine()
 
   int requestedWidth = WinW;
   int requestedHeight = WinH;
-  BOOL requestedFullscreen = FULLSCREEN;
-  BOOL requestedBorderless = BORDERLESS;
+  std::int32_t requestedFullscreen = FULLSCREEN;
+  std::int32_t requestedBorderless = BORDERLESS;
   bool hasRequestedResolution = false;
   bool hasRequestedFullscreen = false;
   bool hasRequestedBorderless = false;
 
   for (int a=0; a<__argc; a++)
   {
-    LPSTR s = __argv[a];
+    const char* s = __argv[a];
 
     if (equals_nocase(s, "/nofullscreen") || equals_nocase(s, "-nofullscreen") ||
         equals_nocase(s, "/windowed") || equals_nocase(s, "-windowed")) {

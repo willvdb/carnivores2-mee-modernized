@@ -6,7 +6,7 @@
 #include "Renderer/GLRenderer.h"
 #endif
 #include "stdio.h"
-#include "timeapi.h"
+
 
 struct TMenuSet
 {
@@ -29,12 +29,12 @@ int MaxDino, AreaMax, LoadCount;
 #define REGLISTX 320
 #define REGLISTY 370
 
-BOOL NEWPLAYER = false;
+std::int32_t NEWPLAYER = false;
 
 int  MapVKKey(int k)
 {
-  if (k==VK_LBUTTON) return 124;
-  if (k==VK_RBUTTON) return 125;
+  if (k==LegacyKey::LBUTTON) return 124;
+  if (k==LegacyKey::RBUTTON) return 125;
   return MapVirtualKey(k, 0);
 }
 
@@ -48,14 +48,14 @@ int OptLine = 0;
 
 void wait_mouse_release()
 {
-  while (GetAsyncKeyState(VK_RBUTTON) & 0x80000000);
-  while (GetAsyncKeyState(VK_LBUTTON) & 0x80000000);
+  while (GetAsyncKeyState(LegacyKey::RBUTTON) & 0x80000000);
+  while (GetAsyncKeyState(LegacyKey::LBUTTON) & 0x80000000);
 
 }
 
 
 #ifdef _WIN32
-int GetTextW(HDC hdc, LPSTR s)
+int GetTextW(HDC hdc, const char* s)
 {
   SIZE sz;
   GetTextExtentPoint(hdc, s, strlen(s), &sz);
@@ -63,7 +63,7 @@ int GetTextW(HDC hdc, LPSTR s)
 }
 
 #endif
-void PrintText(LPSTR s, int x, int y, int rgb)
+void PrintText(const char* s, int x, int y, int rgb)
 {
   if (auto* canvas = CPUText::GameCanvas()) {
     canvas->Draw(x+1, y+1, s, 0, CPUText::MiddleFont());
@@ -71,7 +71,7 @@ void PrintText(LPSTR s, int x, int y, int rgb)
   }
 }
 
-void DoHalt(LPSTR Mess)
+void DoHalt(const char* Mess)
 {
 
 	LOG_ERROR("ABNORMAL_HALT: %s", Mess ? Mess : "");
@@ -105,7 +105,7 @@ void DoHalt(LPSTR Mess)
 }
 
 //For stopping the program before audio/3d hardware startup
-void DoHalt2(LPSTR Mess)
+void DoHalt2(const char* Mess)
 {
 	LOG_ERROR("ABNORMAL_HALT: %s", Mess ? Mess : "");
 //	AudioStop();
@@ -130,7 +130,7 @@ void DoHalt2(LPSTR Mess)
 
 void WaitRetrace()
 {
-  BOOL bv = false;
+  std::int32_t bv = false;
   if (DirectActive)
     while (!bv)  lpDD->GetVerticalBlankStatus(&bv);
 }
@@ -167,7 +167,7 @@ void SetFullScreen()
       res = lpDD->RestoreDisplayMode();
 
     if (res != DD_OK) {
-      sprintf_s(logt, sizeof(logt), "DDRAW: Error set video mode %dx%d\n", WinW, WinH);
+      snprintf(logt, sizeof(logt), "DDRAW: Error set video mode %dx%d\n", WinW, WinH);
       PrintLog(logt);
     }
 
@@ -213,13 +213,13 @@ void UpdateLoadingWindow()
 #endif
 
   for (int y=0; y<LoadWall.H/2; y++)
-    memcpy( static_cast<WORD*>(lpVideoBuf) + y*VideoPitch,
+    memcpy( static_cast<std::uint16_t*>(lpVideoBuf) + y*VideoPitch,
             LoadWall.lpImage.get()  + y*LoadWall.W,
             LoadWall.W*2);
 
   if (LoadCount)
     for (int y=0; y<LoadWall.H/2; y++)
-      memcpy( static_cast<WORD*>(lpVideoBuf) + y*VideoPitch,
+      memcpy( static_cast<std::uint16_t*>(lpVideoBuf) + y*VideoPitch,
               LoadWall.lpImage.get()  + (y+LoadWall.H/2)*LoadWall.W,
               (LoadWall.W*LoadCount/8)*2);
 
@@ -311,7 +311,7 @@ void SetVideoMode(int W, int H)
     if (actualW > 0 && actualH > 0 &&
         (actualW != WinW || actualH != WinH)) {
       char logt[128];
-      sprintf_s(logt, sizeof(logt), "Client area adjusted: requested %dx%d, actual %dx%d\n",
+      snprintf(logt, sizeof(logt), "Client area adjusted: requested %dx%d, actual %dx%d\n",
                WinW, WinH, actualW, actualH);
       PrintLog(logt);
       WinW = actualW;
@@ -323,8 +323,8 @@ void SetVideoMode(int W, int H)
     }
   }
 
-  VideoPitch  = WinW;        // WORD index (pixels) for 16-bit video buffer
-  VideoPitchB = WinW * 2;    // byte index for 16-bit video buffer
+  VideoPitch  = WinW;        // std::uint16_t index (pixels) for 16-bit video buffer
+  VideoPitchB = WinW * 2;    // std::uint8_t index for 16-bit video buffer
 
   WinEX = WinW - 1;
   WinEY = WinH - 1;

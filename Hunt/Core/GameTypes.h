@@ -155,10 +155,10 @@ struct TCharacter
 
   Vector3d climbable;
   float climbY;
-  BOOL gottaClimb;
+  std::int32_t gottaClimb;
 
   Vector3d sonar;
-  BOOL showSonar;
+  std::int32_t showSonar;
 
   bool cpcpAquatic;//checkplacecollisionaquatic - can spawn in water,brach,icth,mosa,fish
 
@@ -183,7 +183,7 @@ struct TCharacter
 
 struct TPlayer
 {
-  BOOL Active;
+  std::int32_t Active;
   unsigned int IPaddr;
   Vector3d pos;
   float alpha, beta, vspeed;
@@ -203,8 +203,8 @@ struct TLevelDef
 {
   char FileName[64];
   char MapName[128];
-  DWORD DinosAvail;
-  WORD *lpMapImage;
+  std::uint32_t DinosAvail;
+  std::uint16_t *lpMapImage;
 };
 
 
@@ -307,9 +307,9 @@ struct TDinoKill
 	int offset;
 	int hunteranim;
 	int hunterswimanim;
-	BOOL elevate, carryCorpse;
-	BOOL dontloop;
-	BOOL scream;
+	std::int32_t elevate, carryCorpse;
+	std::int32_t dontloop;
+	std::int32_t scream;
 };
 
 
@@ -393,22 +393,22 @@ struct TDinoInfo
   int   Scale0, ScaleA;
   float	  BaseScore;
 
-  BOOL fearCall[64];
-  BOOL Aquatic;
+  std::int32_t fearCall[64];
+  std::int32_t Aquatic;
   int maxDepth, minDepth, spacingDepth;
-  BOOL dontSwimAway;
+  std::int32_t dontSwimAway;
 
-  BOOL survivalDino;
+  std::int32_t survivalDino;
 
-  BOOL dontBend;
+  std::int32_t dontBend;
   //float bendOffset;
 
   float weaveRange;
-  BOOL dontWeave;
+  std::int32_t dontWeave;
 
-  BOOL defensive;
-  BOOL fearShot;
-  BOOL fearHearShot;
+  std::int32_t defensive;
+  std::int32_t fearShot;
+  std::int32_t fearHearShot;
 
   //BOOL noMoveNoRot;
 
@@ -467,7 +467,7 @@ struct TDinoInfo
   bool canSwim;
   int waterLevel;
 
-  BOOL dogSmell;
+  std::int32_t dogSmell;
 
   //bool trophySession;
 
@@ -484,7 +484,7 @@ struct TDinoInfo
   float climbDist;
 
   unsigned char radarRed, radarGreen, radarBlue, bloodRed, bloodGreen, bloodBlue;
-  WORD radarColour565, radarColour555;
+  std::uint16_t radarColour565, radarColour555;
 
 
   int SpawnInfoCh=0;
@@ -614,13 +614,13 @@ struct TWeapInfo
 
   bool onRadar;
   unsigned char radarRed, radarGreen, radarBlue;
-  WORD radarColour565, radarColour555;
+  std::uint16_t radarColour565, radarColour555;
   int radarTime;
 
   bool MuzzFlash, ChamFlash;
   bool cross;
   unsigned char crossRed, crossGreen, crossBlue;
-  WORD crossColour565, crossColour555;
+  std::uint16_t crossColour565, crossColour555;
 
   int recoil;
 
@@ -655,7 +655,7 @@ struct TElements
 {
   int Type, ECount, EDone, LifeTime;
   int Param1, Param2, Param3;
-  DWORD RGBA, RGBA2;
+  std::uint32_t RGBA, RGBA2;
   Vector3d pos;
   TElement EList[32];
 };

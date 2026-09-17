@@ -20,7 +20,7 @@ void PreCashGroundModel()
   float CameraW16 = CameraW * 16;
   float CameraH16 = CameraH * 16;
 
-  BOOL FogFound = false;
+  std::int32_t FogFound = false;
   NeedWater = false;
 
   static float waveCache[32][32];

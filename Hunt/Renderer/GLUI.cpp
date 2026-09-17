@@ -213,7 +213,7 @@ void ShowVideo()
     if (g_GLRenderer) g_GLRenderer->PostProcess();
 }
 
-void Hardware_ZBuffer(BOOL enable)
+void Hardware_ZBuffer(std::int32_t enable)
 {
     if (enable) {
         glEnable(GL_DEPTH_TEST);
@@ -229,18 +229,18 @@ void CopyHARDToDIB()
     std::vector<GLubyte> pixels(static_cast<size_t>(WinW) * WinH * 4);
     glReadPixels(0, 0, WinW, WinH, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
 
-    WORD* dst = static_cast<WORD*>(lpVideoBuf);
+    std::uint16_t* dst = static_cast<std::uint16_t*>(lpVideoBuf);
     for (int y = 0; y < WinH; y++)
     {
         const GLubyte* srcRow = pixels.data() + (WinH - 1 - y) * WinW * 4;
-        WORD* dstRow = dst + y * VideoPitch;
+        std::uint16_t* dstRow = dst + y * VideoPitch;
         for (int x = 0; x < WinW; x++)
         {
             const int sx = x * 4;
-            const WORD r = static_cast<WORD>((srcRow[sx + 0] >> 3) & 0x1F);
-            const WORD g = static_cast<WORD>((srcRow[sx + 1] >> 3) & 0x1F);
-            const WORD b = static_cast<WORD>((srcRow[sx + 2] >> 3) & 0x1F);
-            dstRow[x] = static_cast<WORD>((r << 10) | (g << 5) | b);
+            const std::uint16_t r = static_cast<std::uint16_t>((srcRow[sx + 0] >> 3) & 0x1F);
+            const std::uint16_t g = static_cast<std::uint16_t>((srcRow[sx + 1] >> 3) & 0x1F);
+            const std::uint16_t b = static_cast<std::uint16_t>((srcRow[sx + 2] >> 3) & 0x1F);
+            dstRow[x] = static_cast<std::uint16_t>((r << 10) | (g << 5) | b);
         }
     }
 
@@ -313,13 +313,13 @@ void RenderElements()
 static int CircleCXBuf = 0;
 static int CircleCYBuf = 0;
 
-static void PutPixelBuf(int x, int y, WORD color)
+static void PutPixelBuf(int x, int y, std::uint16_t color)
 {
     if (!lpVideoBuf || x < 0 || x >= WinW || y < 0 || y >= WinH) return;
-    (static_cast<WORD*>(lpVideoBuf))[y * VideoPitch + x] = color;
+    (static_cast<std::uint16_t*>(lpVideoBuf))[y * VideoPitch + x] = color;
 }
 
-static void Put8PixelBuf(int x, int y, WORD color)
+static void Put8PixelBuf(int x, int y, std::uint16_t color)
 {
     PutPixelBuf(CircleCXBuf + x, CircleCYBuf + y, color);
     PutPixelBuf(CircleCXBuf + x, CircleCYBuf - y, color);
@@ -331,7 +331,7 @@ static void Put8PixelBuf(int x, int y, WORD color)
     PutPixelBuf(CircleCXBuf - y, CircleCYBuf - x, color);
 }
 
-static void DrawCircleBuf(int cx, int cy, int radius, WORD color)
+static void DrawCircleBuf(int cx, int cy, int radius, std::uint16_t color)
 {
     // Mark the circle's bounding box dirty so the HUD dirty-rect system
     // can erase it after the map closes. The view-distance circle
@@ -364,7 +364,7 @@ static void DrawCircleBuf(int cx, int cy, int radius, WORD color)
     Put8PixelBuf(x, y, color);
 }
 
-static void DrawBoxBuf(int x, int y, int size, WORD color)
+static void DrawBoxBuf(int x, int y, int size, std::uint16_t color)
 {
     if (g_GLRenderer) g_GLRenderer->MarkDirtyRect(x, y, size, size);
     for (int dy = 0; dy < size; dy++)
@@ -372,7 +372,7 @@ static void DrawBoxBuf(int x, int y, int size, WORD color)
             PutPixelBuf(x + dx, y + dy, color);
 }
 
-static void DrawBoxMysteryBuf(int x, int y, WORD color)
+static void DrawBoxMysteryBuf(int x, int y, std::uint16_t color)
 {
     // The "?" marker for a Mystery dinosaur. Plots the same pixels as the
     // software renderer's DrawBoxMystery, which is the reference shape: the
@@ -442,8 +442,8 @@ void DrawHMap()
 
     if (yy < 0 || yy >= WinH || xx < 0 || xx >= WinW) return;
 
-    DrawBoxBuf(xx + 1, yy + 1, 2, static_cast<WORD>(8 << 10));    // dark red shadow
-    DrawBoxBuf(xx, yy, 2, static_cast<WORD>(30 << 10));            // bright red
+    DrawBoxBuf(xx + 1, yy + 1, 2, static_cast<std::uint16_t>(8 << 10));    // dark red shadow
+    DrawBoxBuf(xx, yy, 2, static_cast<std::uint16_t>(30 << 10));            // bright red
 
     float previousSonarPos = 0.0f;
     if (g_GameMode == GameMode::SonarMode)
@@ -451,11 +451,11 @@ void DrawHMap()
         previousSonarPos = sonarPos;
         sonarPos += TimeDt * 0.02f * static_cast<float>(std::cos((pi / 2.0f) * (sonarPos / 41.0f)));
         if (sonarPos > 38.0f) sonarPos = 1.0f;
-        DrawCircleBuf(xx, yy, static_cast<int>(sonarPos * drawScale), static_cast<WORD>(18 << 5));
+        DrawCircleBuf(xx, yy, static_cast<int>(sonarPos * drawScale), static_cast<std::uint16_t>(18 << 5));
     }
 
-    DrawCircleBuf(xx + 1, yy + 1, static_cast<int>(ctViewR / 4 * drawScale), static_cast<WORD>(4 << 5));
-    DrawCircleBuf(xx, yy, static_cast<int>(ctViewR / 4 * drawScale), static_cast<WORD>(18 << 5));
+    DrawCircleBuf(xx + 1, yy + 1, static_cast<int>(ctViewR / 4 * drawScale), static_cast<std::uint16_t>(4 << 5));
+    DrawCircleBuf(xx, yy, static_cast<int>(ctViewR / 4 * drawScale), static_cast<std::uint16_t>(18 << 5));
 
     for (int b = 0; b < bulletCh; b++)
     {
@@ -490,7 +490,7 @@ void DrawHMap()
 
         if (RadarMode || Characters[c].RTime)
         {
-            WORD colour = DinoInfo[Characters[c].CType].radarColour555;
+            std::uint16_t colour = DinoInfo[Characters[c].CType].radarColour555;
             if (Characters[c].tracker >= 0) colour = WeapInfo[Characters[c].tracker].radarColour555;
 
             if (DinoInfo[Characters[c].CType].Mystery)
@@ -586,7 +586,7 @@ void RenderModelClipEnvMap(TModel* mptr, float x0, float y0, float z0,
 // ============================================================================
 
 // Convert 565 to 555 format for lpVideoBuf (16-bit BI_RGB DIB)
-static inline WORD Conv565to555(WORD c) {
+static inline std::uint16_t Conv565to555(std::uint16_t c) {
     // 565: RRRRRGGGGGGBBBBB
     // 555: XRRRRRGGGGGBBBBB
     // Split 565 into components
@@ -615,7 +615,7 @@ static void DrawScaledPictureToBuf(int x, int y, int w, int h, TPicture& pic)
             int dstX = x + xx;
             if (dstX < 0 || dstX >= WinW) continue;
             int sx = xx * pic.W / w;
-            (static_cast<WORD*>(lpVideoBuf))[dstY * VideoPitch + dstX] = Conv565to555(pic.lpImage[sy * pic.W + sx]);
+            (static_cast<std::uint16_t*>(lpVideoBuf))[dstY * VideoPitch + dstX] = Conv565to555(pic.lpImage[sy * pic.W + sx]);
         }
     }
     if (g_GLRenderer) g_GLRenderer->MarkDirtyRect(x, y, w, h);
@@ -627,7 +627,7 @@ void DrawPicture(int x, int y, TPicture& pic)
 
     // Pictures are in 565 format (after conv_pic). Copy to lpVideoBuf (555 DIB)
     // with 565→555 conversion.
-    WORD* dst = static_cast<WORD*>(lpVideoBuf);
+    std::uint16_t* dst = static_cast<std::uint16_t*>(lpVideoBuf);
     for (int yy = 0; yy < pic.H; yy++) {
         int dstY = yy + y;
         if (dstY < 0 || dstY >= WinH) continue;
@@ -637,8 +637,8 @@ void DrawPicture(int x, int y, TPicture& pic)
         if (dstX < 0) { srcX = -dstX; copyW += dstX; dstX = 0; }
         if (dstX + copyW > WinW) copyW = WinW - dstX;
         if (copyW <= 0) continue;
-        const WORD* src = pic.lpImage.get() + yy * pic.W + srcX;
-        WORD* d = dst + dstY * VideoPitch + dstX;
+        const std::uint16_t* src = pic.lpImage.get() + yy * pic.W + srcX;
+        std::uint16_t* d = dst + dstY * VideoPitch + dstX;
         for (int i = 0; i < copyW; i++) {
             d[i] = Conv565to555(src[i]);
         }
@@ -660,7 +660,7 @@ void DrawFlash(int x, int y, int w, int h, TPicture& pic)
     // source bitmap.
     if (!pic.lpImage || pic.W <= 0 || pic.H <= 0 || w <= 0 || h <= 0 || !lpVideoBuf) return;
 
-    WORD* dst = static_cast<WORD*>(lpVideoBuf);
+    std::uint16_t* dst = static_cast<std::uint16_t*>(lpVideoBuf);
     if (w == pic.W && h == pic.H) {
         for (int yy = 0; yy < h; yy++) {
             int dstY = yy + y;
@@ -671,9 +671,9 @@ void DrawFlash(int x, int y, int w, int h, TPicture& pic)
             if (dstX < 0) { srcX = -dstX; copyW += dstX; dstX = 0; }
             if (dstX + copyW > WinW) copyW = WinW - dstX;
             if (copyW <= 0) continue;
-            const WORD* src = pic.lpImage.get() + yy * pic.W + srcX;
-            WORD* d = dst + dstY * VideoPitch + dstX;
-            memcpy(d, src, copyW * sizeof(WORD));
+            const std::uint16_t* src = pic.lpImage.get() + yy * pic.W + srcX;
+            std::uint16_t* d = dst + dstY * VideoPitch + dstX;
+            memcpy(d, src, copyW * sizeof(std::uint16_t));
         }
         if (g_GLRenderer) g_GLRenderer->MarkDirtyRect(x, y, w, h);
         return;
@@ -706,7 +706,7 @@ void DrawScoreText(int x, int y)
     if (!canvas) return;
 
     char t[32];
-    sprintf_s(t, sizeof(t), "%d", ScoreDisp);
+    snprintf(t, sizeof(t), "%d", ScoreDisp);
 
     const std::uint32_t kLabel = 0x00BFBFBF;
     const std::uint32_t kValue = 0x0000BFBF;
@@ -738,8 +738,8 @@ void DrawSurvivalText(int x, int y)
     if (!canvas) return;
 
     char tWaves[32], tHigh[32];
-    sprintf_s(tWaves, sizeof(tWaves), "%i", SurvivalWave - 1);
-    sprintf_s(tHigh,  sizeof(tHigh),  "%i", TrophyRoom2.survivalHighScore);
+    snprintf(tWaves, sizeof(tWaves), "%i", SurvivalWave - 1);
+    snprintf(tHigh,  sizeof(tHigh),  "%i", TrophyRoom2.survivalHighScore);
 
     const std::uint32_t kLabel = 0x00BFBFBF;
     const std::uint32_t kValue = 0x0000BFBF;
@@ -804,19 +804,19 @@ void RenderHealthBar()
 
     if (x0 < 1 || x0 + L >= WinW || y0 < 1 || y0 + H + 1 >= WinH) return;
 
-    const WORD BORDER = 0x0001; // non-zero so the overlay treats it as opaque
+    const std::uint16_t BORDER = 0x0001; // non-zero so the overlay treats it as opaque
 
     // Top and bottom border rows (full width of bar + corners)
-    FillMemory(static_cast<WORD*>(lpVideoBuf) + ((y0 - 1) * VideoPitch) + x0 - 1, (L + 2) * 2, BORDER);
-    FillMemory(static_cast<WORD*>(lpVideoBuf) + ((y0 + H + 1) * VideoPitch) + x0 - 1, (L + 2) * 2, BORDER);
+    FillMemory(static_cast<std::uint16_t*>(lpVideoBuf) + ((y0 - 1) * VideoPitch) + x0 - 1, (L + 2) * 2, BORDER);
+    FillMemory(static_cast<std::uint16_t*>(lpVideoBuf) + ((y0 + H + 1) * VideoPitch) + x0 - 1, (L + 2) * 2, BORDER);
 
     // Bar body
     for (int y = 0; y <= H; y++) {
-        WORD* row = static_cast<WORD*>(lpVideoBuf) + ((y0 + y) * VideoPitch);
+        std::uint16_t* row = static_cast<std::uint16_t*>(lpVideoBuf) + ((y0 + y) * VideoPitch);
         row[x0 - 1] = BORDER;
         row[x0 + L] = BORDER;
         for (int x = 0; x < L0; x++)
-            row[x0 + x] = static_cast<WORD>(HCOLOR);
+            row[x0 + x] = static_cast<std::uint16_t>(HCOLOR);
     }
 
     // Mark dirty: health bar rect including 1px border on all sides
@@ -843,9 +843,9 @@ void ShowControlElements()
 
     if (TIMER)
     {
-        sprintf_s(buf, sizeof(buf), "msc: %d", TimeDt);
+        snprintf(buf, sizeof(buf), "msc: %d", TimeDt);
         textOut(WinEX - 81, 11, buf, 0x0020A0A0);
-        sprintf_s(buf, sizeof(buf), "polys: %d", dFacesCount);
+        snprintf(buf, sizeof(buf), "polys: %d", dFacesCount);
         textOut(WinEX - 90, 24, buf, 0x0020A0A0);
         // 2 lines of timer text near top-left of extended area
         if (g_GLRenderer) g_GLRenderer->MarkDirtyRect(WinEX - 91, 9, 100, 32);
@@ -870,7 +870,7 @@ void ShowControlElements()
         // Tab header
         const char* tabName = (UnderwaterDebugTab == 0) ? "FOG" : (UnderwaterDebugTab == 1) ? "WAVES" : "SUN";
         char header[128];
-        sprintf_s(header, sizeof(header), "=== %s DEBUG (F10=close, PgUp/PgDn=tab, D=dump) ===", tabName);
+        snprintf(header, sizeof(header), "=== %s DEBUG (F10=close, PgUp/PgDn=tab, D=dump) ===", tabName);
         textOut(dx, dy, header, 0x00FFFFFF);
         dy += lineH + 4;
 
@@ -883,11 +883,11 @@ void ShowControlElements()
             for (int i = 0; i < 7; i++)
             {
                 char line[128];
-                sprintf_s(line, sizeof(line), "%s = %.2f  %s", names[i], values[i], descs[i]);
+                snprintf(line, sizeof(line), "%s = %.2f  %s", names[i], values[i], descs[i]);
                 int color = (i == selected) ? 0x0000FFFF : 0x00C0C0C0;
                 if (i == selected) {
                     char selLine[132];
-                    sprintf_s(selLine, sizeof(selLine), "> %s", line);
+                    snprintf(selLine, sizeof(selLine), "> %s", line);
                     textOut(dx, dy, selLine, color);
                 } else {
                     textOut(dx + 10, dy, line, color);
@@ -903,11 +903,11 @@ void ShowControlElements()
             for (int i = 0; i < 4; i++)
             {
                 char line[128];
-                sprintf_s(line, sizeof(line), "%s = %.2f  %s", names[i], values[i], descs[i]);
+                snprintf(line, sizeof(line), "%s = %.2f  %s", names[i], values[i], descs[i]);
                 int color = (i == selected) ? 0x0000FFFF : 0x00C0C0C0;
                 if (i == selected) {
                     char selLine[132];
-                    sprintf_s(selLine, sizeof(selLine), "> %s", line);
+                    snprintf(selLine, sizeof(selLine), "> %s", line);
                     textOut(dx, dy, selLine, color);
                 } else {
                     textOut(dx + 10, dy, line, color);
@@ -923,11 +923,11 @@ void ShowControlElements()
             for (int i = 0; i < 2; i++)
             {
                 char line[128];
-                sprintf_s(line, sizeof(line), "%s = %.2f  %s", names[i], values[i], descs[i]);
+                snprintf(line, sizeof(line), "%s = %.2f  %s", names[i], values[i], descs[i]);
                 int color = (i == selected) ? 0x0000FFFF : 0x00C0C0C0;
                 if (i == selected) {
                     char selLine[132];
-                    sprintf_s(selLine, sizeof(selLine), "> %s", line);
+                    snprintf(selLine, sizeof(selLine), "> %s", line);
                     textOut(dx, dy, selLine, color);
                 } else {
                     textOut(dx + 10, dy, line, color);
@@ -945,9 +945,9 @@ void ShowControlElements()
     if (ExitTime)
     {
         int yline = WinH / 3;
-        sprintf_s(buf, sizeof(buf), "Preparing for evacuation...");
+        snprintf(buf, sizeof(buf), "Preparing for evacuation...");
         textOut(VideoCX - canvas->Width(buf, CPUText::MiddleFont()) / 2, yline, buf, 0x0060C0D0);
-        sprintf_s(buf, sizeof(buf), "%d seconds left.", 1 + ExitTime / 1000);
+        snprintf(buf, sizeof(buf), "%d seconds left.", 1 + ExitTime / 1000);
         textOut(VideoCX - canvas->Width(buf, CPUText::MiddleFont()) / 2, yline + 18, buf, 0x0060C0D0);
         // 2 lines centered, ~300px wide
         if (g_GLRenderer) g_GLRenderer->MarkDirtyRect(VideoCX - 150, yline - 1, 300, 36);
@@ -956,7 +956,7 @@ void ShowControlElements()
     if (WaveNoteTime)
     {
         int yline = WinH / 3;
-        sprintf_s(buf, sizeof(buf), "Waves Survived: %i", SurvivalWave - 1);
+        snprintf(buf, sizeof(buf), "Waves Survived: %i", SurvivalWave - 1);
         textOut(VideoCX - canvas->Width(buf, CPUText::MiddleFont()) / 2, yline, buf, 0x0060C0D0);
         // 1 line centered
         if (g_GLRenderer) g_GLRenderer->MarkDirtyRect(VideoCX - 120, yline - 1, 240, 18);

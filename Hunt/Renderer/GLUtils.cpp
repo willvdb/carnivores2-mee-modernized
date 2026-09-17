@@ -161,7 +161,7 @@ Vector3d TransformModelVertex(const TPoint3d& source, float x0, float y0, float 
     return result;
 }
 
-bool ShouldCullModelFace(WORD flags, const Vector3d& p0, const Vector3d& p1, const Vector3d& p2)
+bool ShouldCullModelFace(std::uint16_t flags, const Vector3d& p0, const Vector3d& p1, const Vector3d& p2)
 {
     if ((flags & (sfDarkBack | sfNeedVC)) == 0) {
         return false;
@@ -268,7 +268,7 @@ void EnsureNightSceneTex(GLuint& tex, int& texW, int& texH, int winW, int winH)
     }
 }
 
-WORD Conv565to555(WORD c)
+std::uint16_t Conv565to555(std::uint16_t c)
 {
     int r = (c >> 11) & 0x1F;
     int g = (c >> 5) & 0x3F;

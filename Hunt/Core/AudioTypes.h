@@ -13,7 +13,7 @@ struct TSFX
 
 // Phase 5B.1: sizeof(TSFX) grows from 8 (int + raw pointer) to 16+ bytes.
 static_assert(sizeof(TSFX) > 8,
-              "TSFX is back to its old 8-byte raw-pointer layout — the Phase 5B.1 "
+              "TSFX is back to its old 8-std::uint8_t raw-pointer layout — the Phase 5B.1 "
               "std::vector migration was reverted. Re-apply the migration or update "
               "the doc.");
 

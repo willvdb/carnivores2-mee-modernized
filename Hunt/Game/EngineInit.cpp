@@ -5,7 +5,7 @@
 
 #include "Hunt.h"
 #include "Platform/Platform.h"
-#include <mmsystem.h>
+
 #include <cerrno>
 #include <cstdlib>
 #include <fstream>
@@ -22,7 +22,7 @@ extern bool ShowFaces;
 void UploadGeometry()
 {
   int x,y,xx,yy;
-  byte temp;
+  std::uint8_t temp;
 
   AudioFCount = 0;
 
@@ -63,7 +63,7 @@ void UploadGeometry()
 
   if (ShowFaces)
   {
-    sprintf_s(logt, sizeof(logt),"Audio_UpdateGeometry: %i faces uploaded\n", AudioFCount);
+    snprintf(logt, sizeof(logt),"Audio_UpdateGeometry: %i faces uploaded\n", AudioFCount);
     PrintLog(logt);
 
     ShowFaces = false;
@@ -463,7 +463,7 @@ void InitEngine()
   // away from a raw pointer, every struct field we migrated will
   // silently change size and break the save-game / multiplayer
   // protocols. C1 has the same static_assert in its InitEngine.
-  static_assert(sizeof(unique_heap_ptr<WORD[]>) == sizeof(void*),
+  static_assert(sizeof(unique_heap_ptr<std::uint16_t[]>) == sizeof(void*),
                 "unique_heap_ptr<T[]> must be the same size as a raw pointer (x86 EBO)");
   static_assert(sizeof(unique_obj_ptr<TModel>) == sizeof(void*),
                 "unique_obj_ptr<TModel> must be the same size as a raw pointer (x86 EBO)");
@@ -549,16 +549,16 @@ OptFpsLimit = 1;  // 1 = 60 FPS (0 remains available for unlimited)
   KeyMap.fkBackward = 'S';
   KeyMap.fkSLeft = 'A';
   KeyMap.fkSRight = 'D';
-  KeyMap.fkFire = VK_LBUTTON;
-  KeyMap.fkShow = VK_RBUTTON;
-  KeyMap.fkJump = VK_SPACE;
-  KeyMap.fkCall = VK_MENU;
+  KeyMap.fkFire = LegacyKey::LBUTTON;
+  KeyMap.fkShow = LegacyKey::RBUTTON;
+  KeyMap.fkJump = LegacyKey::SPACE;
+  KeyMap.fkCall = LegacyKey::MENU;
   KeyMap.fkBinoc = 'B';
   KeyMap.fkCrouch = 'C';
-  KeyMap.fkRun = VK_LSHIFT;
+  KeyMap.fkRun = LegacyKey::LSHIFT;
   KeyMap.fkReload = 'R';
   KeyMap.fkResupply = 'T';
-  KeyMap.fkHoldBreath = VK_LCONTROL;
+  KeyMap.fkHoldBreath = LegacyKey::LCONTROL;
   KeyMap.fkFiringMode = 'V';
   KeyMap.fkStrafe = 'G';
 
@@ -575,7 +575,7 @@ OptFpsLimit = 1;  // 1 = 60 FPS (0 remains available for unlimited)
   {
     const int fpsValues[] = {0, 60, 120, 240};
     char msg[192];
-    sprintf_s(msg, sizeof(msg), "Config effective: fps_limit=%d (%d FPS; 0=unlimited), fov=%d, object_detail=%d\n",
+    snprintf(msg, sizeof(msg), "Config effective: fps_limit=%d (%d FPS; 0=unlimited), fov=%d, object_detail=%d\n",
               OptFpsLimit, fpsValues[OptFpsLimit], OptFov, OptObjectDetail);
     PrintLog(msg);
   }
@@ -764,7 +764,7 @@ static void GetConfigPath(char* buf, size_t bufsz)
 {
   // Try EXE directory first
   char mod[MAX_PATH];
-  DWORD len = GetModuleFileNameA(nullptr, mod, sizeof(mod));
+  std::uint32_t len = GetModuleFileNameA(nullptr, mod, sizeof(mod));
   if (len > 0 && len < sizeof(mod)) {
     char* sep = strrchr(mod, '\\');
     if (sep) {
@@ -788,7 +788,7 @@ static void CreateDefaultConfig()
 
   // Prefer EXE directory (shared with Carnivores2Menu), fall back to CWD
   char mod[MAX_PATH];
-  DWORD len = GetModuleFileNameA(nullptr, mod, sizeof(mod));
+  std::uint32_t len = GetModuleFileNameA(nullptr, mod, sizeof(mod));
   char* writePath = configPath;
   if (len > 0 && len < sizeof(mod)) {
     char* sep = strrchr(mod, '\\');
@@ -880,12 +880,12 @@ static void CreateDefaultConfig()
     kGpuFeaturesDefault
   );
 
-  DWORD written = 0;
-  WriteFile(hfile, buf, (DWORD)len2, &written, nullptr);
+  std::uint32_t written = 0;
+  Platform::WriteFile(hfile, buf, (std::uint32_t)len2, &written);
   CloseHandle(hfile);
 
   char msg[MAX_PATH + 64];
-  sprintf_s(msg, sizeof(msg), "Config: Created default config.cfg at %s\n", writePath);
+  snprintf(msg, sizeof(msg), "Config: Created default config.cfg at %s\n", writePath);
   PrintLog(msg);
 }
 
@@ -908,7 +908,7 @@ static void LoadConfig()
   }
   if (nulBytes) {
     char msg[128];
-    sprintf_s(msg, sizeof(msg), "Config: recovered %u NUL padding bytes; please resave config.cfg.\n",
+    snprintf(msg, sizeof(msg), "Config: recovered %u NUL padding bytes; please resave config.cfg.\n",
               static_cast<unsigned>(nulBytes));
     PrintLog(msg);
   }
@@ -929,43 +929,43 @@ static void LoadConfig()
     if (tokens >= 1) {
       if (tokens < 2) {
         char msg[96];
-        sprintf_s(msg, sizeof(msg), "Config: '%s' missing value, ignoring.\n", key);
+        snprintf(msg, sizeof(msg), "Config: '%s' missing value, ignoring.\n", key);
         PrintLog(msg);
       } else {
       int value = (int)strtol(keyval, nullptr, 10);
-      if (_stricmp(key, "fov") == 0) {
+      if (LegacyText::Compare(key, "fov") == 0) {
         if (value >= kFovMin && value <= kFovMax) {
           OptFov = value;
         } else {
           char msg[128];
-          sprintf_s(msg, sizeof(msg), "Config: fov %d out of range [%d..%d], ignoring.\n",
+          snprintf(msg, sizeof(msg), "Config: fov %d out of range [%d..%d], ignoring.\n",
                     value, kFovMin, kFovMax);
           PrintLog(msg);
         }
       }
-      else if (_stricmp(key, "object_detail") == 0) {
+      else if (LegacyText::Compare(key, "object_detail") == 0) {
         if (value >= kObjectDetailMin && value <= kObjectDetailMax) {
           OptObjectDetail = value;
         } else {
           char msg[128];
-          sprintf_s(msg, sizeof(msg), "Config: object_detail %d out of range [%d..%d], ignoring.\n",
+          snprintf(msg, sizeof(msg), "Config: object_detail %d out of range [%d..%d], ignoring.\n",
                     value, kObjectDetailMin, kObjectDetailMax);
           PrintLog(msg);
         }
       }
-      else if (_stricmp(key, "fps_limit") == 0) {
+      else if (LegacyText::Compare(key, "fps_limit") == 0) {
         // 0=unlimited, 1=60, 2=120, 3=240
         if (value >= 0 && value <= 3) {
           OptFpsLimit = value;
         }
       }
-      else if (_stricmp(key, "verbose_logging") == 0) {
+      else if (LegacyText::Compare(key, "verbose_logging") == 0) {
         g_VerboseLogging = (value != 0);
       }
-      else if (_stricmp(key, "nightvision_key") == 0) {
+      else if (LegacyText::Compare(key, "nightvision_key") == 0) {
         NightVisionKey = value;
       }
-      else if (_stricmp(key, "gpufeatures") == 0) {
+      else if (LegacyText::Compare(key, "gpufeatures") == 0) {
         // Runtime GPU-optimization kill-switch bitmask (see GpuFeature in GameState.h).
         // 0 disables all new GPU optimizations; bits toggle features individually.
         // Parse as unsigned: the default (all bits set) exceeds INT_MAX, so
@@ -974,18 +974,18 @@ static void LoadConfig()
         unsigned long v = strtoul(keyval, &end, 10);
         if (end != keyval) g_gpuFeatures = static_cast<uint32_t>(v);
       }
-      else if (_stricmp(key, "glperf_logging") == 0) {
+      else if (LegacyText::Compare(key, "glperf_logging") == 0) {
         // Runtime toggle for GL performance harness logging.
         // Only effective when GL_PERF_HOOKS is compiled in.
         // 0=disabled (default), 1=enabled
         g_glperfLoggingEnabled = (value != 0);
         {
           char msg[64];
-          sprintf_s(msg, sizeof(msg), "Config: glperf_logging = %d\n", g_glperfLoggingEnabled ? 1 : 0);
+          snprintf(msg, sizeof(msg), "Config: glperf_logging = %d\n", g_glperfLoggingEnabled ? 1 : 0);
           PrintLog(msg);
         }
       }
-      else if (_stricmp(key, "resolution") == 0) {
+      else if (LegacyText::Compare(key, "resolution") == 0) {
         // Override the saved profile resolution. Format: WxH, e.g. "1920x1080".
         // Applies after SetupRes() (trophy file) so config.cfg wins over the
         // per-profile legacy setting; a command-line -res= still overrides this.
@@ -1010,7 +1010,7 @@ static void LoadConfig()
           PrintLog("Config: resolution expects WxH (e.g. 1920x1080), ignoring.\n");
         }
       }
-      else if (_stricmp(key, "display_mode") == 0) {
+      else if (LegacyText::Compare(key, "display_mode") == 0) {
         // Display mode: 0=windowed, 1=exclusive fullscreen, 2=borderless.
         // Written by the menu's Display Mode video option. Command-line
         // flags (-windowed/-fullscreen/-borderless) override this later
@@ -1027,7 +1027,7 @@ static void LoadConfig()
           PrintLog("Config: display_mode must be 0 (windowed), 1 (fullscreen) or 2 (borderless), ignoring.\n");
         }
       }
-      else if (_strnicmp(key, "env", 3) == 0) {
+      else if (LegacyText::Compare(key, "env", 3) == 0) {
         // Runtime reverb preset tuning: env<0-8>_<decay|decayhf|diffusion|reverb>.
         // Floats (e.g. env0_decay 1.49). Unset fields read compiled defaults;
         // out-of-range values are rejected with a log line. room/envID have
@@ -1042,23 +1042,23 @@ static void LoadConfig()
         if (env >= 0 && env <= 8 && key[4] == '_' &&
             end != keyval && *end == '\0' && errno != ERANGE) {
           int fi = -1;
-          if (_stricmp(field, "decay") == 0) fi = 0;
-          else if (_stricmp(field, "decayhf") == 0) fi = 1;
-          else if (_stricmp(field, "diffusion") == 0) fi = 2;
-          else if (_stricmp(field, "reverb") == 0) fi = 3;
+          if (LegacyText::Compare(field, "decay") == 0) fi = 0;
+          else if (LegacyText::Compare(field, "decayhf") == 0) fi = 1;
+          else if (LegacyText::Compare(field, "diffusion") == 0) fi = 2;
+          else if (LegacyText::Compare(field, "reverb") == 0) fi = 3;
           if (fi >= 0 && Audio_SetEnvParam(env, fi, f)) {
             char msg[96];
-            sprintf_s(msg, sizeof(msg), "Config: env%d_%s = %.3g\n", env, field, (double)f);
+            snprintf(msg, sizeof(msg), "Config: env%d_%s = %.3g\n", env, field, (double)f);
             PrintLog(msg);
           } else {
             // Two tokens of up to 63 chars plus the fixed diagnostic.
             char msg[256];
-            sprintf_s(msg, sizeof(msg), "Config: '%s %s' invalid (env 0-8, known field, range), ignoring.\n", key, keyval);
+            snprintf(msg, sizeof(msg), "Config: '%s %s' invalid (env 0-8, known field, range), ignoring.\n", key, keyval);
             PrintLog(msg);
           }
         } else {
           char msg[256];
-          sprintf_s(msg, sizeof(msg), "Config: '%s' expects env<0-8>_<decay|decayhf|diffusion|reverb> value, ignoring.\n", key);
+          snprintf(msg, sizeof(msg), "Config: '%s' expects env<0-8>_<decay|decayhf|diffusion|reverb> value, ignoring.\n", key);
           PrintLog(msg);
         }
       }

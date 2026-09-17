@@ -67,7 +67,7 @@ void CreateTMap()
           WMap[y][x] = WMap[y-1][x  ];
         }
 
-        BOOL l = true;
+        std::int32_t l = true;
 
 #ifdef _soft
         if (FMap[y][x] & fmWater2)

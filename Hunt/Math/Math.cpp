@@ -777,7 +777,7 @@ int  TraceLook(float ax, float ay, float az,
 
 
 
-      BOOL ReverseOn = (FMap[zz][xx] & fmReverse);
+      std::int32_t ReverseOn = (FMap[zz][xx] & fmReverse);
 
 
 
@@ -935,7 +935,7 @@ int  TraceShot(float  ax, float  ay, float az,
 
 
 
-      BOOL ReverseOn = (FMap[zz][xx] & fmReverse);
+      std::int32_t ReverseOn = (FMap[zz][xx] & fmReverse);
 
 
 
@@ -1894,7 +1894,7 @@ void CalcBoundBox(TModel* mptr, TBound *bound)
 
   float x1, x2, y1, y2, z1, z2;
 
-  BOOL first;
+  std::int32_t first;
 
 
 

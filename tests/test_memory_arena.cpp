@@ -13,7 +13,7 @@
 
 // Test-double captures diagnostics without engine linkage.
 static std::string arenaLog;
-void PrintLog(char* msg) { arenaLog += msg; }
+void PrintLog(const char* msg) { arenaLog += msg; }
 
 #include "Memory.h"
 

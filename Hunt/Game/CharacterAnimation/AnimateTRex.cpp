@@ -16,7 +16,7 @@ void AnimateTRex(TCharacter *cptr)
 	int _Phase = cptr->Phase;
 	int _FTime = cptr->FTime;
 	float _tgalpha = cptr->tgalpha;
-	BOOL LookMode = false;
+	std::int32_t LookMode = false;
 
 
 

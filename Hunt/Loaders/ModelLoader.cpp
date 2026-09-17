@@ -14,7 +14,7 @@
 static void ModelLoadFail(const char* what, int value, int limit)
 {
   char sz[256];
-  sprintf_s(sz, sizeof(sz),
+  snprintf(sz, sizeof(sz),
             "Model loading error: %s (value=%d, limit=%d). File is corrupt or modded.",
             what, value, limit);
   DoHalt(sz);
@@ -25,7 +25,7 @@ static void ReadModelExact(Platform::FileHandle file, void* dst, std::uint32_t b
   if (!ReadExact(file, dst, bytes))
   {
     char sz[256];
-    sprintf_s(sz, sizeof(sz), "Model loading error: truncated %s.", what);
+    snprintf(sz, sizeof(sz), "Model loading error: truncated %s.", what);
     DoHalt(sz);
   }
 }
@@ -381,7 +381,7 @@ void LoadSkyMap()
   ReadModelExact(hfile, SkyMap, 128*128, "sky map");
 }
 
-void fp_conv(LPVOID d)
+void fp_conv(void* d)
 {
   int i;
   float f;
@@ -551,7 +551,7 @@ void LoadModel(unique_obj_ptr<TModel> &mptr, MemoryTag tag)
   // original file size: a malformed ts larger than the buffer would overflow
   // it, so reject instead of reading.
   if (ts < 0 || (size_t)ts > (size_t)mptr->TextureSize)
-    ModelLoadFail("texture byte count exceeds buffer", ts, mptr->TextureSize);
+    ModelLoadFail("texture std::uint8_t count exceeds buffer", ts, mptr->TextureSize);
   ReadModelTexture(hfile, mptr->lpTexture.get(), static_cast<size_t>(ts));
   BrightenTexture(mptr->lpTexture.get(), ts/2);
 
@@ -611,7 +611,7 @@ void LoadModelEx(unique_obj_ptr<TModel> &mptr, char* FName, MemoryTag tag)
   if (hfile==Platform::InvalidFile)
   {
     char sz[512];
-    sprintf_s(sz, sizeof(sz), "Error opening file\n%s.", FName );
+    snprintf(sz, sizeof(sz), "Error opening file\n%s.", FName );
     DoHalt(sz);
   }
 
@@ -645,7 +645,7 @@ void LoadModelEx(unique_obj_ptr<TModel> &mptr, char* FName, MemoryTag tag)
   mptr->lpTexture.reset(static_cast<std::uint16_t*>(_HeapAlloc(Heap, 0, mptr->TextureSize, tag)));
 
   if (ts < 0 || (size_t)ts > (size_t)mptr->TextureSize)
-    ModelLoadFail("texture byte count exceeds buffer", ts, mptr->TextureSize);
+    ModelLoadFail("texture std::uint8_t count exceeds buffer", ts, mptr->TextureSize);
   ReadModelTexture(hfile, mptr->lpTexture.get(), static_cast<size_t>(ts));
   BrightenTexture(mptr->lpTexture.get(), ts/2);
 
@@ -680,7 +680,7 @@ void GenerateAlphaFlags(TModel *mptr)
 #ifdef _d3d
 
   int w;
-  BOOL Opacity = false;
+  std::int32_t Opacity = false;
   std::uint16_t* tptr = mptr->lpTexture.get();
 
   for (w=0; w<mptr->FCount; w++)
@@ -731,14 +731,14 @@ void GenerateModelMipMaps(TModel *mptr, MemoryTag tag)
   if (!CheckedBytes3(static_cast<size_t>(th) + 1, 128, sizeof(std::uint16_t), mipBytes))
     ModelLoadFail("mipmap size overflow", th, 0);
   mptr->lpTexture2.reset(
-    static_cast<std::uint16_t*>(_HeapAlloc(Heap, HEAP_ZERO_MEMORY, mipBytes, tag)));
+    static_cast<std::uint16_t*>(_HeapAlloc(Heap, Platform::ZeroMemoryFlag, mipBytes, tag)));
   CreateMipMapMT(mptr->lpTexture2.get(), mptr->lpTexture.get(), th);
 
   th = (mptr->TextureHeight) / 4;
   if (!CheckedBytes3(static_cast<size_t>(th) + 1, 64, sizeof(std::uint16_t), mipBytes))
     ModelLoadFail("mipmap size overflow", th, 0);
   mptr->lpTexture3.reset(
-    static_cast<std::uint16_t*>(_HeapAlloc(Heap, HEAP_ZERO_MEMORY, mipBytes, tag)));
+    static_cast<std::uint16_t*>(_HeapAlloc(Heap, Platform::ZeroMemoryFlag, mipBytes, tag)));
   CreateMipMapMT2(mptr->lpTexture3.get(), mptr->lpTexture2.get(), th);
 }
 
@@ -909,7 +909,7 @@ void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
   if (hfile==Platform::InvalidFile)
   {
     char sz[512];
-    sprintf_s(sz, sizeof(sz), "Error opening character file:\n%s.", FName );
+    snprintf(sz, sizeof(sz), "Error opening character file:\n%s.", FName );
     DoHalt(sz);
   }
 
@@ -952,7 +952,7 @@ void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
   chinfo.mptr->lpTexture.reset(static_cast<std::uint16_t*>(_HeapAlloc(Heap, 0, chinfo.mptr->TextureSize, tag)));
 
   if (ts < 0 || (size_t)ts > (size_t)chinfo.mptr->TextureSize)
-    ModelLoadFail("texture byte count exceeds buffer", ts, chinfo.mptr->TextureSize);
+    ModelLoadFail("texture std::uint8_t count exceeds buffer", ts, chinfo.mptr->TextureSize);
   ReadModelTexture(hfile, chinfo.mptr->lpTexture.get(), static_cast<size_t>(ts));
   BrightenTexture(chinfo.mptr->lpTexture.get(), ts/2);
 
@@ -1004,7 +1004,7 @@ void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
   }
 
 //============= read sound fx ==============//
-  BYTE tmp[32];
+  std::uint8_t tmp[32];
   for (int s=0; s<chinfo.SfxCount; s++)
   {
     ReadModelExact(hfile, tmp, 32, "sound effect name");
