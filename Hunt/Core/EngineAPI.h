@@ -266,7 +266,7 @@ void NormVector(Vector3d& v, float Scale);
 #pragma push_macro("_HeapAlloc")
 #undef _HeapAlloc
 #endif
-[[nodiscard]] LPVOID _HeapAlloc(HANDLE hHeap, DWORD dwFlags, DWORD dwBytes);
+[[nodiscard]] LPVOID _HeapAlloc(HANDLE hHeap, DWORD dwFlags, size_t bytes);
 // Phase 5A: 4-arg overload with MemoryTag dispatch. No default for `tag` —
 // MSVC's overload resolution treats a 3-arg call as ambiguous between this
 // overload (using the default) and the 3-arg overload above, so the tag
@@ -278,7 +278,7 @@ void NormVector(Vector3d& v, float Scale);
 // Migration phases 5B-5E updated individual call sites to the explicit
 // 4-arg form with the appropriate tag (Global for session-lifetime, Level
 // for per-level).
-[[nodiscard]] LPVOID _HeapAlloc(HANDLE hHeap, DWORD dwFlags, DWORD dwBytes, MemoryTag tag);
+[[nodiscard]] LPVOID _HeapAlloc(HANDLE hHeap, DWORD dwFlags, size_t bytes, MemoryTag tag);
 #ifdef MEM_DEBUG
 #pragma pop_macro("_HeapAlloc")
 #endif
