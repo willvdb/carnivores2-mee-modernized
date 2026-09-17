@@ -1,15 +1,17 @@
 #pragma once
 #include <vector>
+#include "temp_path.h"
+#include <cstring>
 #include <cstdint>
 #include <gtest/gtest.h>
-#include <windows.h>
+#include "../Hunt/Platform/Files.h"
 struct MediaFile {
-    char path[MAX_PATH]{};
+    char path[4096]{};
     explicit MediaFile(const std::vector<std::uint8_t>& b) {
-        char dir[MAX_PATH];GetTempPathA(MAX_PATH,dir);GetTempFileNameA(dir,"med",0,path);
-        HANDLE f=CreateFileA(path,GENERIC_WRITE,0,nullptr,CREATE_ALWAYS,0,nullptr);
-        DWORD n=0;EXPECT_TRUE(WriteFile(f,b.data(),static_cast<DWORD>(b.size()),&n,nullptr));
-        EXPECT_EQ(n,b.size());CloseHandle(f);
+        std::strcpy(path, TestTempPath("med").c_str());
+        Platform::FileHandle f=Platform::OpenFile(path, Platform::FileMode::Write);
+        std::uint32_t n=0;EXPECT_TRUE(Platform::WriteFile(f, b.data(), static_cast<std::uint32_t>(b.size()), &n));
+        EXPECT_EQ(n,b.size());Platform::CloseFile(f);
     }
-    ~MediaFile() { DeleteFileA(path); }
+    ~MediaFile() { std::remove(path); }
 };

@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "Hunt.h"
+#include "temp_path.h"
 #include "Loaders/ResourceIO.h"
 #include "legacy_resource_fixtures.h"
 #include "legacy_map_fixtures.h"
@@ -11,11 +12,11 @@
 struct ResourceComplete {};
 struct MapComplete {};
 static bool loadMap = false;
-static DWORD closedPosition = 0;
+static std::uint32_t closedPosition = 0;
 namespace Platform { bool ResourceTestCloseFile(FileHandle file); }
 bool Platform::ResourceTestCloseFile(Platform::FileHandle file) {
-    if(file==hfile) closedPosition=SetFilePointer(file,0,nullptr,FILE_CURRENT);
-    return CloseHandle(file);
+    if(file==hfile) closedPosition=Platform::SeekFile(file, 0, Platform::SeekOrigin::Current);
+    return Platform::CloseFile(file);
 }
 void PrintLoad(char* text) {
     if(std::string(text)=="Loading .map..." && !loadMap) throw ResourceComplete{};
@@ -79,28 +80,27 @@ struct Fixture {
 struct File {
     std::string path;
     explicit File(const std::vector<std::uint8_t>& bytes) {
-        char dir[MAX_PATH],name[MAX_PATH]; GetTempPathA(MAX_PATH,dir); GetTempFileNameA(dir,"rsc",0,name);
-        DeleteFileA(name); path=std::string(name)+".rsc";
-        HANDLE f=CreateFileA(path.c_str(),GENERIC_WRITE,0,nullptr,CREATE_ALWAYS,0,nullptr);
-        DWORD got=0; EXPECT_TRUE(WriteFile(f,bytes.data(),static_cast<DWORD>(bytes.size()),&got,nullptr));
-        EXPECT_EQ(got,bytes.size()); CloseHandle(f);
+        path=TestTempPath("rsc")+".rsc";
+        Platform::FileHandle f=Platform::OpenFile(path.c_str(), Platform::FileMode::Write);
+        std::uint32_t got=0; EXPECT_TRUE(Platform::WriteFile(f, bytes.data(), static_cast<std::uint32_t>(bytes.size()), &got));
+        EXPECT_EQ(got,bytes.size()); Platform::CloseFile(f);
     }
-    void Open() { hfile=CreateFileA(path.c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr); }
+    void Open() { hfile=Platform::OpenFile(path.c_str(), Platform::FileMode::Read); }
     void Load() {
-        auto stem=path.substr(0,path.size()-4); strcpy_s(ProjectName,stem.c_str());
-        try { LoadResources(); } catch(const ResourceComplete&) { hfile=INVALID_HANDLE_VALUE; throw; }
-        catch(const MapComplete&) { hfile=INVALID_HANDLE_VALUE; throw; }
+        auto stem=path.substr(0,path.size()-4); strcpy(ProjectName,stem.c_str());
+        try { LoadResources(); } catch(const ResourceComplete&) { hfile=Platform::InvalidFile; throw; }
+        catch(const MapComplete&) { hfile=Platform::InvalidFile; throw; }
     }
-    ~File() { if(hfile!=INVALID_HANDLE_VALUE) { CloseHandle(hfile); hfile=INVALID_HANDLE_VALUE; } DeleteFileA(path.c_str()); }
+    ~File() { if(hfile!=Platform::InvalidFile) { Platform::CloseFile(hfile); hfile=Platform::InvalidFile; } std::remove(path.c_str()); }
 };
 class ResourceLoader : public testing::Test {
     void SetUp() override {
-        Heap=GetProcessHeap(); hfile=INVALID_HANDLE_VALUE; hlog=INVALID_HANDLE_VALUE;
+        Heap=Platform::CreateHeap(); hfile=Platform::InvalidFile; hlog=Platform::InvalidFile;
         OptBrightness=128; OptDayNight=1; srand(1); loadMap=false; closedPosition=0;
 #ifdef _soft
-        HARD3D=FALSE;
+        HARD3D=false;
 #else
-        HARD3D=TRUE;
+        HARD3D=true;
 #endif
     }
     void TearDown() override { ReleaseResources(); }
@@ -172,20 +172,20 @@ TEST_F(ResourceLoader, ProductionHelpersPreservePositionAndShortOutputs)
     File file(b); file.Open();
     int colors[3][3]; TObjInfo object; TFogEntity fog; TRD effects[16]; TWaterEntity water;
     ASSERT_TRUE(EngineResource::Read(hfile,colors)); ASSERT_TRUE(EngineResource::Read(hfile,colors));
-    EXPECT_EQ(SetFilePointer(hfile,0,nullptr,FILE_CURRENT),72u);
-    ASSERT_TRUE(EngineResource::Read(hfile,object)); EXPECT_EQ(SetFilePointer(hfile,0,nullptr,FILE_CURRENT),136u);
+    EXPECT_EQ(Platform::SeekFile(hfile, 0, Platform::SeekOrigin::Current),72u);
+    ASSERT_TRUE(EngineResource::Read(hfile,object)); EXPECT_EQ(Platform::SeekFile(hfile, 0, Platform::SeekOrigin::Current),136u);
     ASSERT_TRUE(EngineResource::Read(hfile,fog)); ASSERT_TRUE(EngineResource::Read(hfile,effects));
     EXPECT_EQ(std::memcmp(effects,ResourceGolden::Effects().data(),256),0);
-    ASSERT_TRUE(EngineResource::Read(hfile,water)); EXPECT_EQ(SetFilePointer(hfile,0,nullptr,FILE_CURRENT),428u);
+    ASSERT_TRUE(EngineResource::Read(hfile,water)); EXPECT_EQ(Platform::SeekFile(hfile, 0, Platform::SeekOrigin::Current),428u);
     unsigned short pixels[5]; ASSERT_TRUE(EngineResource::ReadTexture(hfile,pixels,5,5)); EXPECT_EQ(pixels[2],0x9234);
     short pcm[7]; ASSERT_TRUE(EngineResource::ReadPCM16(hfile,pcm,7,13)); EXPECT_EQ(pcm[6],171);
     int sentinel=0; ASSERT_TRUE(EngineResource::Read(hfile,sentinel)); EXPECT_EQ(sentinel,0x12345678);
-    EXPECT_EQ(SetFilePointer(hfile,0,nullptr,FILE_CURRENT),455u);
+    EXPECT_EQ(Platform::SeekFile(hfile, 0, Platform::SeekOrigin::Current),455u);
     EXPECT_FALSE(EngineResource::Read(hfile,sentinel)); EXPECT_EQ(sentinel,0x12345678);
     const auto old=object; EXPECT_FALSE(EngineResource::Read(hfile,object)); EXPECT_EQ(std::memcmp(&old,&object,64),0);
     EXPECT_FALSE(EngineResource::ReadTexture(hfile,pixels,4,5));
     EXPECT_FALSE(EngineResource::ReadPCM16(hfile,pcm,6,13));
-    EXPECT_EQ(SetFilePointer(hfile,0,nullptr,FILE_CURRENT),455u);
+    EXPECT_EQ(Platform::SeekFile(hfile, 0, Platform::SeekOrigin::Current),455u);
 }
 TEST_F(ResourceLoader, ChunkedPayloadsAndSkySeekPositions)
 {
@@ -194,10 +194,10 @@ TEST_F(ResourceLoader, ChunkedPayloadsAndSkySeekPositions)
     File file(b); file.Open(); short samples[2050]{};
     ASSERT_TRUE(EngineResource::ReadPCM16(hfile,samples,2050,4099));
     EXPECT_EQ(samples[2047],-2); EXPECT_EQ(samples[2048],256); EXPECT_EQ(samples[2049],2);
-    EXPECT_EQ(SetFilePointer(hfile,0,nullptr,FILE_CURRENT),4099u);
+    EXPECT_EQ(Platform::SeekFile(hfile, 0, Platform::SeekOrigin::Current),4099u);
     EXPECT_TRUE(EngineResource::ReadPCM16(hfile,nullptr,0,0));
     EXPECT_TRUE(EngineResource::ReadTexture(hfile,nullptr,0,0));
-    CloseHandle(hfile); hfile=INVALID_HANDLE_VALUE;
+    Platform::CloseFile(hfile); hfile=Platform::InvalidFile;
     for(int day=0;day<3;++day) {
         std::vector<std::uint8_t> sky(3*131072+16384,0);
         for(unsigned image=0;image<3;++image) {
@@ -205,9 +205,9 @@ TEST_F(ResourceLoader, ChunkedPayloadsAndSkySeekPositions)
         }
         sky[3*131072]=0xab; File sf(sky); sf.Open(); OptDayNight=day;
         LoadSky(); EXPECT_EQ(SkyPic[0],0x1234+day);
-        EXPECT_EQ(SetFilePointer(hfile,0,nullptr,FILE_CURRENT),3*131072u);
+        EXPECT_EQ(Platform::SeekFile(hfile, 0, Platform::SeekOrigin::Current),3*131072u);
         LoadSkyMap(); EXPECT_EQ(SkyMap[0],0xab);
-        EXPECT_EQ(SetFilePointer(hfile,0,nullptr,FILE_CURRENT),3*131072u+16384);
+        EXPECT_EQ(Platform::SeekFile(hfile, 0, Platform::SeekOrigin::Current),3*131072u+16384);
     }
 }
 TEST_F(ResourceLoader, EmptyCountsAndMaximumFogWaterTables)
@@ -250,7 +250,7 @@ namespace {
 struct MapFile {
     std::string path;
     explicit MapFile(const File& rsc) : path(rsc.path.substr(0,rsc.path.size()-4)+".map") {
-        HANDLE f=CreateFileA(path.c_str(),GENERIC_WRITE,0,nullptr,CREATE_ALWAYS,0,nullptr);
+        Platform::FileHandle f=Platform::OpenFile(path.c_str(), Platform::FileMode::Write);
         for(unsigned plane=0;plane<12;++plane) {
             const bool word=plane==1 || plane==2 || plane==4;
             const unsigned width=plane>=10 ? 512 : 1024;
@@ -269,24 +269,24 @@ struct MapFile {
                     else { row[0]=0; row[1]=128; row[2]=255; }
                 }
                 if(plane>=5 && plane<=7) row[width-1]=static_cast<std::uint8_t>(40+plane);
-                DWORD wrote=0; EXPECT_TRUE(WriteFile(f,row.data(),static_cast<DWORD>(row.size()),&wrote,nullptr));
+                std::uint32_t wrote=0; EXPECT_TRUE(Platform::WriteFile(f, row.data(), static_cast<std::uint32_t>(row.size()), &wrote));
                 EXPECT_EQ(wrote,row.size());
             }
         }
-        EXPECT_EQ(SetFilePointer(f,0,nullptr,FILE_CURRENT),MapGolden::Size);
-        CloseHandle(f);
+        EXPECT_EQ(Platform::SeekFile(f, 0, Platform::SeekOrigin::Current),MapGolden::Size);
+        Platform::CloseFile(f);
     }
     void Patch(std::size_t offset,std::initializer_list<std::uint8_t> bytes) {
-        HANDLE f=CreateFileA(path.c_str(),GENERIC_WRITE,0,nullptr,OPEN_EXISTING,0,nullptr);
-        SetFilePointer(f,static_cast<LONG>(offset),nullptr,FILE_BEGIN); DWORD wrote=0;
-        ASSERT_TRUE(WriteFile(f,bytes.begin(),static_cast<DWORD>(bytes.size()),&wrote,nullptr));
-        CloseHandle(f);
+        Platform::FileHandle f=Platform::OpenFile(path.c_str(), Platform::FileMode::Update);
+        Platform::SeekFile(f, static_cast<std::int32_t>(offset), Platform::SeekOrigin::Begin); std::uint32_t wrote=0;
+        ASSERT_TRUE(Platform::WriteFile(f, bytes.begin(), static_cast<std::uint32_t>(bytes.size()), &wrote));
+        Platform::CloseFile(f);
     }
     void Truncate(std::size_t size) {
-        HANDLE f=CreateFileA(path.c_str(),GENERIC_WRITE,0,nullptr,OPEN_EXISTING,0,nullptr);
-        SetFilePointer(f,static_cast<LONG>(size),nullptr,FILE_BEGIN); EXPECT_TRUE(SetEndOfFile(f)); CloseHandle(f);
+        Platform::FileHandle f=Platform::OpenFile(path.c_str(), Platform::FileMode::Update);
+        Platform::CloseFile(f); std::filesystem::resize_file(path, size);
     }
-    ~MapFile() { DeleteFileA(path.c_str()); }
+    ~MapFile() { std::remove(path.c_str()); }
 };
 std::vector<std::uint8_t> MapResource() {
     Fixture f;
@@ -327,11 +327,11 @@ TEST_F(ResourceLoader, MapTruncationNeverReachesPostprocessing)
         SCOPED_TRACE(end+delta); OptDayNight=day;
         MapFile map(resource); map.Truncate(end+delta);
         EXPECT_THROW(resource.Load(),std::runtime_error);
-        CloseHandle(hfile); hfile=INVALID_HANDLE_VALUE;
+        Platform::CloseFile(hfile); hfile=Platform::InvalidFile;
     }
     MapFile map(resource); map.Truncate(MapGolden::Size-1);
     EXPECT_THROW(resource.Load(),std::runtime_error);
-    CloseHandle(hfile); hfile=INVALID_HANDLE_VALUE;
+    Platform::CloseFile(hfile); hfile=Platform::InvalidFile;
 }
 TEST_F(ResourceLoader, MapReferenceValidationRetainsFullWordsAndSentinels)
 {
@@ -342,19 +342,19 @@ TEST_F(ResourceLoader, MapReferenceValidationRetainsFullWordsAndSentinels)
         catch(const std::runtime_error& e) { EXPECT_NE(std::string(e.what()).find("texture index out of range"),std::string::npos); }
         EXPECT_EQ(TMap1[0][0],plane==1 ? value : 0);
         EXPECT_EQ(TMap2[0][0],plane==2 ? value : 0);
-        EXPECT_EQ(SetFilePointer(hfile,0,nullptr,FILE_CURRENT),MapGolden::Size);
-        CloseHandle(hfile); hfile=INVALID_HANDLE_VALUE;
+        EXPECT_EQ(Platform::SeekFile(hfile, 0, Platform::SeekOrigin::Current),MapGolden::Size);
+        Platform::CloseFile(hfile); hfile=Platform::InvalidFile;
     }
     for(auto entry:{std::pair<unsigned,unsigned>{3,1},{8,1},{8,255}}) {
         MapFile map(resource); map.Patch(MapGolden::Offsets[entry.first]+1,{static_cast<std::uint8_t>(entry.second)});
         EXPECT_THROW(resource.Load(),std::runtime_error);
-        CloseHandle(hfile); hfile=INVALID_HANDLE_VALUE;
+        Platform::CloseFile(hfile); hfile=Platform::InvalidFile;
     }
     for(unsigned count:{64u,65u}) {
         MapFile map(resource);
         for(unsigned i=0;i<count;++i) map.Patch(MapGolden::Offsets[3]+i,{254});
         if(count==64) EXPECT_THROW(resource.Load(),MapComplete);
-        else { EXPECT_THROW(resource.Load(),std::runtime_error); CloseHandle(hfile); hfile=INVALID_HANDLE_VALUE; }
+        else { EXPECT_THROW(resource.Load(),std::runtime_error); Platform::CloseFile(hfile); hfile=Platform::InvalidFile; }
     }
 }
 
@@ -367,38 +367,38 @@ TEST_F(ResourceLoader, MapIOExactBytesCapacityAndWordChunkEdges)
     EXPECT_FALSE(EngineMap::ReadBytes(hfile,nullptr,3,3));
     EXPECT_FALSE(EngineMap::ReadBytes(hfile,out,SIZE_MAX,SIZE_MAX));
     EXPECT_TRUE(EngineMap::ReadBytes(hfile,nullptr,0,0));
-    EXPECT_EQ(SetFilePointer(hfile,0,nullptr,FILE_CURRENT),0u);
+    EXPECT_EQ(Platform::SeekFile(hfile, 0, Platform::SeekOrigin::Current),0u);
     ASSERT_TRUE(EngineMap::ReadBytes(hfile,out,3,3));
     EXPECT_EQ(out[0],0); EXPECT_EQ(out[1],128); EXPECT_EQ(out[2],255);
-    SetFilePointer(hfile,1,nullptr,FILE_BEGIN);
+    Platform::SeekFile(hfile, 1, Platform::SeekOrigin::Begin);
     EXPECT_FALSE(EngineMap::ReadBytes(hfile,out,3,3)); // exactly one byte short
-    CloseHandle(hfile); hfile=INVALID_HANDLE_VALUE;
+    Platform::CloseFile(hfile); hfile=Platform::InvalidFile;
 
     std::vector<std::uint8_t> words(8194);
     for(std::size_t i=0;i<4097;++i) {
         const auto v=MapGolden::Values[i%7]; words[2*i]=v%256; words[2*i+1]=v/256;
     }
-    File wordFile(words); wordFile.Open(); std::vector<WORD> decoded(4097,0xa55a);
+    File wordFile(words); wordFile.Open(); std::vector<std::uint16_t> decoded(4097,0xa55a);
     EXPECT_FALSE(EngineMap::ReadWords(hfile,decoded.data(),4096,4097));
     EXPECT_FALSE(EngineMap::ReadWords(hfile,nullptr,4097,4097));
     EXPECT_FALSE(EngineMap::ReadWords(hfile,decoded.data(),SIZE_MAX,SIZE_MAX));
     EXPECT_TRUE(EngineMap::ReadWords(hfile,nullptr,0,0));
     EXPECT_EQ(decoded.front(),0xa55a); EXPECT_EQ(decoded.back(),0xa55a);
-    EXPECT_EQ(SetFilePointer(hfile,0,nullptr,FILE_CURRENT),0u);
+    EXPECT_EQ(Platform::SeekFile(hfile, 0, Platform::SeekOrigin::Current),0u);
     ASSERT_TRUE(EngineMap::ReadWords(hfile,decoded.data(),decoded.size(),decoded.size()));
     for(std::size_t i=0;i<decoded.size();++i) EXPECT_EQ(decoded[i],MapGolden::Values[i%7]);
-    EXPECT_EQ(SetFilePointer(hfile,0,nullptr,FILE_CURRENT),8194u);
-    SetFilePointer(hfile,0,nullptr,FILE_BEGIN);
+    EXPECT_EQ(Platform::SeekFile(hfile, 0, Platform::SeekOrigin::Current),8194u);
+    Platform::SeekFile(hfile, 0, Platform::SeekOrigin::Begin);
     decoded.push_back(0xa55a);
     EXPECT_FALSE(EngineMap::ReadWords(hfile,decoded.data(),decoded.size(),decoded.size()));
     EXPECT_EQ(decoded.back(),0xa55a);
     // Last incomplete chunk is not assigned, earlier complete chunks may be.
-    SetFilePointer(hfile,0,nullptr,FILE_BEGIN);
+    Platform::SeekFile(hfile, 0, Platform::SeekOrigin::Begin);
     EXPECT_FALSE(EngineMap::ReadLightPlane(hfile,LMap,-1));
     EXPECT_FALSE(EngineMap::ReadLightPlane(hfile,LMap,3));
     EXPECT_FALSE(EngineMap::SkipLightBytes(hfile,3*1048576));
     EXPECT_FALSE(EngineMap::SkipLightBytes(hfile,1048576));
-    EXPECT_EQ(SetFilePointer(hfile,0,nullptr,FILE_CURRENT),0u);
+    EXPECT_EQ(Platform::SeekFile(hfile, 0, Platform::SeekOrigin::Current),0u);
 }
 TEST_F(ResourceLoader, MapFogMutationRemainsSeparateFromSerializedInput)
 {
@@ -419,7 +419,7 @@ TEST_F(ResourceLoader, MapReferencesAtRowEdgesAndSentinelRequiresTextureOne)
     {
         Fixture onlyOne; File resource(onlyOne.bytes); MapFile map(resource);
         EXPECT_THROW(resource.Load(),std::runtime_error); // 0xffff requires texture 1
-        CloseHandle(hfile); hfile=INVALID_HANDLE_VALUE;
+        Platform::CloseFile(hfile); hfile=Platform::InvalidFile;
     }
     File resource(MapResource()); MapFile map(resource);
     for(unsigned plane:{1u,2u}) {

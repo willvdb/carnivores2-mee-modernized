@@ -353,7 +353,7 @@ endif()
 # ============================================================
 # Testing
 # ============================================================
-if(MSVC)
+if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     enable_testing()
     include(FetchContent)
     FetchContent_Declare(
@@ -363,17 +363,21 @@ if(MSVC)
     set(FETCHCONTENT_QUIET OFF)
     FetchContent_MakeAvailable(googletest)
 
-    add_executable(Carnivores2PlatformTests tests/test_platform_policies.cpp
-        tests/test_platform_win32.cpp Hunt/Platform/PlatformWin32.cpp)
-    target_link_libraries(Carnivores2PlatformTests PRIVATE gtest_main user32 gdi32 winmm)
+    add_executable(Carnivores2PlatformTests tests/test_platform_policies.cpp)
+    target_link_libraries(Carnivores2PlatformTests PRIVATE gtest_main)
+    if(WIN32)
+        target_sources(Carnivores2PlatformTests PRIVATE tests/test_platform_win32.cpp Hunt/Platform/PlatformWin32.cpp)
+        target_link_libraries(Carnivores2PlatformTests PRIVATE user32 gdi32 winmm)
+    endif()
     add_test(NAME Carnivores2Tests.Platform COMMAND Carnivores2PlatformTests)
 
     if(CARNIVORES_PLATFORM STREQUAL "SDL3")
         add_executable(Carnivores2SDLTests tests/test_legacy_keyboard_sdl.cpp
-            tests/test_platform_sdl.cpp tests/test_platform_sdl_win32.cpp
+            tests/test_platform_sdl.cpp $<$<BOOL:${WIN32}>:tests/test_platform_sdl_win32.cpp>
+            $<$<NOT:$<BOOL:${WIN32}>>:tests/test_platform_sdl_linux.cpp>
             Hunt/Platform/LegacyKeyboardSDL.cpp
-            Hunt/Platform/PlatformSDL.cpp Hunt/Platform/PlatformSDLWin32.cpp)
-        target_link_libraries(Carnivores2SDLTests PRIVATE gtest_main SDL3::SDL3 user32)
+            Hunt/Platform/PlatformSDL.cpp ${SDL_COMPAT_SRC})
+        target_link_libraries(Carnivores2SDLTests PRIVATE gtest_main SDL3::SDL3 $<$<BOOL:${WIN32}>:user32>)
         add_test(NAME Carnivores2Tests.SDL COMMAND Carnivores2SDLTests)
         if(TARGET SDL3::SDL3-shared)
             add_custom_command(TARGET Carnivores2SDLTests POST_BUILD
@@ -388,7 +392,7 @@ if(MSVC)
         tests/test_billboard_math.cpp
         tests/test_math.cpp
         tests/test_trophy_mode.cpp
-        tests/test_key_bindings.cpp
+        $<$<BOOL:${WIN32}>:tests/test_key_bindings.cpp>
         tests/test_load_validate.cpp
         tests/test_map_scaling.cpp
         tests/test_memory_arena.cpp
@@ -428,9 +432,11 @@ if(MSVC)
 
     # Menu and engine headers define different global types. Keep the menu
     # record checks in a separate executable and compare against the same bytes.
+    if(WIN32)
     add_executable(Carnivores2MenuLayoutTests tests/test_menu_serialized_layout.cpp)
     target_link_libraries(Carnivores2MenuLayoutTests PRIVATE gtest_main)
     add_test(NAME Carnivores2Tests.MenuLayout COMMAND Carnivores2MenuLayoutTests)
+    endif()
 
     # Real model file I/O/conversion against synthetic files, with heap/lighting
     # test doubles, using the selected renderer's real UV correction path.
@@ -447,9 +453,15 @@ if(MSVC)
         tests/resource_loader_source.cpp Hunt/Loaders/ModelLoader.cpp Hunt/Core/StateDefs.cpp)
     target_include_directories(Carnivores2ResourceTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Hunt ${CMAKE_CURRENT_SOURCE_DIR}/deps)
     target_compile_definitions(Carnivores2ResourceTests PRIVATE ${RENDER_DEFINES})
-    target_compile_options(Carnivores2ResourceTests PRIVATE /Gy)
-    target_link_options(Carnivores2ResourceTests PRIVATE /OPT:REF /INCREMENTAL:NO)
-    target_link_libraries(Carnivores2ResourceTests PRIVATE gtest_main winmm)
+    if(MSVC)
+        target_compile_options(Carnivores2ResourceTests PRIVATE /Gy)
+        target_link_options(Carnivores2ResourceTests PRIVATE /OPT:REF /INCREMENTAL:NO)
+        target_link_libraries(Carnivores2ResourceTests PRIVATE winmm)
+    else()
+        target_compile_options(Carnivores2ResourceTests PRIVATE -ffunction-sections -fdata-sections)
+        target_link_options(Carnivores2ResourceTests PRIVATE -Wl,--gc-sections)
+    endif()
+    target_link_libraries(Carnivores2ResourceTests PRIVATE gtest_main)
     add_test(NAME Carnivores2Tests.ResourceLoader COMMAND Carnivores2ResourceTests)
 
     add_executable(Carnivores2MediaTests tests/test_media_loader.cpp tests/media_loader_source.cpp)
@@ -457,12 +469,14 @@ if(MSVC)
     target_link_libraries(Carnivores2MediaTests PRIVATE gtest_main)
     add_test(NAME Carnivores2Tests.MediaLoader COMMAND Carnivores2MediaTests)
 
+    if(WIN32)
     add_executable(Carnivores2MenuMediaTests tests/test_menu_media.cpp Menu/Resources.cpp)
     target_include_directories(Carnivores2MenuMediaTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Hunt)
     target_compile_options(Carnivores2MenuMediaTests PRIVATE /Gy)
     target_link_options(Carnivores2MenuMediaTests PRIVATE /OPT:REF /INCREMENTAL:NO)
     target_link_libraries(Carnivores2MenuMediaTests PRIVATE gtest_main)
     add_test(NAME Carnivores2Tests.MenuMedia COMMAND Carnivores2MenuMediaTests)
+    endif()
 
     # Exercise the production world-model sampler without a GL context.
     # Engine globals / CalcFogLevel are controlled test doubles in this target.
@@ -479,10 +493,17 @@ if(MSVC)
     add_executable(Carnivores2UITests
         tests/test_ui_text.cpp
         Hunt/Renderer/UIText.cpp
-        Hunt/Renderer/CPUTextWin32.cpp
+        $<$<BOOL:${WIN32}>:Hunt/Renderer/CPUTextWin32.cpp>
+        $<$<NOT:$<BOOL:${WIN32}>>:Hunt/Renderer/CPUTextRaster.cpp>
     )
     target_include_directories(Carnivores2UITests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Hunt)
-    target_link_libraries(Carnivores2UITests PRIVATE gtest_main gdi32)
+    target_link_libraries(Carnivores2UITests PRIVATE gtest_main)
+    if(WIN32)
+        target_link_libraries(Carnivores2UITests PRIVATE gdi32)
+    else()
+        target_sources(Carnivores2UITests PRIVATE tests/test_cpu_buffer.cpp)
+        target_link_libraries(Carnivores2UITests PRIVATE Freetype::Freetype Fontconfig::Fontconfig)
+    endif()
     add_test(NAME Carnivores2Tests.UIText COMMAND Carnivores2UITests)
 
     add_library(CarnivoresTestLibrary SHARED tests/shared_library_fixture.cpp)
@@ -493,7 +514,7 @@ if(MSVC)
     add_test(NAME Carnivores2Tests.SharedLibrary COMMAND Carnivores2LibraryTests)
 
     # SmokeTest only runs when a game executable is built (not menu-only)
-    if(TARGET Carnivores1)
+    if(WIN32 AND TARGET Carnivores1)
         add_test(NAME SmokeTest
             COMMAND powershell -ExecutionPolicy Bypass -File
                 ${CMAKE_SOURCE_DIR}/tests/smoke_test.ps1
@@ -503,7 +524,7 @@ if(MSVC)
     endif()
 endif()
 
-foreach(target IN ITEMS Carnivores1 Carnivores2Menu Carnivores2Tests Carnivores2MemoryPlainTests Carnivores2MemoryDebugTests Carnivores2ResourceTests Carnivores2ModelTests Carnivores2MediaTests)
+foreach(target IN ITEMS Carnivores1 Carnivores2Menu Carnivores2MenuMediaTests Carnivores2Tests Carnivores2MemoryPlainTests Carnivores2MemoryDebugTests Carnivores2ResourceTests Carnivores2ModelTests Carnivores2MediaTests)
     if(TARGET ${target})
         target_link_libraries(${target} PRIVATE CarnivoresPlatformMemory)
     endif()

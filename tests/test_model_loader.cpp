@@ -1,18 +1,20 @@
 #include <gtest/gtest.h>
 #include "Hunt.h"
+#include "temp_path.h"
 #include "Loaders/LoadValidate.h"
 #include "legacy_model_fixtures.h"
 #include <stdexcept>
 
 // Isolate real ModelLoader Win32 I/O and conversion from the game/renderer.
-HANDLE Heap=GetProcessHeap(), hfile=INVALID_HANDLE_VALUE;
+Platform::HeapHandle Heap=Platform::CreateHeap();
+Platform::FileHandle hfile=Platform::InvalidFile;
 std::uint32_t l=0;
 int OCount=0, MaxObjectVCount=0, OptBrightness=128;
 TObj gObj[1024]{};
 #ifdef _soft
-BOOL HARD3D=FALSE;
+std::int32_t HARD3D=false;
 #else
-BOOL HARD3D=TRUE;
+std::int32_t HARD3D=true;
 #endif
 // Unused resource texture/map paths share this translation unit.
 decltype(SkyFade) SkyFade{}; decltype(SkyMap) SkyMap{};
@@ -21,12 +23,12 @@ decltype(OptDayNight) OptDayNight{}; decltype(SkyPic) SkyPic{};
 decltype(WMap) WMap{}; decltype(FMap) FMap{}; decltype(TMap1) TMap1{};
 decltype(MapPic) MapPic{}; decltype(WaterList) WaterList{};
 int SkyR=0, SkyG=0, SkyB=0;
-WORD conv_565(WORD) { throw std::runtime_error("unexpected map conversion"); }
-LPVOID _HeapAlloc(HANDLE heap, std::uint32_t flags, size_t bytes, MemoryTag)
-{ return HeapAlloc(heap,flags|HEAP_ZERO_MEMORY,bytes); }
-LPVOID _HeapAlloc(HANDLE heap, std::uint32_t flags, size_t bytes)
+std::uint16_t conv_565(std::uint16_t) { throw std::runtime_error("unexpected map conversion"); }
+void* _HeapAlloc(Platform::FileHandle heap, std::uint32_t flags, size_t bytes, MemoryTag)
+{ return Platform::AllocateHeap(heap,flags|Platform::ZeroMemoryFlag,bytes); }
+void* _HeapAlloc(Platform::FileHandle heap, std::uint32_t flags, size_t bytes)
 { return _HeapAlloc(heap,flags,bytes,MemoryTag::Global); }
-BOOL _HeapFree(HANDLE heap,std::uint32_t flags,LPVOID p) { return HeapFree(heap,flags,p); }
+std::int32_t _HeapFree(Platform::FileHandle heap,std::uint32_t flags,void* p) { return Platform::FreeHeap(heap,flags,p); }
 [[noreturn]] void DoHalt(const char* message) { throw std::runtime_error(message); }
 void CalcLights(TModel*) {}
 void ReleaseModelTexture(const TModel*) {}
@@ -35,14 +37,14 @@ void ReleaseModelBuffers(TModel*);
 
 namespace {
 struct File {
-    char path[MAX_PATH]{};
+    char path[4096]{};
     explicit File(const std::vector<std::uint8_t>& b) {
-        char dir[MAX_PATH]; GetTempPathA(MAX_PATH,dir); GetTempFileNameA(dir,"mdl",0,path);
-        HANDLE f=CreateFileA(path,GENERIC_WRITE,0,nullptr,CREATE_ALWAYS,0,nullptr);
-        DWORD got=0; EXPECT_TRUE(WriteFile(f,b.data(),static_cast<DWORD>(b.size()),&got,nullptr));
-        EXPECT_EQ(got,b.size()); CloseHandle(f);
+        std::strcpy(path, TestTempPath("mdl").c_str());
+        Platform::FileHandle f=Platform::OpenFile(path, Platform::FileMode::Write);
+        std::uint32_t got=0; EXPECT_TRUE(Platform::WriteFile(f, b.data(), static_cast<std::uint32_t>(b.size()), &got));
+        EXPECT_EQ(got,b.size()); Platform::CloseFile(f);
     }
-    ~File() { if(hfile!=INVALID_HANDLE_VALUE) { CloseHandle(hfile); hfile=INVALID_HANDLE_VALUE; } DeleteFileA(path); }
+    ~File() { if(hfile!=Platform::InvalidFile) { Platform::CloseFile(hfile); hfile=Platform::InvalidFile; } std::remove(path); }
 };
 void Word(std::vector<std::uint8_t>& b,std::uint32_t value)
 { for(unsigned i=0;i<4;++i) { b.push_back(value%256); value/=256; } }
@@ -73,12 +75,12 @@ TEST(ModelLoader, ObjectAnimationReadsExtraStoredFrame)
 {
     std::vector<std::uint8_t> b; Word(b,0x12345678); Word(b,1); Word(b,20); Word(b,1);
     Append(b,ModelGolden::Samples); Word(b,0x76543210);
-    File file(b); hfile=CreateFileA(file.path,GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr);
+    File file(b); hfile=Platform::OpenFile(file.path, Platform::FileMode::Read);
     TVTL vtl{}; LoadAnimation(vtl,1);
     EXPECT_EQ(vtl.FramesCount,2); EXPECT_EQ(vtl.AniTime,100);
     const short expected[]{-32768,32767,-1,0,4660,-4660};
     for(int i=0;i<6;++i) EXPECT_EQ(vtl.aniData[i],expected[i]);
-    EXPECT_EQ(SetFilePointer(hfile,0,nullptr,FILE_CURRENT),28u);
+    EXPECT_EQ(Platform::SeekFile(hfile, 0, Platform::SeekOrigin::Current),28u);
 }
 TEST(ModelLoader, ThreeDFGeometryAndRendererUVConversion)
 {
@@ -131,12 +133,12 @@ TEST(ModelLoader, RejectsInvalidAnimationHeadersAndTruncation)
 {
     for(const int frames : {0,-1,INT32_MAX/256}) {
         std::vector<std::uint8_t> b; Word(b,0); Word(b,1); Word(b,20); Word(b,frames);
-        File file(b); hfile=CreateFileA(file.path,GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr);
+        File file(b); hfile=Platform::OpenFile(file.path, Platform::FileMode::Read);
         TVTL vtl{}; EXPECT_THROW(LoadAnimation(vtl,1),std::runtime_error);
         EXPECT_EQ(vtl.aniData.get(),nullptr);
     }
     std::vector<std::uint8_t> b(15,0); File file(b);
-    hfile=CreateFileA(file.path,GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr);
+    hfile=Platform::OpenFile(file.path, Platform::FileMode::Read);
     TVTL vtl{}; EXPECT_THROW(LoadAnimation(vtl,1),std::runtime_error);
     EXPECT_EQ(vtl.aniData.get(),nullptr);
 }

@@ -1,18 +1,19 @@
 #include <gtest/gtest.h>
 #include "Hunt.h"
+#include "temp_path.h"
 #include "media_fixtures.h"
 #include "media_test_file.h"
 #include <stdexcept>
-HANDLE Heap=GetProcessHeap();BOOL HARD3D=TRUE,NightVisionOn=FALSE;
-extern DWORD MediaEndPosition;
-extern std::vector<HANDLE> MediaHandles;
-LPVOID _HeapAlloc(HANDLE h,std::uint32_t f,size_t n,MemoryTag) { return HeapAlloc(h,f|HEAP_ZERO_MEMORY,n); }
-BOOL _HeapFree(HANDLE h,std::uint32_t f,LPVOID p) { return HeapFree(h,f,p); }
+Platform::FileHandle Heap=Platform::CreateHeap();std::int32_t HARD3D=true,NightVisionOn=false;
+extern std::uint32_t MediaEndPosition;
+extern std::vector<Platform::FileHandle> MediaHandles;
+void* _HeapAlloc(Platform::FileHandle h,std::uint32_t f,size_t n,MemoryTag) { return Platform::AllocateHeap(h,f|Platform::ZeroMemoryFlag,n); }
+std::int32_t _HeapFree(Platform::FileHandle h,std::uint32_t f,void* p) { return Platform::FreeHeap(h,f,p); }
 [[noreturn]] void DoHalt(const char* m) {
-    for(auto h:MediaHandles) if(h!=INVALID_HANDLE_VALUE) CloseHandle(h);
+    for(auto h:MediaHandles) if(h!=Platform::InvalidFile) Platform::CloseFile(h);
     MediaHandles.clear();throw std::runtime_error(m);
 }
-WORD conv_565(WORD c) { return (c&31)+((c&0xffe0)<<1); }
+std::uint16_t conv_565(std::uint16_t c) { return (c&31)+((c&0xffe0)<<1); }
 TEST(MediaLoader, TgaRowsWordsAndConversion) {
     auto b=MediaGolden::Tga();b.push_back(0x77);MediaFile file(b);TPicture p;
     LoadPictureTGA(p,file.path,MemoryTag::Global);
@@ -68,23 +69,23 @@ TEST(MediaLoader, ChunkedTgaAndIgnoredMetadata) {
 }
 TEST(MediaLoader, StreamingCapacityFailuresDoNotConsumeInput) {
     auto b=MediaGolden::Wav();MediaFile f(b);
-    HANDLE file=CreateFileA(f.path,GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr);
-    WORD pixels[2]{99,99};short pcm[2]{99,99};
+    Platform::FileHandle file=Platform::OpenFile(f.path, Platform::FileMode::Read);
+    std::uint16_t pixels[2]{99,99};short pcm[2]{99,99};
     EXPECT_FALSE(EngineImage::ReadPixels(file,pixels,2,3));
     EXPECT_FALSE(EngineImage::ReadPixels(file,pixels,SIZE_MAX,SIZE_MAX));
     EXPECT_FALSE(EngineImage::ReadPixels(file,nullptr,2,2));
     EXPECT_FALSE(EngineAudio::ReadPCM16(file,pcm,2,5));
     EXPECT_FALSE(EngineAudio::ReadPCM16(file,pcm,2,SIZE_MAX));
     EXPECT_FALSE(EngineAudio::ReadPCM16(file,nullptr,2,3));
-    EXPECT_EQ(SetFilePointer(file,0,nullptr,FILE_CURRENT),0u);
+    EXPECT_EQ(Platform::SeekFile(file, 0, Platform::SeekOrigin::Current),0u);
     EXPECT_EQ(pixels[0],99);EXPECT_EQ(pcm[0],99);
     EXPECT_TRUE(EngineImage::ReadPixels(file,nullptr,0,0));
     EXPECT_TRUE(EngineAudio::ReadPCM16(file,nullptr,0,0));
-    SetFilePointer(file,static_cast<LONG>(b.size()-1),nullptr,FILE_BEGIN);
+    Platform::SeekFile(file, static_cast<std::int32_t>(b.size()-1), Platform::SeekOrigin::Begin);
     EXPECT_FALSE(EngineImage::ReadPixels(file,pixels,2,1));EXPECT_EQ(pixels[0],99);
-    SetFilePointer(file,static_cast<LONG>(b.size()-1),nullptr,FILE_BEGIN);
+    Platform::SeekFile(file, static_cast<std::int32_t>(b.size()-1), Platform::SeekOrigin::Begin);
     EXPECT_FALSE(EngineAudio::ReadPCM16(file,pcm,2,2));EXPECT_EQ(pcm[0],99);
-    CloseHandle(file);
+    Platform::CloseFile(file);
 }
 TEST(MediaLoader, WavSignedExtremes) {
     MediaFile f(MediaGolden::Wav());TSFX s;LoadWav(f.path,s);
