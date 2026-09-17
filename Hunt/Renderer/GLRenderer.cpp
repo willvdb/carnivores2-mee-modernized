@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "Renderer/GLUtils.h"
+#include "Platform/PlatformWin32.h"
 #include "Core/TerrainFog.h"
 #include "Core/WaterColor.h"  // §3.1: water-colour-aware depth modulation
 
@@ -46,7 +47,7 @@ bool GLRenderer::CreateContext()
 {
     LOG_INFO("OpenGL initialization started");
 
-    m_hwnd = hwndMain;
+    m_hwnd = Platform::Win32::GameWindow();
     if (!m_hwnd) {
         LOG_ERROR("hwndMain is null");
         return false;

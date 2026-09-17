@@ -34,4 +34,26 @@ void SetMouseCapture(bool capture);
 void WarpPointerInClient(Point position);
 Point PointerInClient();
 
+void EnableDpiAwareness();
+// The transitional Win32 entry point supplies its instance/WndProc separately.
+// False means class registration failed, matching the legacy creation contract.
+bool CreateGameWindow();
+bool HasGameWindow();
+void ShowAndFocusGameWindow();
+void SetProcessActive(bool active);
+
+enum class PumpResult { Idle, Dispatched, Quit };
+// Consume at most one event; quitCode is written only for Quit.
+PumpResult PumpOneEvent(int& quitCode);
+void RequestQuit();
+
+enum class WindowMode { Exclusive, Borderless, Windowed };
+void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter);
+Size ClientSize();
+void ShowLoadingWindow(Size size);
+void RestoreDesktopMode();
+void LoadArrowCursor();
+void HideArrowCursor();
+void ShowCursorOnExit(); // Exactly one visibility-counter increment.
+
 } // namespace Platform

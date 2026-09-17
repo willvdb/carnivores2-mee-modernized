@@ -11,10 +11,6 @@
 #include "Platform/PlatformWin32.h"
 #include "Game/FrameTiming.h"
 
-#ifndef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
-#define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 ((DPI_AWARENESS_CONTEXT)-4)
-#endif
-
 // Near-model overlays were authored for a 4:3 viewport. Scale them far
 // enough to cover wider viewports without changing their vertical framing.
 static float GetScopeAspectFillScale()
@@ -22,18 +18,6 @@ static float GetScopeAspectFillScale()
   constexpr float kReferenceAspect = 4.0f / 3.0f;
   if (WinH <= 0) return 1.0f;
   return (std::max)(1.0f, (static_cast<float>(WinW) / static_cast<float>(WinH)) / kReferenceAspect);
-}
-
-static void EnablePerMonitorV2DpiAwareness()
-{
-  using SetProcessDpiAwarenessContextProc = BOOL(WINAPI*)(DPI_AWARENESS_CONTEXT);
-  auto setProcessDpiAwarenessContext =
-    reinterpret_cast<SetProcessDpiAwarenessContextProc>(
-      GetProcAddress(GetModuleHandleA("user32.dll"), "SetProcessDpiAwarenessContext"));
-
-  if (setProcessDpiAwarenessContext) {
-    setProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-  }
 }
 
 #ifdef _soft
@@ -1048,16 +1032,13 @@ static void ConfirmExitMenu() // Y/Enter: start evacuation, restore the view
   g_GameMode = DismissMenuRestore();
 }
 
-LRESULT CALLBACK MainWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+static void HandleFocusChange(bool active)
 {
-  BOOL A = (GetActiveWindow() == hWnd);
-
-  if (A!=blActive)
+  if (active != (blActive != FALSE))
   {
-    blActive = A;
+    blActive = active;
 
-    if (blActive) SetPriorityClass( GetCurrentProcess(), HIGH_PRIORITY_CLASS);
-    else SetPriorityClass( GetCurrentProcess(), IDLE_PRIORITY_CLASS);
+    Platform::SetProcessActive(active);
 
     if (!blActive)
     {
@@ -1074,6 +1055,12 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
     }
 
   }
+
+}
+
+LRESULT CALLBACK MainWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+  HandleFocusChange(Platform::Win32::IsWindowActive(hWnd));
 
   // Toggles fire once per press, not on Windows key-repeat. SYSKEYDOWN
   // also carries Alt bindings; the normal window handling below is retained.
@@ -1453,7 +1440,7 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
   }
 
   case WM_DESTROY:
-    PostQuitMessage(0);
+    Platform::RequestQuit();
     break;
 
   // WM_PAINT / WM_ERASEBKGND: the game loop renders every frame via
@@ -1501,60 +1488,12 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
 BOOL CreateMainWindow()
 {
   PrintLog("Creating main window...");
-  WNDCLASS wc;
-  wc.style = CS_OWNDC;
-  wc.lpfnWndProc = MainWndProc;
-  wc.cbClsExtra = 0;
-  wc.cbWndExtra = 0;
-  wc.hInstance = hInst;
-  wc.hIcon = wc.hIcon = (HICON)LoadIcon(hInst,"ACTION");
-  wc.hCursor = nullptr;
-  wc.hbrBackground = (HBRUSH)GetStockObject( BLACK_BRUSH );
-  wc.lpszMenuName = nullptr;
-  //wc.lpfnWndProc  = nullptr;
-  wc.lpszClassName = "HuntRenderWindow";
-  if (!RegisterClass(&wc)) return false;
-
-  hwndMain = CreateWindow(
-               "HuntRenderWindow","Carnivores 2 Renderer",
-               WS_VISIBLE |  WS_POPUP,
-               0, 0, 0, 0, nullptr,  nullptr, hInst, nullptr );
-
-  Platform::Win32::SetGameWindow(hwndMain);
-  if (hwndMain)
-    PrintLog("Ok.\n");
-
+  if (!Platform::CreateGameWindow()) return false;
+  // Transitional alias for the untouched GDI/DirectDraw/audio consumers.
+  hwndMain = Platform::Win32::GameWindow();
+  if (hwndMain) PrintLog("Ok.\n");
   return true;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 static void LimitFPS()
 {
@@ -1673,8 +1612,7 @@ void ProcessGame()
 
   if (NeedRVM)
   {
-	SetWindowPos(hwndMain, HWND_TOP, 0,0,0,0,  SWP_SHOWWINDOW);
-	SetFocus(hwndMain);
+	Platform::ShowAndFocusGameWindow();
 	Activate3DHardware();
 	NeedRVM = false;
   }
@@ -1728,10 +1666,10 @@ int PASCAL WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
                    LPSTR lpszCmdLine, int nCmdShow)
 {
 	
-	MSG msg;
+  int quitCode = 0;
 
-  hInst = hInstance;
-  EnablePerMonitorV2DpiAwareness();
+  Platform::Win32::Initialize(hInstance, MainWndProc);
+  Platform::EnableDpiAwareness();
 
   // Keep structured diagnostics separate from the legacy render.log stream.
   LogInit("carnivor.log");
@@ -1747,7 +1685,7 @@ int PASCAL WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
   PrintLoad("Loading...");
 
   PrintLog("== Loading resources ==\n");
-  hcArrow = LoadCursor(nullptr, IDC_ARROW);
+  Platform::LoadArrowCursor();
 
 
   PrintLog("Loading common resources:");
@@ -1845,13 +1783,9 @@ int PASCAL WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
   PrintLog("Entering messages loop.\n");
   for( ; ; ){
-    if( PeekMessage( &msg, nullptr, 0, 0, PM_REMOVE ) )
-    {
-      if (msg.message == WM_QUIT)  break;
-      TranslateMessage( &msg );
-      DispatchMessage( &msg );
-    }
-    else
+    const auto event = Platform::PumpOneEvent(quitCode);
+    if (event == Platform::PumpResult::Quit) break;
+    if (event == Platform::PumpResult::Idle)
     {
       if (blActive) { ProcessGame(); LimitFPS(); }
       else Platform::SleepMilliseconds(100);
@@ -1874,11 +1808,11 @@ int PASCAL WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
   ShutDownEngine();
 
-  ShowCursor(true);
+  Platform::ShowCursorOnExit();
   PrintLog("Game normal shutdown.\n");
   LOG_INFO("Game normal shutdown");
 
   CloseLog();
   LogClose();
-  return msg.wParam;
+  return quitCode;
 }

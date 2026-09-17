@@ -1,5 +1,6 @@
 #define INITGUID
 #include "Hunt.h"
+#include "Platform/Platform.h"
 #ifdef _gl
 #include "Renderer/GLRenderer.h"
 #endif
@@ -155,7 +156,7 @@ void SetFullScreen()
   // (ChangeDisplaySettings is per-process, so exit also restores it, but
   // toggling back to windowed in-game needs the explicit restore.)
   if (!FULLSCREEN) {
-    ChangeDisplaySettings(nullptr, 0);
+    Platform::RestoreDesktopMode();
   }
 
 #ifndef _gl
@@ -241,9 +242,7 @@ void UpdateLoadingWindow()
 void StartLoading()
 {
   LoadPictureTGA(LoadWall,   "HUNTDAT\\MENU\\loading.tga");
-  SetWindowPos(hwndMain, HWND_TOP, (GetSystemMetrics(SM_CXSCREEN) - LoadWall.W)/2,
-               (GetSystemMetrics(SM_CYSCREEN) - LoadWall.H/2)/2, LoadWall.W, LoadWall.H/2,
-               SWP_SHOWWINDOW);
+  Platform::ShowLoadingWindow({LoadWall.W, LoadWall.H / 2});
 }
 
 void EndLoading()
@@ -274,85 +273,11 @@ void SetVideoMode(int W, int H)
   // hwndMain is not yet created) — that path uses the old hardcoded
   // 1024x768 DIB which is fine because the initial render is the
   // loading screen only.
-  if (hwndMain) CreateVideoDIB(WinW, WinH);
+  if (Platform::HasGameWindow()) CreateVideoDIB(WinW, WinH);
 
-  if (FULLSCREEN) {
-    SetWindowLong(hwndMain, GWL_STYLE, WS_VISIBLE | WS_POPUP);
-
-    // Honour the configured resolution by switching the display mode,
-    // like the original game's exclusive fullscreen. Fall back to a
-    // desktop-sized popup if the mode is not available (e.g. a
-    // resolution the monitor cannot display). ChangeDisplaySettings is
-    // per-process: the desktop is restored automatically on exit.
-    bool modeSet = false;
-    DEVMODE dm;
-    ZeroMemory(&dm, sizeof(dm));
-    dm.dmSize = sizeof(dm);
-    dm.dmPelsWidth  = W;
-    dm.dmPelsHeight = H;
-    dm.dmBitsPerPel = 32;
-    dm.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL;
-    if (ChangeDisplaySettings(&dm, CDS_FULLSCREEN) == DISP_CHANGE_SUCCESSFUL)
-      modeSet = true;
-    else {
-      dm.dmBitsPerPel = 16;
-      if (ChangeDisplaySettings(&dm, CDS_FULLSCREEN) == DISP_CHANGE_SUCCESSFUL)
-        modeSet = true;
-    }
-
-    int dispW = GetSystemMetrics(SM_CXSCREEN);
-    int dispH = GetSystemMetrics(SM_CYSCREEN);
-    if (modeSet) {
-      // The display is now W x H, so the window must cover exactly that.
-      dispW = W;
-      dispH = H;
-    }
-
-    // SWP_FRAMECHANGED: required after SetWindowLong changes the style, otherwise
-    // the frame (title bar/borders) is not recalculated and the client area
-    // ends up at the wrong size. This caused HUD elements (ammo counter etc.)
-    // to be hidden behind the title bar in windowed mode, especially at
-    // resolutions where the window extends off-screen (e.g. 2560x1440 windowed
-    // on a 2560x1440 desktop).
-    SetWindowPos(hwndMain, HWND_TOP, 0, 0, dispW, dispH, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
-
-    POINT center = { VideoCX, VideoCY };
-    SetCursorPos(center.x, center.y);
-  } else if (BORDERLESS) {
-    // DWM-composed borderless window. Honour the configured resolution as
-    // the window size (centered on the desktop); when the configured
-    // resolution equals the desktop this covers the screen exactly, which
-    // is the classic "borderless fullscreen" behaviour. A smaller pick
-    // yields a true borderless window at that resolution instead of
-    // silently rendering at the desktop size.
-    int desktopW = GetSystemMetrics(SM_CXSCREEN);
-    int desktopH = GetSystemMetrics(SM_CYSCREEN);
-    int winW = (W > 0 && W <= desktopW) ? W : desktopW;
-    int winH = (H > 0 && H <= desktopH) ? H : desktopH;
-
-    SetWindowLong(hwndMain, GWL_STYLE, WS_VISIBLE | WS_OVERLAPPED);
-    SetWindowPos(hwndMain, HWND_TOP,
-                (desktopW - winW) / 2, (desktopH - winH) / 2,
-                winW, winH,
-                SWP_FRAMECHANGED | SWP_SHOWWINDOW);
-
-    POINT center = { VideoCX, VideoCY };
-    SetCursorPos(center.x, center.y);
-  } else {
-    DWORD style = WS_VISIBLE | WS_OVERLAPPEDWINDOW;
-    SetWindowLong(hwndMain, GWL_STYLE, style);
-
-    RECT r = { 0, 0, WinW, WinH };
-    AdjustWindowRect(&r, style, false);
-
-    int ww = r.right - r.left;
-    int wh = r.bottom - r.top;
-    int sx = (GetSystemMetrics(SM_CXSCREEN) - ww) / 2;
-    int sy = (GetSystemMetrics(SM_CYSCREEN) - wh) / 2;
-    // SWP_FRAMECHANGED: see comment above. Without it the new
-    // WS_OVERLAPPEDWINDOW frame is not applied and the client area is wrong.
-    SetWindowPos(hwndMain, HWND_TOP, sx, sy, ww, wh, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
-  }
+  const auto mode = FULLSCREEN ? Platform::WindowMode::Exclusive :
+                    BORDERLESS ? Platform::WindowMode::Borderless : Platform::WindowMode::Windowed;
+  Platform::ConfigureGameWindow(mode, {W, H}, {VideoCX, VideoCY});
 
   // Sync WinW/WinH and all derived values to the ACTUAL client area the OS
   // gave us. AdjustWindowRect predicts the frame chrome, but the real chrome
@@ -363,11 +288,10 @@ void SetVideoMode(int W, int H)
   // than the visible area and the top/bottom of the HUD would be clipped
   // (e.g. ammo counter hidden behind the title bar at 2560x1440 windowed on
   // a 2560x1440 desktop).
-  if (hwndMain) {
-    RECT clientRect;
-    GetClientRect(hwndMain, &clientRect);
-    int actualW = clientRect.right - clientRect.left;
-    int actualH = clientRect.bottom - clientRect.top;
+  if (Platform::HasGameWindow()) {
+    const auto client = Platform::ClientSize();
+    int actualW = client.width;
+    int actualH = client.height;
     if (actualW > 0 && actualH > 0 &&
         (actualW != WinW || actualH != WinH)) {
       char logt[128];
@@ -403,8 +327,7 @@ void SetVideoMode(int W, int H)
   CameraW = CameraH;
 
   LoDetailSky =(W>400);
-  SetCursor(hcArrow);
-  while (ShowCursor(false)>=0) ;
+  Platform::HideArrowCursor();
 }
 
 

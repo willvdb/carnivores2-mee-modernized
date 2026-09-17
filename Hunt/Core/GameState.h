@@ -58,7 +58,6 @@ GLOBAL   int iSendResult;
 
 GLOBAL   HWND    hwndMain;
 
-GLOBAL   HINSTANCE  hInst;
 
 GLOBAL   HANDLE  Heap;
 
@@ -444,7 +443,6 @@ GLOBAL   void    *lpVideoBuf, *lpTextureAddr;
 
 GLOBAL   HBITMAP hbmpVideoBuf;
 
-GLOBAL   HCURSOR hcArrow;
 
 GLOBAL   int     DivTbl[10240];
 
