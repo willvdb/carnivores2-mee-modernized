@@ -34,3 +34,18 @@ jobs:
     # hunt/sound/shutdown validation remains a separate local smoke test.
     - name: Unit and serialized layout tests
       run: ctest --test-dir build/${{ matrix.preset }} -R "^Carnivores2Tests" --output-on-failure
+
+  linux-portability-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [g++, clang++]
+    steps:
+    - uses: actions/checkout@v4
+    - name: Configure portable shared tests
+      run: cmake --preset linux-portability-tests -DCMAKE_CXX_COMPILER=${{ matrix.compiler }}
+    - name: Build portable shared tests
+      run: cmake --build --preset linux-portability-tests
+    - name: Run portable shared tests
+      run: ctest --preset linux-portability-tests

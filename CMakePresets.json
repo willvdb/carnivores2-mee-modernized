@@ -159,6 +159,20 @@
         "windows-x64-base",
         "gl-release-base"
       ]
+    },
+    {
+      "name": "linux-portability-tests",
+      "displayName": "Linux portable shared tests (no game)",
+      "inherits": "base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CARNIVORES_PORTABILITY_TESTS_ONLY": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -209,6 +223,10 @@
     {
       "name": "windows-x64-gl-release",
       "configurePreset": "windows-x64-gl-release"
+    },
+    {
+      "name": "linux-portability-tests",
+      "configurePreset": "linux-portability-tests"
     }
   ],
   "testPresets": [
@@ -258,6 +276,13 @@
         "include": {
           "name": "^Carnivores2Tests"
         }
+      }
+    },
+    {
+      "name": "linux-portability-tests",
+      "configurePreset": "linux-portability-tests",
+      "output": {
+        "outputOnFailure": true
       }
     }
   ]

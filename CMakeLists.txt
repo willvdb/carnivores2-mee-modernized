@@ -5,6 +5,33 @@ project(Carnivores1)
 cmake_policy(SET CMP0091 NEW)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+add_library(LegacyPath STATIC Shared/LegacyPath.cpp)
+target_compile_features(LegacyPath PUBLIC cxx_std_17)
+
+# First native portability surface: shared utilities/codecs only, no game,
+# menu, Win32 sources or renderer dependencies. Windows presets stay unchanged.
+option(CARNIVORES_PORTABILITY_TESTS_ONLY "Build only portable shared tests" OFF)
+if(CARNIVORES_PORTABILITY_TESTS_ONLY)
+    enable_testing()
+    include(FetchContent)
+    FetchContent_Declare(googletest
+        URL https://github.com/google/googletest/archive/refs/tags/release-1.12.1.zip)
+    FetchContent_MakeAvailable(googletest)
+    add_executable(Carnivores2PortabilityTests
+        tests/test_legacy_path.cpp
+        tests/test_legacy_profile.cpp
+        tests/test_legacy_model.cpp
+        tests/test_legacy_resource.cpp
+        tests/test_legacy_map.cpp
+        tests/test_legacy_image.cpp
+        tests/test_legacy_audio.cpp)
+    target_link_libraries(Carnivores2PortabilityTests PRIVATE LegacyPath gtest_main)
+    add_test(NAME Carnivores2Tests.Portability COMMAND Carnivores2PortabilityTests)
+    return()
+endif()
+
 # Renderer selection: SOFT or GL.
 # Leave empty (unset) to build only the standalone menu executable.
 set(RENDERER "" CACHE STRING "Select the renderer: SOFT or GL. Leave empty to build the menu only.")
@@ -143,10 +170,6 @@ else()
     message(STATUS "RENDERER is empty - building menu only (no game executable)")
 endif()
 
-# Set C++ Standard
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
 # Core source files (excluding renderers)
 set(CORE_FILES
     Hunt/Audio/Audio_DLL.cpp
@@ -239,9 +262,6 @@ if(MSVC AND CMAKE_BUILD_TYPE STREQUAL "Release")
     endif()
     set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /LTCG")
 endif()
-
-add_library(LegacyPath STATIC Shared/LegacyPath.cpp)
-target_compile_features(LegacyPath PUBLIC cxx_std_17)
 
 # Menu subdirectory (always built - renderer-agnostic)
 add_subdirectory(Menu)
