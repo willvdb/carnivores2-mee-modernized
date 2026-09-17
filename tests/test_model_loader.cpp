@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "Hunt.h"
+#include "test_temp_path.h"
 #include "Loaders/LoadValidate.h"
 #include "legacy_model_fixtures.h"
 #include <stdexcept>
@@ -37,7 +38,7 @@ namespace {
 struct File {
     char path[MAX_PATH]{};
     explicit File(const std::vector<std::uint8_t>& b) {
-        char dir[MAX_PATH]; GetTempPathA(MAX_PATH,dir); GetTempFileNameA(dir,"mdl",0,path);
+        const auto dir = TestTempDirectory().string(); GetTempFileNameA(dir.c_str(),"mdl",0,path);
         HANDLE f=CreateFileA(path,GENERIC_WRITE,0,nullptr,CREATE_ALWAYS,0,nullptr);
         DWORD got=0; EXPECT_TRUE(WriteFile(f,b.data(),static_cast<DWORD>(b.size()),&got,nullptr));
         EXPECT_EQ(got,b.size()); CloseHandle(f);

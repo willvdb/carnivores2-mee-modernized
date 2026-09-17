@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "../Shared/LegacyPath.h"
+#include "test_temp_path.h"
 #include <chrono>
 #include <fstream>
 #include <random>
@@ -12,7 +13,7 @@ protected:
     void SetUp() override {
         const auto id = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())
             + "-" + std::to_string(std::random_device{}());
-        root = fs::temp_directory_path() / ("carnivores-path-" + id);
+        root = TestTempDirectory() / ("carnivores-path-" + id);
         ASSERT_TRUE(fs::create_directory(root));
     }
     void TearDown() override {

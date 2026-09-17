@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "Hunt.h"
+#include "test_temp_path.h"
 #include "Loaders/ResourceIO.h"
 #include "legacy_resource_fixtures.h"
 #include "legacy_map_fixtures.h"
@@ -78,7 +79,7 @@ struct Fixture {
 struct File {
     std::string path;
     explicit File(const std::vector<std::uint8_t>& bytes) {
-        char dir[MAX_PATH],name[MAX_PATH]; GetTempPathA(MAX_PATH,dir); GetTempFileNameA(dir,"rsc",0,name);
+        const auto dir = TestTempDirectory().string(); char name[MAX_PATH]; GetTempFileNameA(dir.c_str(),"rsc",0,name);
         DeleteFileA(name); path=std::string(name)+".rsc";
         HANDLE f=CreateFileA(path.c_str(),GENERIC_WRITE,0,nullptr,CREATE_ALWAYS,0,nullptr);
         DWORD got=0; EXPECT_TRUE(WriteFile(f,bytes.data(),static_cast<DWORD>(bytes.size()),&got,nullptr));

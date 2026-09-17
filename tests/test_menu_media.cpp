@@ -68,9 +68,9 @@ class MenuPaths : public testing::Test {
 protected:
     std::filesystem::path root, previous;
     void SetUp() override {
-        char dir[MAX_PATH], name[MAX_PATH];
-        ASSERT_NE(GetTempPathA(MAX_PATH, dir), 0u);
-        ASSERT_NE(GetTempFileNameA(dir, "pth", 0, name), 0u);
+        const auto dir = TestTempDirectory().string();
+        char name[MAX_PATH];
+        ASSERT_NE(GetTempFileNameA(dir.c_str(), "pth", 0, name), 0u);
         ASSERT_TRUE(DeleteFileA(name));
         root = name;
         ASSERT_TRUE(std::filesystem::create_directory(root));
