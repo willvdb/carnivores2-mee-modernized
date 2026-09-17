@@ -59,7 +59,7 @@ TEST_F(PlatformSDL, UnhandledEventStillConsumesOneIteration)
     EXPECT_EQ(Platform::PumpOneEvent(code,&event),Platform::PumpResult::Dispatched);
     EXPECT_EQ(event.type,Platform::EventType::KeyDown);
 }
-TEST_F(PlatformSDL, WindowCloseReturnsNormalQuitWithoutDestroyingWindowEarly)
+TEST_F(PlatformSDL, WindowCloseReturnsNormalQuit)
 {
     Push(SDL_EVENT_WINDOW_CLOSE_REQUESTED);
     int code=-7;
@@ -86,4 +86,17 @@ TEST_F(PlatformSDL, TimerUnitsAndInputHints)
     EXPECT_STREQ(SDL_GetHint(SDL_HINT_MOUSE_AUTO_CAPTURE),"0");
     EXPECT_STREQ(SDL_GetHint(SDL_HINT_WINDOWS_RAW_KEYBOARD),"0");
     EXPECT_STREQ(SDL_GetHint(SDL_HINT_WINDOWS_CLOSE_ON_ALT_F4),"0");
+}
+TEST_F(PlatformSDL, NewEventsBehindSDLPollBoundaryAreNotAnIdleFrame)
+{
+    Push(SDL_EVENT_USER);
+    SDL_Event ignored{};
+    ASSERT_TRUE(SDL_PollEvent(&ignored)); // Leaves SDL's end-of-poll marker.
+    PushKey(true);
+    int code=-7; Platform::Event event;
+    EXPECT_EQ(Platform::PumpOneEvent(code,&event),Platform::PumpResult::Dispatched);
+    EXPECT_EQ(event.type,Platform::EventType::KeyDown);
+    EXPECT_EQ(event.key.key,'W');
+    EXPECT_EQ(Platform::PumpOneEvent(code,&event),Platform::PumpResult::Idle);
+    EXPECT_EQ(code,-7);
 }

@@ -160,7 +160,20 @@ PumpResult PumpOneEvent(int& quitCode, Event* output)
         return PumpResult::Dispatched;
     }
     SDL_Event native;
-    if (!SDL_PollEvent(&native)) return PumpResult::Idle;
+    // PollEvent can return false at a batch sentinel even with newer events
+    // queued behind it. Idle must mean the real queue is empty, since only the
+    // idle path renders a frame. Drain one event, pumping only when empty.
+    int count = SDL_PeepEvents(&native, 1, SDL_GETEVENT, SDL_EVENT_FIRST, SDL_EVENT_LAST);
+    if (count == 0) {
+        SDL_PumpEvents();
+        count = SDL_PeepEvents(&native, 1, SDL_GETEVENT, SDL_EVENT_FIRST, SDL_EVENT_LAST);
+    }
+    if (count < 0) {
+        LOG_ERROR("SDL event queue failed: %s", SDL_GetError());
+        quitCode = 1;
+        return PumpResult::Quit;
+    }
+    if (count == 0) return PumpResult::Idle;
     const auto windowID = gameWindow ? SDL_GetWindowID(gameWindow) : 0;
     Event event;
     if (native.type == SDL_EVENT_KEYMAP_CHANGED) altGrLayout = HasAltGrLayout();
