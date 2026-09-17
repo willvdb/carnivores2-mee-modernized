@@ -875,7 +875,7 @@ void LoadResources()
   // Loop below touches FogsList[0..FgCount]; the read targets FogsList[1].
   size_t fogbytes = 0;
   if (!IsValidCount(FgCount, 255) ||
-      !CheckedBytes2((size_t)FgCount, sizeof(TFogEntity), fogbytes))
+      !CheckedTransferBytes2((size_t)FgCount, sizeof(TFogEntity), fogbytes))
     RscLoadFail("fog count exceeds FogsList capacity", FgCount, 255);
   ReadRscExact(hfile, &FogsList[1], (DWORD)fogbytes, "fog records");
 
@@ -956,7 +956,7 @@ void LoadResources()
   ReadRscExact(hfile, &WtrCount, 4, "water count");
   size_t wtrbytes = 0;
   if (!IsValidCount(WtrCount, 256) ||
-      !CheckedBytes2((size_t)WtrCount, 16, wtrbytes))
+      !CheckedTransferBytes2((size_t)WtrCount, 16, wtrbytes))
     RscLoadFail("water count exceeds WaterList capacity", WtrCount, 256);
   ReadRscExact(hfile, WaterList, (DWORD)wtrbytes, "water records");
 

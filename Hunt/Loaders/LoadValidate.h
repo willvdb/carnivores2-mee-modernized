@@ -83,24 +83,46 @@ inline bool IsValidMapWaterIndex(uint8_t index, int waterCount)
     return IsValidIndex(static_cast<int>(index), waterCount);
 }
 
-// size = a * b without 32-bit wrap. The allocator takes a DWORD, so the
-// result must also fit 32 bits.
+// Native storage sizes: check before multiplying, including on x64 where
+// unsigned long long is no wider than size_t. Failure leaves out unchanged.
 inline bool CheckedBytes2(size_t a, size_t b, size_t& out)
 {
-    const unsigned long long wide =
-        static_cast<unsigned long long>(a) * static_cast<unsigned long long>(b);
-    if (wide > static_cast<unsigned long long>(0xFFFFFFFFu))
+    if (b != 0 && a > (std::numeric_limits<size_t>::max)() / b)
         return false;
-    out = static_cast<size_t>(wide);
+    out = a * b;
     return true;
 }
 
 inline bool CheckedBytes3(size_t a, size_t b, size_t c, size_t& out)
 {
+    if (a == 0 || b == 0 || c == 0) {
+        out = 0;
+        return true;
+    }
     size_t ab = 0;
     if (!CheckedBytes2(a, b, ab))
         return false;
     return CheckedBytes2(ab, c, out);
+}
+
+// Single legacy/Win32 transfer sizes have a separate UINT32_MAX ceiling.
+// A native allocation succeeding does not prove a ReadFile count will fit.
+inline bool CheckedTransferBytes2(size_t a, size_t b, size_t& out)
+{
+    size_t bytes = 0;
+    if (!CheckedBytes2(a, b, bytes) || bytes > UINT32_MAX)
+        return false;
+    out = bytes;
+    return true;
+}
+
+inline bool CheckedTransferBytes3(size_t a, size_t b, size_t c, size_t& out)
+{
+    size_t bytes = 0;
+    if (!CheckedBytes3(a, b, c, bytes) || bytes > UINT32_MAX)
+        return false;
+    out = bytes;
+    return true;
 }
 
 // Face-vertex index must address a loaded vertex.

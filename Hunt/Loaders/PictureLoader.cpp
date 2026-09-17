@@ -67,7 +67,7 @@ void LoadPicture(TPicture &pic, LPSTR pname, MemoryTag tag)
   size_t pxbytes = 0;
   if (!IsValidBmpWidth(pic.W))
     PicLoadFail("BMP width exceeds row buffer", pic.W, 800);
-  if (pic.H <= 0 || !CheckedBytes3((size_t)pic.W, (size_t)pic.H, 2, pxbytes))
+  if (pic.H <= 0 || !CheckedTransferBytes3((size_t)pic.W, (size_t)pic.H, 2, pxbytes))
     PicLoadFail("BMP dimensions out of range", pic.H, 0);
   pic.lpImage.reset(static_cast<WORD*>(_HeapAlloc(Heap, 0, (DWORD)pxbytes, tag)));
 
@@ -116,7 +116,7 @@ void LoadPictureTGA(TPicture &pic, LPSTR pname, MemoryTag tag)
   // so no stack width cap applies here.
   size_t tpxbytes = 0;
   if (pic.W <= 0 || pic.H <= 0 ||
-      !CheckedBytes3((size_t)pic.W, (size_t)pic.H, 2, tpxbytes))
+      !CheckedTransferBytes3((size_t)pic.W, (size_t)pic.H, 2, tpxbytes))
     PicLoadFail("TGA dimensions out of range", pic.W, pic.H);
   pic.lpImage.reset(static_cast<WORD*>(_HeapAlloc(Heap, 0, (DWORD)tpxbytes, tag)));
 
