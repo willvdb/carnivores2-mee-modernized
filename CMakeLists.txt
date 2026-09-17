@@ -240,6 +240,9 @@ if(MSVC AND CMAKE_BUILD_TYPE STREQUAL "Release")
     set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /LTCG")
 endif()
 
+add_library(LegacyPath STATIC Shared/LegacyPath.cpp)
+target_compile_features(LegacyPath PUBLIC cxx_std_17)
+
 # Menu subdirectory (always built - renderer-agnostic)
 add_subdirectory(Menu)
 
@@ -290,6 +293,10 @@ if(MSVC)
     )
     set(FETCHCONTENT_QUIET OFF)
     FetchContent_MakeAvailable(googletest)
+
+    add_executable(Carnivores2PathTests tests/test_legacy_path.cpp)
+    target_link_libraries(Carnivores2PathTests PRIVATE LegacyPath gtest_main)
+    add_test(NAME Carnivores2Tests.LegacyPath COMMAND Carnivores2PathTests)
 
     add_executable(Carnivores2Tests
         tests/test_billboard_math.cpp
