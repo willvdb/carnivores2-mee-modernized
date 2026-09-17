@@ -1,5 +1,6 @@
 #include "Hunt.h"
 #include "LoadValidate.h"
+#include "ResourceIO.h"
 #include "stdio.h"
 #include "timeapi.h"
 
@@ -18,6 +19,17 @@ static void RscLoadFail(const char* what, int value, int limit)
 static void ReadRscExact(HANDLE file, void* dst, DWORD bytes, const char* what)
 {
   if (!ReadExact(file, dst, bytes))
+  {
+    char sz[256];
+    sprintf_s(sz, sizeof(sz), "Resource loading error: truncated %s.", what);
+    DoHalt(sz);
+  }
+}
+
+template<class T>
+static void ReadRscValue(HANDLE file, T& out, const char* what)
+{
+  if (!EngineResource::Read(file, out))
   {
     char sz[256];
     sprintf_s(sz, sizeof(sz), "Resource loading error: truncated %s.", what);
@@ -788,7 +800,7 @@ void LoadResources()
     return;
   }
 
-  if (!ReadExact(hfile, &tc, 4) || !ReadExact(hfile, &mc, 4))
+  if (!EngineResource::Read(hfile, tc) || !EngineResource::Read(hfile, mc))
     DoHalt("Resource loading error: truncated resource header.");
   l = 4;
   // tc indexes Textures[1024]; mc indexes MObjects[256].
@@ -797,8 +809,8 @@ void LoadResources()
   if (!IsValidCount(mc, 256))
     RscLoadFail("model count exceeds capacity", mc, 256);
 
-  ReadRscExact(hfile, FadeRGB, sizeof(FadeRGB), "fade color table");
-  ReadRscExact(hfile, TransRGB, sizeof(TransRGB), "transparency color table");
+  ReadRscValue(hfile, FadeRGB, "fade color table");
+  ReadRscValue(hfile, TransRGB, "transparency color table");
 
   SkyR  =  FadeRGB[OptDayNight][0];
   SkyG  =  FadeRGB[OptDayNight][1];
@@ -833,7 +845,7 @@ void LoadResources()
   PrintLoad("Loading models...");
   for (int mm=0; mm<mc; mm++)
   {
-    ReadRscExact(hfile, &MObjects[mm].info, 64, "model info record");
+    ReadRscValue(hfile, MObjects[mm].info, "model info record");
     MObjects[mm].info.Radius*=2;
     MObjects[mm].info.YLo*=2;
     MObjects[mm].info.YHi*=2;
@@ -874,13 +886,14 @@ void LoadResources()
   LoadSkyMap();
 
   int FgCount = 0;
-  ReadRscExact(hfile, &FgCount, 4, "fog count");
+  ReadRscValue(hfile, FgCount, "fog count");
   // Loop below touches FogsList[0..FgCount]; the read targets FogsList[1].
   size_t fogbytes = 0;
   if (!IsValidCount(FgCount, 255) ||
-      !CheckedTransferBytes2((size_t)FgCount, sizeof(TFogEntity), fogbytes))
+      !CheckedTransferBytes2((size_t)FgCount, LegacyResource::FogSize, fogbytes))
     RscLoadFail("fog count exceeds FogsList capacity", FgCount, 255);
-  ReadRscExact(hfile, &FogsList[1], (DWORD)fogbytes, "fog records");
+  for (int f=1; f<=FgCount; f++)
+    ReadRscValue(hfile, FogsList[f], "fog records");
 
   for (int f=0; f<=FgCount; f++)
   {
@@ -895,12 +908,12 @@ void LoadResources()
 
   int RdCount = 0, AmbCount = 0, WtrCount = 0;
 
-  ReadRscExact(hfile, &RdCount, 4, "random-sound count");
+  ReadRscValue(hfile, RdCount, "random-sound count");
   if (!IsValidCount(RdCount, 256))
     RscLoadFail("random-sound count exceeds capacity", RdCount, 256);
   for (int r=0; r<RdCount; r++)
   {
-    ReadRscExact(hfile, &RandSound[r].length, 4, "random-sound length");
+    ReadRscValue(hfile, RandSound[r].length, "random-sound length");
     // Phase 5B.1: lpData is now std::vector<short int>. assign() value-
     // initializes to zero (matches the previous HEAP_ZERO_MEMORY behavior).
     // Bound the length first: corrupt values drove huge assigns (and odd
@@ -912,21 +925,21 @@ void LoadResources()
                  (DWORD)RandSound[r].length, "random-sound data");
   }
 
-  ReadRscExact(hfile, &AmbCount, 4, "ambient count");
+  ReadRscValue(hfile, AmbCount, "ambient count");
   if (!IsValidCount(AmbCount, 256))
     RscLoadFail("ambient count exceeds capacity", AmbCount, 256);
   for (int a=0; a<AmbCount; a++)
   {
-    ReadRscExact(hfile, &Ambient[a].sfx.length, 4, "ambient-sound length");
+    ReadRscValue(hfile, Ambient[a].sfx.length, "ambient-sound length");
     if (!IsValidWavLength(Ambient[a].sfx.length))
       RscLoadFail("ambient-sound length out of range", Ambient[a].sfx.length, 16 << 20);
     Ambient[a].sfx.lpData.assign(WavAllocSamples(Ambient[a].sfx.length), 0);
     ReadRscExact(hfile, Ambient[a].sfx.lpData.data(),
                  (DWORD)Ambient[a].sfx.length, "ambient-sound data");
 
-    ReadRscExact(hfile, Ambient[a].rdata, sizeof(Ambient[a].rdata), "ambient random-effect records");
-    ReadRscExact(hfile, &Ambient[a].RSFXCount, 4, "ambient random-effect count");
-    ReadRscExact(hfile, &Ambient[a].AVolume, 4, "ambient volume");
+    ReadRscValue(hfile, Ambient[a].rdata, "ambient random-effect records");
+    ReadRscValue(hfile, Ambient[a].RSFXCount, "ambient random-effect count");
+    ReadRscValue(hfile, Ambient[a].AVolume, "ambient volume");
     // RSFXCount indexes rdata[16] (and rdata[r+1]) in the filter below
     // and feeds rand() % RSFXCount in Controls.cpp.
     if (!IsValidCount(Ambient[a].RSFXCount, 16))
@@ -956,12 +969,13 @@ void LoadResources()
 
   }
 
-  ReadRscExact(hfile, &WtrCount, 4, "water count");
+  ReadRscValue(hfile, WtrCount, "water count");
   size_t wtrbytes = 0;
   if (!IsValidCount(WtrCount, 256) ||
-      !CheckedTransferBytes2((size_t)WtrCount, 16, wtrbytes))
+      !CheckedTransferBytes2((size_t)WtrCount, LegacyResource::WaterSize, wtrbytes))
     RscLoadFail("water count exceeds WaterList capacity", WtrCount, 256);
-  ReadRscExact(hfile, WaterList, (DWORD)wtrbytes, "water records");
+  for (int w=0; w<WtrCount; w++)
+    ReadRscValue(hfile, WaterList[w], "water records");
 
   WaterList[255].wlevel = 0;
   for (int w=0; w<WtrCount; w++)
