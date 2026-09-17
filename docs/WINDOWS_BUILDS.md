@@ -408,3 +408,12 @@ save/evacuation interchange, repeated-level runtime behavior, native Windows
 execution or successful physical allocations above 4 GiB. Existing arena reset
 unit tests do pass. Native Windows playtesting and the other deferred audit
 findings remain follow-up work.
+
+## Profile serialization slice (2026-09-17)
+
+The bounded D07/D08 implementation now uses explicit shared C2 `.sav`/`.sab`
+codecs with engine/menu adapters. All six builds pass; all serialization tests
+pass, with only the same three Wine font baseline failures. The byte contract,
+full test counts, controlled x86-menu → x86-engine → x64-engine → menu save checks,
+expected runtime byte changes and limitations are recorded in
+[PROFILE_SERIALIZATION.md](PROFILE_SERIALIZATION.md).
