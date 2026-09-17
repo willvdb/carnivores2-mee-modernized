@@ -189,3 +189,107 @@ TEST(SerializedLayout, CompleteLegacyTrophyRoomFixture)
     EXPECT_EQ(room.Body[127].r4, 13713);
     EXPECT_EQ(std::memcmp(&room, bytes.data(), bytes.size()), 0);
 }
+
+#include "../Hunt/Game/ProfileSerialization.h"
+
+// Only the option globals used by the production adapter.
+decltype(OptAgres) OptAgres{};
+decltype(OptDens) OptDens{};
+decltype(OptSens) OptSens{};
+decltype(OptRes) OptRes{};
+decltype(FOGENABLE) FOGENABLE{};
+decltype(OptText) OptText{};
+decltype(OptViewR) OptViewR{};
+decltype(SHADOWS3D) SHADOWS3D{};
+decltype(OptMsSens) OptMsSens{};
+decltype(OptBrightness) OptBrightness{};
+decltype(REVERSEMS) REVERSEMS{};
+decltype(ScentMode) ScentMode{};
+decltype(CamoMode) CamoMode{};
+decltype(RadarMode) RadarMode{};
+decltype(Tranq) Tranq{};
+decltype(OPT_ALPHA_COLORKEY) OPT_ALPHA_COLORKEY{};
+decltype(OptSys) OptSys{};
+decltype(OptSound) OptSound{};
+decltype(OptRender) OptRender{};
+decltype(KeyMap) KeyMap{};
+decltype(Multiplayer) Multiplayer{};
+
+TEST(EngineProfile, PrefixAndRoomAdaptersMatchLegacyRuntime)
+{
+    auto b = ProfileGolden::Prefix();
+    LegacyProfile::Prefix v;
+    ASSERT_TRUE(LegacyProfile::DecodePrefix(b.data(), b.size(), v));
+    TTrophyRoom p;
+    EngineProfile::ToRuntime(v, p);
+    // Independent legacy-layout oracle; the adapter itself does not use sizeof.
+    EXPECT_EQ(std::memcmp(&p, b.data(), b.size()), 0);
+    EXPECT_EQ(LegacyProfile::EncodePrefix(EngineProfile::FromRuntime(p)), b);
+    auto rb = ProfileGolden::Room();
+    LegacyProfile::Room r;
+    ASSERT_TRUE(LegacyProfile::DecodeRoom(rb.data(), rb.size(), r));
+    TTrophyRoom2 room;
+    EngineProfile::ToRuntime(r, room);
+    EXPECT_EQ(std::memcmp(&room, rb.data(), rb.size()), 0);
+    EXPECT_EQ(LegacyProfile::EncodeRoom(EngineProfile::FromRuntime(room)), rb);
+    ASSERT_TRUE(EngineProfile::LoadRoom(rb.data(), rb.size(), room));
+    EXPECT_EQ(room.versionID, MODDERS_EDITION_VERSION_ID);
+    ProfileGolden::Put32(rb, 0, MODDERS_EDITION_VERSION_ID);
+    EXPECT_EQ(LegacyProfile::EncodeRoom(EngineProfile::FromRuntime(room)), rb);
+}
+TEST(EngineProfile, CompleteSavePreservesIgnoredEquipmentAndStoredBoolWidths)
+{
+    auto b = ProfileGolden::Save();
+    TTrophyRoom p{}; p.RegNumber = 3;
+    ScentMode = 17; CamoMode = 18; RadarMode = 19; Tranq = 20;
+    Multiplayer = FALSE;
+    ASSERT_TRUE(EngineProfile::LoadProfile(b.data(), b.size(), p));
+    EXPECT_EQ(p.RegNumber, 3);
+    EXPECT_EQ(OptAgres, 30); EXPECT_EQ(OptDens, 31); EXPECT_EQ(OptSens, 32);
+    EXPECT_EQ(OptRes, 5); EXPECT_EQ(OptText, 35); EXPECT_EQ(OptViewR, 36);
+    EXPECT_EQ(OptMsSens, 38); EXPECT_EQ(OptBrightness, 39); EXPECT_EQ(REVERSEMS, 0);
+    EXPECT_EQ(OPT_ALPHA_COLORKEY, 62); EXPECT_EQ(OptSys, 63); EXPECT_EQ(OptRender, 1);
+    EXPECT_EQ(ScentMode, 17); EXPECT_EQ(CamoMode, 18);
+    EXPECT_EQ(RadarMode, 19); EXPECT_EQ(Tranq, 20);
+    EXPECT_EQ(FOGENABLE, -1); EXPECT_EQ(SHADOWS3D, 2);
+    EXPECT_EQ(KeyMap.fkForward, 40); EXPECT_EQ(KeyMap.fkBinoc, 56);
+    EXPECT_EQ(std::memcmp(&KeyMap, b.data() + 1556, 68), 0);
+    EXPECT_EQ(OptSound, 0); // engine's existing normalization of stored 2
+    ProfileGolden::Put32(b, 128, 3);
+    for (unsigned i = 0; i < 4; ++i) ProfileGolden::Put32(b, 1628 + 4*i, 17+i);
+    ProfileGolden::Put32(b, 1652, 0);
+    EXPECT_EQ(LegacyProfile::EncodeSave({EngineProfile::FromRuntime(p), EngineProfile::CaptureOptions()}), b);
+    Multiplayer = TRUE;
+    ASSERT_TRUE(EngineProfile::LoadProfile(b.data(), b.size(), p));
+    EXPECT_EQ(OptDens, 128);
+    Multiplayer = FALSE;
+}
+TEST(EngineProfile, ShortProfileFallbackAndMalformedPrefix)
+{
+    auto b = ProfileGolden::Save();
+    TTrophyRoom p{}; p.RegNumber = 7;
+    KeyMap.fkForward = 'W'; KeyMap.fkBinoc = 'B';
+    OptSound = 99; REVERSEMS = 7;
+    ASSERT_TRUE(EngineProfile::LoadProfile(b.data(), 1623, p));
+    EXPECT_EQ(KeyMap.fkForward, 'W'); EXPECT_EQ(KeyMap.fkBinoc, 'B');
+    EXPECT_EQ(OptAgres, 30); EXPECT_EQ(OptBrightness, 39);
+    EXPECT_EQ(REVERSEMS, 7); EXPECT_EQ(OptSound, 99);
+    ASSERT_TRUE(EngineProfile::LoadProfile(b.data(), 1516, p));
+    EXPECT_EQ(OptViewR, kViewOptDefault);
+    const auto before = LegacyProfile::EncodePrefix(EngineProfile::FromRuntime(p));
+    EXPECT_FALSE(EngineProfile::LoadProfile(b.data(), 1515, p));
+    EXPECT_EQ(LegacyProfile::EncodePrefix(EngineProfile::FromRuntime(p)), before);
+    auto roomBytes = ProfileGolden::Room(); TTrophyRoom2 room{};
+    room.versionID = -5;
+    EXPECT_FALSE(EngineProfile::LoadRoom(roomBytes.data(), 7175, room));
+    EXPECT_EQ(room.versionID, -5);
+}
+
+TEST(EngineProfile, SaveRegeneratesRankAtLegacyThresholds)
+{
+    for (auto score : {-1, 0, 99, 100, 299, 300, 9999, 10000}) {
+        TTrophyRoom p{}; p.Score = score; p.Rank = -99;
+        EngineProfile::UpdateRank(p);
+        EXPECT_EQ(p.Rank, score >= 300 ? 2 : score >= 100 ? 1 : 0);
+    }
+}
