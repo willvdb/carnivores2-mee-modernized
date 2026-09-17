@@ -1393,21 +1393,13 @@ void LoadGameMenu(int32_t menu)
 	} break;
 	}
 
-	TargaImage tga;
-
-	if (ReadTGAFile(mf_off, tga)) {
-		memcpy(g_MenuItem.m_Image, tga.m_Data, (800 * 2) * 600);
-	}
-	else {
+	if (!LoadMenuBackground(g_MenuItem.m_Image, mf_off)) {
 		throw std::runtime_error("Failed to open the file...");
 		return;
 	}
 
 	if (!mf_on.empty()) {
-		if (ReadTGAFile(mf_on, tga)) {
-			memcpy(g_MenuItem.m_Image_On, tga.m_Data, (800 * 2) * 600);
-		}
-		else {
+		if (!LoadMenuBackground(g_MenuItem.m_Image_On, mf_on)) {
 			throw std::runtime_error("Failed to open the file...");
 			return;
 		}

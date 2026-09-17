@@ -2,6 +2,7 @@
 #include "../Menu/Hunt.h"
 #include "media_fixtures.h"
 #include "media_test_file.h"
+#include <memory>
 int g_ResCount=0; TRes g_ResolutionList[128]{};
 void ShowErrorMessage(const std::string& m) { throw std::runtime_error(m); }
 TEST(MenuMedia, TgaHeaderBytesOrderAndOpaquePictures) {
@@ -32,4 +33,26 @@ TEST(MenuMedia, WaveOddZeroAndChunkBoundary) {
         EXPECT_EQ(s.m_Length,length);
         for(size_t i=0;i<length/2+length%2;++i) {int v=pcm[2*i]+(2*i+1<length?256*pcm[2*i+1]:0);EXPECT_EQ(s.m_Data[i],v<32768?v:v-65536);}
     }
+}
+
+TEST(MenuMedia, TgaTruncationZeroAndDescriptorPolicy) {
+    auto good=MediaGolden::Tga();
+    for(size_t n=0;n<good.size();++n) {auto b=good;b.resize(n);MediaFile f(b);TargaImage t;EXPECT_FALSE(ReadTGAFile(f.path,t));}
+    good[17]=0x30;MediaGolden::Put(good,8,0x1234,2);MediaGolden::Put(good,10,0x5678,2);
+    {MediaFile f(good);Picture p;ASSERT_TRUE(LoadPicture(p,f.path));EXPECT_EQ(p.m_Data[0],0x8000);}
+    good[12]=0;{MediaFile f(good);Picture p;EXPECT_TRUE(LoadPicture(p,f.path));EXPECT_EQ(p.m_Width,0u);}
+    good=MediaGolden::Tga();good[16]=24;good.resize(36);
+    {MediaFile f(good);TargaImage t;EXPECT_TRUE(ReadTGAFile(f.path,t));Picture p;EXPECT_FALSE(LoadPicture(p,f.path));}
+    good.resize(18);good[0]=255;{MediaFile f(good);TargaImage t;EXPECT_FALSE(ReadTGAFile(f.path,t));}
+    good=MediaGolden::Tga();good[12]=good[13]=good[14]=good[15]=255;
+    {MediaFile f(good);TargaImage t;EXPECT_FALSE(ReadTGAFile(f.path,t));}
+}
+TEST(MenuMedia, BackgroundPreservesAlphaFileOrderAndChecksCapacity) {
+    auto b=MediaGolden::Tga();MediaGolden::Put(b,12,800,2);MediaGolden::Put(b,14,600,2);b.resize(18+960000);
+    MediaGolden::Put(b,18+959998,0x1234,2);b.push_back(0xab);
+    struct Background { uint16_t pixels[800*600]{}; };
+    auto storage=std::make_unique<Background>();
+    auto& pixels=storage->pixels;
+    {MediaFile f(b);ASSERT_TRUE(LoadMenuBackground(pixels,f.path));EXPECT_EQ(pixels[0],0);EXPECT_EQ(pixels[1],1);EXPECT_EQ(pixels[2],0x1234);EXPECT_EQ(pixels[3],0x9234);EXPECT_EQ(pixels[479999],0x1234);}
+    b=MediaGolden::Tga();{MediaFile f(b);EXPECT_FALSE(LoadMenuBackground(pixels,f.path));}
 }
