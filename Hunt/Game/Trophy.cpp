@@ -4,6 +4,7 @@
 // ==========================================================================
 
 #include "Hunt.h"
+#include "ProfileSerialization.h"
 #include <mmsystem.h>
 
 // Constants from Projectiles.cpp
@@ -352,176 +353,93 @@ void RemoveCurrentTrophy()
   TrophyDisplay = false;
   TrophyBody = -1;
 }
-void LoadTrophy2(int RegNumber) {
-
-	FillMemory(&TrophyRoom2, sizeof(TrophyRoom2), 0);
-	DWORD l;
-	char fname2[128];
-	sprintf_s(fname2, sizeof(fname2), "trophy0%d.sab", RegNumber);
-	HANDLE hfile2 = CreateFile(fname2, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-	if (hfile2 == INVALID_HANDLE_VALUE)
-	{
-		PrintLog("===> Error loading trophyB!\n");
-		return;
-	}
-	ReadFile(hfile2, &TrophyRoom2, sizeof(TrophyRoom2), &l, nullptr);
-
-	CloseHandle(hfile2);
-
-	TrophyRoom2.versionID = MODDERS_EDITION_VERSION_ID;
-
-	PrintLog("TrophyB Loaded.\n");
-}
-void LoadTrophy()
-{
-  int pr = TrophyRoom.RegNumber;
-  FillMemory(&TrophyRoom, sizeof(TrophyRoom), 0);
-  TrophyRoom.RegNumber = pr;
-  DWORD l;
-  char fname[128];
-  int rn = TrophyRoom.RegNumber;
-  sprintf_s(fname, sizeof(fname), "trophy0%d.sav", TrophyRoom.RegNumber);
-  HANDLE hfile = CreateFile(fname, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-  if (hfile==INVALID_HANDLE_VALUE)
-  {
-    PrintLog("===> Error loading trophy!\n");
-    return;
-  }
-  ReadFile(hfile, &TrophyRoom, sizeof(TrophyRoom), &l, nullptr);
-
-  ReadFile(hfile, &OptAgres, 4, &l, nullptr);
-  ReadFile(hfile, &OptDens, 4, &l, nullptr);
-  ReadFile(hfile, &OptSens, 4, &l, nullptr);
-
-  if (Multiplayer) OptDens = 128;
-
-  ReadFile(hfile, &OptRes, 4, &l, nullptr);
-  ReadFile(hfile, &FOGENABLE, 4, &l, nullptr);
-  ReadFile(hfile, &OptText, 4, &l, nullptr);
-  ReadFile(hfile, &OptViewR, 4, &l, nullptr);
-  if (l != 4) OptViewR = kViewOptDefault;
-  OptViewR = ClampViewOpt(OptViewR);
-  ReadFile(hfile, &SHADOWS3D, 4, &l, nullptr);
-  ReadFile(hfile, &OptMsSens, 4, &l, nullptr);
-  ReadFile(hfile, &OptBrightness, 4, &l, nullptr);
-
-
-  {
-    // Saves can predate the modernization or come from other mods with a
-    // different layout. A short read here used to leave KeyMap half-filled
-    // with garbage, so every key felt broken until rebound in the menu
-    // (sprint was the visible one: fkRun read as 0). Keep the InitEngine
-    // defaults unless the file actually holds a full KeyMap.
-    struct _t savedKeys;
-    DWORD kl = 0;
-    ReadFile(hfile, &savedKeys, sizeof(savedKeys), &kl, nullptr);
-    if (kl == sizeof(savedKeys)) {
-      KeyMap = savedKeys;
-    } else {
-      char msg[128];
-      sprintf_s(msg, sizeof(msg), "Trophy: short KeyMap read (%u of %u), keeping defaults.\n",
-                (unsigned)kl, (unsigned)sizeof(savedKeys));
-      PrintLog(msg);
-      CloseHandle(hfile);
-      TrophyRoom.RegNumber = rn;
-      SetupRes();
-      PrintLog("Trophy Loaded (legacy/short save, defaults kept).\n");
-      if (TrophyRoom.Body[0].ctype) LoadTrophy2(TrophyRoom.RegNumber);
-      else TrophyRoom.Body[0].ctype = 1;
-      return;
+void LoadTrophy2(int RegNumber) {
+    TrophyRoom2 = {};
+    char fname2[128];
+    sprintf_s(fname2, sizeof(fname2), "trophy0%d.sab", RegNumber);
+    HANDLE hfile2 = CreateFile(fname2, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (hfile2 == INVALID_HANDLE_VALUE) {
+        PrintLog("===> Error loading trophyB!\n");
+        return;
     }
-  }
-  ReadFile(hfile, &REVERSEMS, 4, &l, nullptr);
-  //  Ignore savefile settings for equipment — skip 4 DWORDs
-  SetFilePointer(hfile, 16, nullptr, FILE_CURRENT);
-  ReadFile(hfile, &OPT_ALPHA_COLORKEY, 4, &l, nullptr);
-
-  ReadFile(hfile, &OptSys, 4, &l, nullptr);
-  ReadFile(hfile, &OptSound, 4, &l, nullptr);
-  ReadFile(hfile, &OptRender, 4, &l, nullptr);
-  OptSound = NormalizeAudioBackend(OptSound);
-
-  // OptFov and other extended settings are now in config.cfg.
-  // LoadConfig() in InitEngine() will override OptFov after this point.
-
-  SetupRes();
-
-  CloseHandle(hfile);
-  TrophyRoom.RegNumber = rn;
-
-  PrintLog("Trophy Loaded.\n");
-
-  if (TrophyRoom.Body[0].ctype) LoadTrophy2(TrophyRoom.RegNumber);
-  else TrophyRoom.Body[0].ctype = 1;
-
-//	TrophyRoom.Score = 299;
-}
-void SaveTrophy2(int RegNumber) {
-	DWORD l2;
-	char fname2[128];
-	sprintf_s(fname2, sizeof(fname2), "trophy0%d.sab", RegNumber);
-
-	HANDLE hfile2 = CreateFile(fname2, GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-	if (hfile2 == INVALID_HANDLE_VALUE)
-	{
-		PrintLog("==>> Error saving trophy!\n");
-		return;
-	}
-	WriteFile(hfile2, &TrophyRoom2, sizeof(TrophyRoom2), &l2, nullptr);
-	CloseHandle(hfile2);
-	PrintLog("TrophyB Saved.\n");
-}
-void SaveTrophy()
-{
-
-	//if (SurvivalMode) return;
-
-  DWORD l;
-  char fname[128];
-  sprintf_s(fname, sizeof(fname), "trophy0%d.sav", TrophyRoom.RegNumber);
-
-  int r = TrophyRoom.Rank;
-  TrophyRoom.Rank = 0;
-  if (TrophyRoom.Score >= 100) TrophyRoom.Rank = 1;
-  if (TrophyRoom.Score >= 300) TrophyRoom.Rank = 2;
-
-
-  HANDLE hfile = CreateFile(fname, GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-  if (hfile == INVALID_HANDLE_VALUE)
-  {
-    PrintLog("==>> Error saving trophy!\n");
-    return;
-  }
-  WriteFile(hfile, &TrophyRoom, sizeof(TrophyRoom), &l, nullptr);
-
-  WriteFile(hfile, &OptAgres, 4, &l, nullptr);
-  WriteFile(hfile, &OptDens, 4, &l, nullptr);
-  WriteFile(hfile, &OptSens, 4, &l, nullptr);
-
-  WriteFile(hfile, &OptRes, 4, &l, nullptr);
-  WriteFile(hfile, &FOGENABLE, 4, &l, nullptr);
-  WriteFile(hfile, &OptText, 4, &l, nullptr);
-  WriteFile(hfile, &OptViewR, 4, &l, nullptr);
-  WriteFile(hfile, &SHADOWS3D, 4, &l, nullptr);
-  WriteFile(hfile, &OptMsSens, 4, &l, nullptr);
-  WriteFile(hfile, &OptBrightness, 4, &l, nullptr);
-
-  WriteFile(hfile, &KeyMap, sizeof(KeyMap), &l, nullptr);
-  WriteFile(hfile, &REVERSEMS, 4, &l, nullptr);
-
-  WriteFile(hfile, &ScentMode, 4, &l, nullptr);
-  WriteFile(hfile, &CamoMode, 4, &l, nullptr);
-  WriteFile(hfile, &RadarMode, 4, &l, nullptr);
-  WriteFile(hfile, &Tranq, 4, &l, nullptr);
-  WriteFile(hfile, &OPT_ALPHA_COLORKEY, 4, &l, nullptr);
-
-  WriteFile(hfile, &OptSys, 4, &l, nullptr);
-  WriteFile(hfile, &OptSound, 4, &l, nullptr);
-  WriteFile(hfile, &OptRender, 4, &l, nullptr);
-  // OptFov and other extended settings live in config.cfg, not here.
-  CloseHandle(hfile);
-  PrintLog("Trophy Saved.\n");
-
-  SaveTrophy2(TrophyRoom.RegNumber);
-
-}
+    LegacyProfile::RoomBytes bytes{};
+    DWORD count = 0;
+    const BOOL ok = ReadFile(hfile2, bytes.data(), LegacyProfile::RoomSize, &count, nullptr);
+    CloseHandle(hfile2);
+    if (!ok || !EngineProfile::LoadRoom(bytes.data(), count, TrophyRoom2)) {
+        PrintLog("===> Short or invalid trophyB!\n");
+        return;
+    }
+    PrintLog("TrophyB Loaded.\n");
+}
+
+void LoadTrophy()
+{
+    const int registration = TrophyRoom.RegNumber;
+    TrophyRoom = {};
+    TrophyRoom.RegNumber = registration;
+    char fname[128];
+    sprintf_s(fname, sizeof(fname), "trophy0%d.sav", registration);
+    HANDLE hfile = CreateFile(fname, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (hfile == INVALID_HANDLE_VALUE) {
+        PrintLog("===> Error loading trophy!\n");
+        return;
+    }
+    LegacyProfile::SaveBytes bytes{};
+    DWORD count = 0;
+    const BOOL ok = ReadFile(hfile, bytes.data(), LegacyProfile::SaveSize, &count, nullptr);
+    CloseHandle(hfile);
+    if (!ok || !EngineProfile::LoadProfile(bytes.data(), count, TrophyRoom)) {
+        PrintLog("===> Short or invalid trophy prefix!\n");
+        return;
+    }
+    if (count < LegacyProfile::KeyEnd)
+        PrintLog("Trophy: short KeyMap read, keeping defaults.\n");
+    SetupRes();
+    PrintLog("Trophy Loaded.\n");
+    if (TrophyRoom.Body[0].ctype) LoadTrophy2(TrophyRoom.RegNumber);
+    else TrophyRoom.Body[0].ctype = 1;
+}
+
+void SaveTrophy2(int RegNumber) {
+    char fname2[128];
+    sprintf_s(fname2, sizeof(fname2), "trophy0%d.sab", RegNumber);
+    const auto bytes = LegacyProfile::EncodeRoom(EngineProfile::FromRuntime(TrophyRoom2));
+    HANDLE hfile2 = CreateFile(fname2, GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (hfile2 == INVALID_HANDLE_VALUE) {
+        PrintLog("==>> Error saving trophy!\n");
+        return;
+    }
+    DWORD count = 0;
+    const BOOL ok = WriteFile(hfile2, bytes.data(), LegacyProfile::RoomSize, &count, nullptr);
+    CloseHandle(hfile2);
+    if (!ok || count != LegacyProfile::RoomSize) {
+        PrintLog("==>> Error writing trophyB!\n");
+        return;
+    }
+    PrintLog("TrophyB Saved.\n");
+}
+
+void SaveTrophy()
+{
+    char fname[128];
+    sprintf_s(fname, sizeof(fname), "trophy0%d.sav", TrophyRoom.RegNumber);
+    EngineProfile::UpdateRank(TrophyRoom);
+
+    const auto bytes = LegacyProfile::EncodeSave({EngineProfile::FromRuntime(TrophyRoom),
+                                                  EngineProfile::CaptureOptions()});
+    HANDLE hfile = CreateFile(fname, GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (hfile == INVALID_HANDLE_VALUE) {
+        PrintLog("==>> Error saving trophy!\n");
+        return;
+    }
+    DWORD count = 0;
+    const BOOL ok = WriteFile(hfile, bytes.data(), LegacyProfile::SaveSize, &count, nullptr);
+    CloseHandle(hfile);
+    if (!ok || count != LegacyProfile::SaveSize) {
+        PrintLog("==>> Error writing trophy!\n");
+        return;
+    }
+    PrintLog("Trophy Saved.\n");
+    SaveTrophy2(TrophyRoom.RegNumber);
+}
