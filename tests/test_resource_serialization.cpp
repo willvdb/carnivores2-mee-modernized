@@ -28,3 +28,27 @@ TEST(ResourceLayout, GoldenRecordsMatchStableRuntime)
     const short expected[]{-32768,32767,-1,0,4660,-4660,171};
     for(unsigned i=0;i<7;++i) EXPECT_EQ(pcm[i],expected[i]);
 }
+
+#include "Loaders/ResourceSerialization.h"
+TEST(ResourceLayout, AdaptersMatchEveryLegacyByte)
+{
+    const auto ob=ResourceGolden::Object(); LegacyResource::ObjectInfo o; TObjInfo ro;
+    ASSERT_TRUE(LegacyResource::DecodeObjectInfo(ob.data(),64,o)); EngineResource::ToRuntime(o,ro);
+    EXPECT_EQ(std::memcmp(&ro,ob.data(),64),0);
+    LegacyResource::Fog f; TFogEntity rf;
+    ASSERT_TRUE(LegacyResource::DecodeFog(ResourceGolden::Fog.data(),20,f)); EngineResource::ToRuntime(f,rf);
+    EXPECT_EQ(std::memcmp(&rf,ResourceGolden::Fog.data(),20),0);
+    const auto eb=ResourceGolden::Effects(); LegacyResource::RandomEffects effects; TRD re[16];
+    ASSERT_TRUE(LegacyResource::DecodeRandomEffects(eb.data(),256,effects));
+    for(unsigned i=0;i<16;++i) EngineResource::ToRuntime(effects[i],re[i]);
+    EXPECT_EQ(std::memcmp(re,eb.data(),256),0);
+    LegacyResource::Water w; TWaterEntity rw;
+    ASSERT_TRUE(LegacyResource::DecodeWater(ResourceGolden::Water.data(),16,w)); EngineResource::ToRuntime(w,rw);
+    EXPECT_EQ(std::memcmp(&rw,ResourceGolden::Water.data(),16),0);
+    const auto cb=ResourceGolden::Colors();
+    for(unsigned table=0;table<2;++table) {
+        LegacyResource::ColorTable c; int rc[3][3];
+        ASSERT_TRUE(LegacyResource::DecodeColors(cb.data()+36*table,36,c)); EngineResource::ToRuntime(c,rc);
+        EXPECT_EQ(std::memcmp(rc,cb.data()+36*table,36),0);
+    }
+}
