@@ -1058,17 +1058,16 @@ static void HandleFocusChange(bool active)
 
 }
 
-LRESULT CALLBACK MainWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+static void HandleKeyEvent(const Platform::KeyEvent& event)
 {
-  HandleFocusChange(Platform::Win32::IsWindowActive(hWnd));
+  const auto wParam = event.key;
 
   // Toggles fire once per press, not on Windows key-repeat. SYSKEYDOWN
   // also carries Alt bindings; the normal window handling below is retained.
-  if ((message == WM_KEYDOWN || message == WM_SYSKEYDOWN) &&
-      IsInitialKeyDown(static_cast<unsigned int>(lParam)))
+  if (!event.repeat)
   {
     const auto pressed = [&](int binding) {
-      return KeyDownMatches(binding, wParam, static_cast<unsigned int>(lParam));
+      return KeyDownMatches(binding, event);
     };
     if (pressed(KeyMap.fkBinoc) && g_GameMode != GameMode::SurvivalMode) ToggleBinocular();
     if (pressed(KeyMap.fkCCall) && g_GameMode != GameMode::SurvivalMode) ChangeCall();
@@ -1097,15 +1096,10 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
   }
 
 
-  switch (message)
-  {
-  case WM_CREATE:
-    return 0;
-
-  case WM_SYSKEYDOWN:
+  if (event.system) {
     if (static_cast<int>(wParam) == VK_RETURN && g_GameMode != GameMode::SurvivalMode) {
       SetFullScreen();
-      return 0;
+      return;
     }
     // F10 is a system key — handle it here, not in WM_KEYDOWN
     if (static_cast<int>(wParam) == VK_F10) {
@@ -1119,12 +1113,10 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
         if (g_GLRenderer) g_GLRenderer->MarkDirtyRect(8, 38, 450, 200);
 #endif
       }
-      return 0;
+      return;
     }
-    break;
-
-
-  case WM_KEYDOWN:
+    return;
+  }
   {
     // ── Underwater debug menu input ──────────────────────────
     if (UnderwaterDebugMenu)
@@ -1137,13 +1129,13 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
         UnderwaterDebugTab = (UnderwaterDebugTab + 1) % 3;
         UnderwaterDebugSelected = 0;
         AddMessage(UnderwaterDebugTab == 0 ? "Tab: FOG" : UnderwaterDebugTab == 1 ? "Tab: WAVES" : "Tab: SUN");
-        return 0;
+        return;
       }
       if (static_cast<int>(wParam) == VK_NEXT) {   // PgDn
         UnderwaterDebugTab = (UnderwaterDebugTab + 1) % 3;
         UnderwaterDebugSelected = 0;
         AddMessage(UnderwaterDebugTab == 0 ? "Tab: FOG" : UnderwaterDebugTab == 1 ? "Tab: WAVES" : "Tab: SUN");
-        return 0;
+        return;
       }
 
       // Parameter count per tab
@@ -1213,7 +1205,7 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
           sprintf_s(buf, sizeof(buf), "%s = %.2f", names[UnderwaterDebugSelected], *p);
         }
         AddMessage(buf);
-        return 0;
+        return;
       }
       case 'D':
       case 'd':
@@ -1238,12 +1230,12 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
         sprintf_s(buf, sizeof(buf), "SunGlare_Disc = %.2f", SunGlare_Disc); PrintLog(buf); PrintLog("\n");
         PrintLog("=== END DEBUG VALUES ===\n");
         AddMessage("Values dumped to log!");
-        return 0;
+        return;
       }
       // Let other keys pass through when debug menu is open
     }
 
-    BOOL CTRL = (GetKeyState(VK_SHIFT) & 0x8000);
+    BOOL CTRL = event.shift;
     switch( static_cast<int>(wParam) )
     {
     case '0':
@@ -1436,9 +1428,20 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
 #endif
 
     }   // switch
-    break;
   }
+}
 
+LRESULT CALLBACK MainWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+  HandleFocusChange(Platform::Win32::IsWindowActive(hWnd));
+  if (message == WM_KEYDOWN || message == WM_SYSKEYDOWN) {
+    HandleKeyEvent(Platform::Win32::DecodeKeyEvent(wParam, lParam,
+        message == WM_SYSKEYDOWN, (GetKeyState(VK_SHIFT) & 0x8000) != 0));
+    return 0;
+  }
+  switch (message) {
+  case WM_CREATE:
+    return 0;
   case WM_DESTROY:
     Platform::RequestQuit();
     break;

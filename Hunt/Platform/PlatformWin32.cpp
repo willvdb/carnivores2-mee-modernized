@@ -151,8 +151,9 @@ void SetProcessActive(bool active)
     SetPriorityClass(GetCurrentProcess(), active ? HIGH_PRIORITY_CLASS : IDLE_PRIORITY_CLASS);
 }
 
-PumpResult PumpOneEvent(int& quitCode)
+PumpResult PumpOneEvent(int& quitCode, Event* event)
 {
+    if (event) *event = {};
     MSG message;
     if (!PeekMessage(&message, nullptr, 0, 0, PM_REMOVE)) return PumpResult::Idle;
     if (message.message == WM_QUIT) {

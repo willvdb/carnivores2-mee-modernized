@@ -28,6 +28,22 @@ void SleepMilliseconds(std::uint32_t milliseconds);
 using KeyboardState = std::uint8_t[256];
 bool PollKeyboardState(KeyboardState& state);
 
+// Legacy VK values, not backend keycodes. key is the generic modifier code;
+// sidedKey distinguishes left/right. System keys retain WM_SYSKEYDOWN policy.
+struct KeyEvent {
+    std::uint8_t key = 0;
+    std::uint8_t sidedKey = 0;
+    bool repeat = false;
+    bool system = false;
+    bool shift = false;
+};
+enum class EventType { None, KeyDown, FocusChanged };
+struct Event {
+    EventType type = EventType::None;
+    KeyEvent key;
+    bool focused = false;
+};
+
 // Capture is confinement + visibility, not relative input or OS button capture.
 // Engine decides whether/when to recenter and supplies its video center.
 void SetMouseCapture(bool capture);
@@ -44,7 +60,7 @@ void SetProcessActive(bool active);
 
 enum class PumpResult { Idle, Dispatched, Quit };
 // Consume at most one event; quitCode is written only for Quit.
-PumpResult PumpOneEvent(int& quitCode);
+PumpResult PumpOneEvent(int& quitCode, Event* event = nullptr);
 void RequestQuit();
 
 enum class WindowMode { Exclusive, Borderless, Windowed };
