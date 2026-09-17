@@ -277,14 +277,17 @@ BOOL _HeapFree(HANDLE hHeap,
   if (LevelArena != nullptr && LevelArena->Contains(lpMem))
     return true;
 
-  HeapReleased+=
-    HeapSize(hHeap, HEAP_NO_SERIALIZE, lpMem);
+  const SIZE_T bytes = HeapSize(hHeap, HEAP_NO_SERIALIZE, lpMem);
 
   BOOL res = HeapFree(hHeap,
                       dwFlags,
                       lpMem);
   if (!res)
     DoHalt("Heap free error!");
+
+  // HeapSize reports failure as SIZE_T(-1), not a released byte count.
+  if (bytes != static_cast<SIZE_T>(-1))
+    HeapReleased += bytes;
 
   return res;
 }
