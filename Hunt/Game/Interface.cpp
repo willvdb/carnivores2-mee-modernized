@@ -99,6 +99,7 @@ void DoHalt(LPSTR Mess)
 
   ShutDown3DHardware();
   EnableWindow(hwndMain, false);
+  Platform::ShutdownApplication();
 
   CloseLog();
   LogClose();
@@ -114,6 +115,7 @@ void DoHalt2(LPSTR Mess)
 
 //	ShutDown3DHardware();
 	EnableWindow(hwndMain, false);
+	Platform::ShutdownApplication();
 	if (strlen(Mess))
 	{
 		PrintLog("ABNORMAL_HALT: ");

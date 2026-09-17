@@ -129,7 +129,6 @@ if(RENDERER)
             Hunt/Renderer/GLPerf.h
             Hunt/Renderer/GLPerf.cpp
             Hunt/Renderer/GLUI.cpp
-            Hunt/Platform/PlatformGLWin32.cpp
             deps/glad/glad.c
         )
         if(GL_PERF_HOOKS)
@@ -148,9 +147,28 @@ endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Only the Windows GL game uses SDL in this milestone. Menu/SOFT stay native.
+set(CARNIVORES_PLATFORM "WIN32" CACHE STRING "Game platform backend: WIN32 or SDL3")
+set_property(CACHE CARNIVORES_PLATFORM PROPERTY STRINGS WIN32 SDL3)
+if(CARNIVORES_PLATFORM STREQUAL "SDL3")
+    if(NOT WIN32 OR NOT RENDERER STREQUAL "GL")
+        message(FATAL_ERROR "SDL3 currently requires the Windows GL game target.")
+    endif()
+    include(cmake/SDL3.cmake)
+    set(PLATFORM_SRC Hunt/Platform/PlatformSDL.cpp Hunt/Platform/PlatformSDLWin32.cpp
+        Hunt/Platform/LegacyKeyboardSDL.cpp Hunt/Platform/EntrySDL.cpp)
+elseif(CARNIVORES_PLATFORM STREQUAL "WIN32")
+    set(PLATFORM_SRC Hunt/Platform/PlatformWin32.cpp Hunt/Platform/EntryWin32.cpp)
+    if(RENDERER STREQUAL "GL")
+        list(APPEND PLATFORM_SRC Hunt/Platform/PlatformGLWin32.cpp)
+    endif()
+else()
+    message(FATAL_ERROR "Unknown CARNIVORES_PLATFORM='${CARNIVORES_PLATFORM}'")
+endif()
+
 # Core source files (excluding renderers)
 set(CORE_FILES
-    Hunt/Platform/PlatformWin32.cpp
+    ${PLATFORM_SRC}
     Hunt/Audio/Audio_DLL.cpp
     Hunt/Audio/OpenAL_Loader.cpp
     Hunt/Game/Characters.cpp
@@ -270,6 +288,16 @@ if(RENDERER)
         opengl32
     )
 
+    if(CARNIVORES_PLATFORM STREQUAL "SDL3")
+        target_compile_definitions(Carnivores1 PRIVATE CARNIVORES_SDL3)
+        target_link_libraries(Carnivores1 PRIVATE SDL3::SDL3)
+        if(TARGET SDL3::SDL3-shared)
+            add_custom_command(TARGET Carnivores1 POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    $<TARGET_FILE:SDL3::SDL3-shared> $<TARGET_FILE_DIR:Carnivores1>)
+        endif()
+    endif()
+
     # Output directory for the executable
     set_target_properties(Carnivores1 PROPERTIES
         OUTPUT_NAME "Carnivores1_${RENDERER}"
@@ -297,6 +325,19 @@ if(MSVC)
         tests/test_platform_win32.cpp Hunt/Platform/PlatformWin32.cpp)
     target_link_libraries(Carnivores2PlatformTests PRIVATE gtest_main user32 gdi32 winmm)
     add_test(NAME Carnivores2Tests.Platform COMMAND Carnivores2PlatformTests)
+
+    if(CARNIVORES_PLATFORM STREQUAL "SDL3")
+        add_executable(Carnivores2SDLTests tests/test_legacy_keyboard_sdl.cpp
+            tests/test_platform_sdl.cpp Hunt/Platform/LegacyKeyboardSDL.cpp
+            Hunt/Platform/PlatformSDL.cpp Hunt/Platform/PlatformSDLWin32.cpp)
+        target_link_libraries(Carnivores2SDLTests PRIVATE gtest_main SDL3::SDL3 user32)
+        add_test(NAME Carnivores2Tests.SDL COMMAND Carnivores2SDLTests)
+        if(TARGET SDL3::SDL3-shared)
+            add_custom_command(TARGET Carnivores2SDLTests POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    $<TARGET_FILE:SDL3::SDL3-shared> $<TARGET_FILE_DIR:Carnivores2SDLTests>)
+        endif()
+    endif()
 
     add_executable(Carnivores2Tests
         tests/test_billboard_math.cpp

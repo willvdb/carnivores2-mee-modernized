@@ -57,6 +57,9 @@ void WarpPointerInClient(Point position);
 Point PointerInClient();
 
 void EnableDpiAwareness();
+bool InitializeApplication();
+void ShutdownApplication(); // After renderer, audio and native-window borrowers.
+const char* LastError();
 // The transitional Win32 entry point supplies its instance/WndProc separately.
 // False means class registration failed, matching the legacy creation contract.
 bool CreateGameWindow();

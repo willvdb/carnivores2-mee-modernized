@@ -1431,6 +1431,7 @@ static void HandleKeyEvent(const Platform::KeyEvent& event)
   }
 }
 
+#ifndef CARNIVORES_SDL3
 LRESULT CALLBACK MainWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
   HandleFocusChange(Platform::Win32::IsWindowActive(hWnd));
@@ -1487,6 +1488,8 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
 
 
 
+
+#endif // Win32 reference message bridge
 
 BOOL CreateMainWindow()
 {
@@ -1665,20 +1668,24 @@ void ProcessGame()
 
 
 
-int PASCAL WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
-                   LPSTR lpszCmdLine, int nCmdShow)
+int RunGame()
 {
 	
   int quitCode = 0;
 
-  Platform::Win32::Initialize(hInstance, MainWndProc);
-  Platform::EnableDpiAwareness();
+  const bool platformReady = Platform::InitializeApplication();
 
   // Keep structured diagnostics separate from the legacy render.log stream.
   LogInit("carnivor.log");
   CreateLog();
 
-  CreateMainWindow();
+  if (!platformReady || !CreateMainWindow()) {
+    LOG_ERROR("Platform startup failed: %s", Platform::LastError());
+    Platform::ShutdownApplication();
+    CloseLog();
+    LogClose();
+    return 1;
+  }
 
   Init3DHardware();
   InitEngine();
@@ -1786,7 +1793,10 @@ int PASCAL WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
   PrintLog("Entering messages loop.\n");
   for( ; ; ){
-    const auto event = Platform::PumpOneEvent(quitCode);
+    Platform::Event input;
+    const auto event = Platform::PumpOneEvent(quitCode, &input);
+    if (input.type == Platform::EventType::FocusChanged) HandleFocusChange(input.focused);
+    if (input.type == Platform::EventType::KeyDown) HandleKeyEvent(input.key);
     if (event == Platform::PumpResult::Quit) break;
     if (event == Platform::PumpResult::Idle)
     {
@@ -1812,6 +1822,7 @@ int PASCAL WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
   ShutDownEngine();
 
   Platform::ShowCursorOnExit();
+  Platform::ShutdownApplication();
   PrintLog("Game normal shutdown.\n");
   LOG_INFO("Game normal shutdown");
 

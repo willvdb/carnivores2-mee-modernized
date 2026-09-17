@@ -25,6 +25,10 @@ bool IsWindowActive(HWND window) { return GetActiveWindow() == window; }
 
 namespace Platform {
 
+bool InitializeApplication() { EnableDpiAwareness(); return true; }
+void ShutdownApplication() {} // Preserve reference window destruction ordering.
+const char* LastError() { return "Win32 platform operation failed"; }
+
 void EnableDpiAwareness()
 {
   using SetProcessDpiAwarenessContextProc = BOOL(WINAPI*)(DPI_AWARENESS_CONTEXT);
