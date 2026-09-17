@@ -240,7 +240,9 @@ descriptions and WAVs, visited hunt/options screens, launched AREA1 through
 `v_gl.ren` with the existing logical `huntdat/areas/area1`, then returned after
 both engine saves, reloaded the profile and exited 0. Missing optional assets
 listed above remain logged with their normal fallbacks. Menu captures show its
-backgrounds, lists and art; the attempted launched-hunt compositor frame still
+backgrounds, lists and art. After the menu exited and its result/logs were saved,
+the headless Gamescope wrapper remained running and required termination; its
+cleanup exit 137 is not the menu exit status. The attempted launched-hunt frame still
 showed the menu, so direct engine captures provide the gameplay visual evidence.
 
 One pre-existing launcher diagnostic surfaced during this round trip:
