@@ -1,4 +1,5 @@
 #include "Hunt.h"
+#include "Loaders/LoadValidate.h"
 
 // Imported from Math/Vector.cpp
 extern float PointToVectorDSq(Vector3d A, Vector3d AB, Vector3d C);
@@ -1269,7 +1270,10 @@ void CalcLights(TModel* mptr)
   // A Level tag would strand unreclaimable arena space until the next
   // bulk reset (arena _HeapFree is a no-op); the heap free at the end of
   // the function is real, so tag it Global.
-  Vector3d* norms = (Vector3d*)_HeapAlloc(Heap, 0, sizeof(Vector3d) * FCount, MemoryTag::Global);
+  size_t normalBytes = 0;
+  if (FCount < 0 || !CheckedBytes2(static_cast<size_t>(FCount), sizeof(Vector3d), normalBytes))
+    DoHalt("Face normal allocation size overflow.");
+  Vector3d* norms = (Vector3d*)_HeapAlloc(Heap, 0, normalBytes, MemoryTag::Global);
 
   Vector3d a, b, nv, rv;
 

@@ -167,6 +167,20 @@ TEST(LoadValidate, BmpWidthGuardsStackBuffer) {
     EXPECT_FALSE(IsValidBmpWidth(801));
 }
 
+TEST(LoadValidate, PictureStoragePreservesSignedPixelIndexLimit) {
+    size_t out = 17;
+    const int limit = (std::numeric_limits<int>::max)();
+    EXPECT_TRUE(CheckedPictureBytes(1, limit, out));
+    EXPECT_EQ(out, size_t(limit) * sizeof(uint16_t));
+    EXPECT_TRUE(CheckedPictureBytes(800, 600, out));
+    EXPECT_EQ(out, 800u * 600u * 2u);
+    EXPECT_FALSE(CheckedPictureBytes(32768, 65536, out));
+    EXPECT_EQ(out, 800u * 600u * 2u);
+    EXPECT_FALSE(CheckedPictureBytes(65535, 65535, out));
+    EXPECT_FALSE(CheckedPictureBytes(0, 1, out));
+    EXPECT_FALSE(CheckedPictureBytes(1, -1, out));
+}
+
 TEST(LoadValidate, WavLengthsAreSane) {
     EXPECT_TRUE(IsValidWavLength(0));
     EXPECT_TRUE(IsValidWavLength(44100 * 2));

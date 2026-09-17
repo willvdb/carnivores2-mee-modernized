@@ -9,9 +9,11 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <string>
 
-// Test-double: satisfies the Memory.h reference without engine linkage.
-void PrintLog(char* msg) { (void)msg; }
+// Test-double captures diagnostics without engine linkage.
+static std::string arenaLog;
+void PrintLog(char* msg) { arenaLog += msg; }
 
 #include "Memory.h"
 
@@ -174,6 +176,29 @@ TEST(MemoryArena, RepeatedLevelLifecycleDoesNotAccumulate) {
     EXPECT_EQ(arena.GetSessionPeak(), expectedUsed);
     EXPECT_EQ(arena.GetGeneration(), 100u);
 }
+
+TEST(MemoryArena, NativeLimitRequestDoesNotWrapIntoSmallAllocation) {
+    MemoryArena arena(64, "test");
+    EXPECT_EQ(arena.Allocate((std::numeric_limits<size_t>::max)()), nullptr);
+#if SIZE_MAX > UINT32_MAX
+    EXPECT_EQ(arena.Allocate(size_t(UINT32_MAX) + 1), nullptr);
+    EXPECT_EQ(arena.Allocate(size_t(1) << 63), nullptr);
+#endif
+    EXPECT_EQ(arena.GetUsed(), 0u);
+    EXPECT_EQ(arena.GetAllocCount(), 0u);
+}
+
+#if SIZE_MAX > UINT32_MAX
+TEST(MemoryArena, CapacityDiagnosticsDoNotTruncateTo32Bits) {
+    // An impossible reservation fails without consuming physical memory, but
+    // its requested capacity is still available to the diagnostic path.
+    const size_t capacity = (std::numeric_limits<size_t>::max)();
+    MemoryArena arena(capacity, "wide");
+    arenaLog.clear();
+    arena.LogStats();
+    EXPECT_NE(arenaLog.find(std::to_string(capacity / 1024) + " KB"), std::string::npos);
+}
+#endif
 
 TEST(MemoryArena, LogStatsDoesNotCrash) {
     MemoryArena arena(512, "test");

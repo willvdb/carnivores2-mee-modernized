@@ -226,11 +226,11 @@ public:
         if (used > m_Size) return nullptr;
         if (allocationSize > m_Size - used) {
 #ifdef _DEBUG
-            char buf[128];
-            sprintf(buf, "Arena '%s' overflow: need %u, free %u (used %u / %u)\n",
+            char buf[256];
+            sprintf(buf, "Arena '%s' overflow: need %zu, free %zu (used %zu / %zu)\n",
                     m_DebugName ? m_DebugName : "?",
-                    (unsigned)allocationSize, (unsigned)(m_Size - m_Offset),
-                    (unsigned)m_Offset, (unsigned)m_Size);
+                    allocationSize, m_Size - m_Offset,
+                    m_Offset, m_Size);
             PrintLog(buf);
 #endif
             return nullptr;
@@ -267,16 +267,16 @@ public:
     size_t GetSessionPeak() const { return m_SessionPeak; }
 
     void LogStats(const char* context = nullptr) const {
-        char buf[192];
-        sprintf(buf, "Arena '%s'%s: %u KB used / %u KB (%.1f%%), %u allocs, peak %u KB, session peak %u KB\n",
+        char buf[384];
+        sprintf(buf, "Arena '%s'%s: %zu KB used / %zu KB (%.1f%%), %zu allocs, peak %zu KB, session peak %zu KB\n",
                 m_DebugName ? m_DebugName : "?",
                 context ? context : "",
-                (unsigned)(m_Offset / 1024),
-                (unsigned)(m_Size / 1024),
+                m_Offset / 1024,
+                m_Size / 1024,
                 GetUtilization() * 100.0f,
-                (unsigned)m_AllocCount,
-                (unsigned)(m_PeakUsage / 1024),
-                (unsigned)(m_SessionPeak / 1024));
+                m_AllocCount,
+                m_PeakUsage / 1024,
+                m_SessionPeak / 1024);
         PrintLog(buf);
     }
 
