@@ -10,6 +10,39 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 set(RENDERER "" CACHE STRING "Select the renderer: SOFT or GL. Leave empty to build the menu only.")
 set_property(CACHE RENDERER PROPERTY STRINGS SOFT GL "")
 
+# Named presets select an ABI and validate the compiler environment. Ninja's
+# architecture metadata alone does not switch an already active MSVC toolchain.
+set(CARNIVORES_ARCH "" CACHE STRING "Expected Windows MSVC target: x86 or x64")
+set_property(CACHE CARNIVORES_ARCH PROPERTY STRINGS "" x86 x64)
+if(CARNIVORES_ARCH OR RENDERER STREQUAL "SOFT")
+    if(NOT WIN32 OR NOT MSVC)
+        message(FATAL_ERROR "Architecture presets and the software renderer require Windows MSVC.")
+    endif()
+    include(CheckCXXSourceCompiles)
+    if(CARNIVORES_ARCH STREQUAL "x86" OR RENDERER STREQUAL "SOFT")
+        check_cxx_source_compiles("#ifndef _M_IX86
+#error Expected MSVC x86
+#endif
+static_assert(sizeof(void*) == 4, \"Expected x86 pointers\");
+int main() { return 0; }" CARNIVORES_COMPILER_IS_X86)
+        if(NOT CARNIVORES_COMPILER_IS_X86)
+            message(FATAL_ERROR "This configuration requires Windows x86 MSVC. SOFT is Windows x86-only; use an x64 OpenGL preset for x64.")
+        endif()
+    endif()
+    if(CARNIVORES_ARCH STREQUAL "x64")
+        check_cxx_source_compiles("#ifndef _M_X64
+#error Expected MSVC x64
+#endif
+static_assert(sizeof(void*) == 8, \"Expected x64 pointers\");
+int main() { return 0; }" CARNIVORES_COMPILER_IS_X64)
+        if(NOT CARNIVORES_COMPILER_IS_X64)
+            message(FATAL_ERROR "This configuration requires Windows x64 MSVC. Activate an x64 developer environment.")
+        endif()
+    elseif(CARNIVORES_ARCH AND NOT CARNIVORES_ARCH STREQUAL "x86")
+        message(FATAL_ERROR "Unknown CARNIVORES_ARCH='${CARNIVORES_ARCH}'; expected x86 or x64.")
+    endif()
+endif()
+
 # Enable LTO for Release builds (cross-module inlining, ~5-15% CPU gain)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
 
@@ -29,11 +62,8 @@ option(MEM_DEBUG "Enable game allocation tracking and leak reporting" OFF)
 set(RENDER_DEFINES "")
 set(GAME_DEBUG_DEFINES "")
 
-# Ensure we are targeting 32-bit if using MSVC
+# Windows compiler settings shared by x86 and x64.
 if(MSVC)
-    if(NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
-        message(WARNING "This project contains x86 inline assembly and MUST be compiled as 32-bit (x86).")
-    endif()
 
     # Relax compiler for legacy code
     add_definitions(-D_CRT_SECURE_NO_WARNINGS)
@@ -61,6 +91,7 @@ if(RENDERER)
     if(RENDERER STREQUAL "SOFT")
         list(APPEND RENDER_DEFINES _soft)
         set(RENDER_SRC
+            Hunt/Renderer/renderasm.cpp
             Hunt/Renderer/RenderSoft.cpp
             Hunt/Renderer/SoftInternal.h
             Hunt/Renderer/SoftHUD.cpp
@@ -172,7 +203,6 @@ set(CORE_FILES
     Hunt/Loaders/SoundLoader.cpp
     Hunt/Loaders/PictureLoader.cpp
     Hunt/Loaders/CharacterLoader.cpp
-    Hunt/Renderer/renderasm.cpp
     Hunt/Renderer/UIText.cpp
     Hunt/Renderer/UIText.h
     Hunt/AppRes.rc
@@ -203,7 +233,10 @@ if(MSVC AND CMAKE_BUILD_TYPE STREQUAL "Release")
     # /GL + /LTCG = Link-Time Optimization
     # /O2 = Maximize Speed, /Oi = Intrinsics, /Ot = Favor Fast Code, /Ob2 = Aggressive Inlining
     # /Gw = Optimize Globals, /GS- = No Buffer Checks, /fp:fast = Fast Float, /arch:SSE2 = SSE2
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /GL /O2 /Oi /Ot /Ob2 /Gw /GS- /fp:fast /arch:SSE2 /Zc:inline")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /GL /O2 /Oi /Ot /Ob2 /Gw /GS- /fp:fast /Zc:inline")
+    if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+        string(APPEND CMAKE_CXX_FLAGS_RELEASE " /arch:SSE2")
+    endif()
     set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /LTCG")
 endif()
 
