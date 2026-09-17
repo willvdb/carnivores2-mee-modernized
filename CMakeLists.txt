@@ -302,6 +302,7 @@ if(MSVC)
         tests/test_menu_slider.cpp
         tests/test_serialized_layout.cpp
         tests/test_legacy_profile.cpp
+        tests/test_model_serialization.cpp
         tests/test_projectile_math.cpp
         tests/test_terrain_fog.cpp
         tests/test_water_object_visibility.cpp
