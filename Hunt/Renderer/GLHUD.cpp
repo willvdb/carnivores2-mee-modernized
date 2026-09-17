@@ -485,9 +485,9 @@ void GLRenderer::EnsureUITexture()
 
 void GLRenderer::ShutdownHudPipeline()
 {
-    if (m_uiTexture && m_hrc) { glDeleteTextures(1, &m_uiTexture); m_uiTexture = 0; }
-    if (m_uiVBO && m_hrc) { glDeleteBuffers(1, &m_uiVBO); m_uiVBO = 0; }
-    if (m_uiVAO && m_hrc) { glDeleteVertexArrays(1, &m_uiVAO); m_uiVAO = 0; }
+    if (m_uiTexture && m_hasContext) { glDeleteTextures(1, &m_uiTexture); m_uiTexture = 0; }
+    if (m_uiVBO && m_hasContext) { glDeleteBuffers(1, &m_uiVBO); m_uiVBO = 0; }
+    if (m_uiVAO && m_hasContext) { glDeleteVertexArrays(1, &m_uiVAO); m_uiVAO = 0; }
     // m_uiShader destroyed by GLShader destructor
     m_uiTextureWidth = 0;
     m_uiTextureHeight = 0;

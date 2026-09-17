@@ -16,10 +16,6 @@
 #include "glad/glad.h"
 #endif
 
-#ifdef _gl
-// Shared GL module handle
-extern HMODULE libGL;
-#endif
 
 // ---------- constants ----------
 constexpr float kModelNearClip = -16.0f;
@@ -48,7 +44,6 @@ struct ModelClipVertex
 
 // ---------- function declarations ----------
 #ifdef _gl
-void* glad_get_proc(const char* name);
 GLuint CompileShader(GLenum type, const char* source);
 GLuint LinkProgram(GLuint vertexShader, GLuint fragmentShader);
 #endif

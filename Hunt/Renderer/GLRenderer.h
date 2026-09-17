@@ -11,7 +11,6 @@
 #include "glad/glad.h"
 #include "Renderer/GLShader.h"
 #include "Renderer/GLPerf.h"
-#include <windows.h>
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -388,9 +387,7 @@ private:
     static float Clamp01(float value);
     static unsigned int Expand1555to8888(unsigned short c);
 
-    HWND m_hwnd = nullptr;
-    HDC m_hdc = nullptr;
-    HGLRC m_hrc = nullptr;
+    bool m_hasContext = false;
     bool m_Initialized = false;
 
     GLShader m_terrainShader;

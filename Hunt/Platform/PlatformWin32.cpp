@@ -151,6 +151,13 @@ void SetProcessActive(bool active)
     SetPriorityClass(GetCurrentProcess(), active ? HIGH_PRIORITY_CLASS : IDLE_PRIORITY_CLASS);
 }
 
+void FocusGameWindow()
+{
+    if (!gameWindow) return;
+    SetForegroundWindow(gameWindow);
+    SetFocus(gameWindow);
+}
+
 PumpResult PumpOneEvent(int& quitCode, Event* event)
 {
     if (event) *event = {};

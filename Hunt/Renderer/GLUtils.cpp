@@ -15,17 +15,6 @@
 #include <cmath>
 #include <cstdint>
 
-HMODULE libGL = nullptr;
-
-void* glad_get_proc(const char* name)
-{
-    void* p = (void*)wglGetProcAddress(name);
-    if (p == 0 || p == (void*)0x1 || p == (void*)0x2 || p == (void*)0x3 || p == (void*)-1) {
-        p = (void*)GetProcAddress(libGL, name);
-    }
-    return p;
-}
-
 GLuint CompileShader(GLenum type, const char* source)
 {
     GLuint shader = glCreateShader(type);

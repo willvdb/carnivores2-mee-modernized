@@ -129,6 +129,7 @@ if(RENDERER)
             Hunt/Renderer/GLPerf.h
             Hunt/Renderer/GLPerf.cpp
             Hunt/Renderer/GLUI.cpp
+            Hunt/Platform/PlatformGLWin32.cpp
             deps/glad/glad.c
         )
         if(GL_PERF_HOOKS)

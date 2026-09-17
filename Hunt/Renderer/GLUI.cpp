@@ -13,6 +13,7 @@
 #include "Hunt.h"
 #include "GLRenderer.h"
 #include "Renderer/UIText.h"
+#include "Platform/Platform.h"
 
 #ifdef _gl
 
@@ -97,10 +98,7 @@ void Activate3DHardware()
     }
 
     // Ensure window is in foreground
-    if (hwndMain) {
-        SetForegroundWindow(hwndMain);
-        SetFocus(hwndMain);
-    }
+    Platform::FocusGameWindow();
 }
 
 void ShutDown3DHardware()
@@ -211,20 +209,8 @@ void ShowVideo()
     PerfFrameEnd();
 #endif
 
-    // Swap buffers
-    if (g_GLRenderer && hwndMain) {
-        HDC hdc = GetDC(hwndMain);
-        if (hdc) {
-#ifdef GL_PERF_HOOKS
-            glperf_swap_begin();
-#endif
-            SwapBuffers(hdc);
-#ifdef GL_PERF_HOOKS
-            glperf_swap_end();
-#endif
-            ReleaseDC(hwndMain, hdc);
-        }
-    }
+    // Share presentation with the renderer, including the loading path.
+    if (g_GLRenderer) g_GLRenderer->PostProcess();
 }
 
 void Hardware_ZBuffer(BOOL enable)

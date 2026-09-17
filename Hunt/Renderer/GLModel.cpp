@@ -47,7 +47,7 @@ void GLRenderer::ReleaseModelTextures(const TModel* mptr)
     const GLuint texture = it->second;
     m_modelTextureCache.erase(it);
 
-    if (texture && m_hrc) {
+    if (texture && m_hasContext) {
         glDeleteTextures(1, &texture);
     }
 }

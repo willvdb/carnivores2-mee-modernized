@@ -61,7 +61,7 @@ void GLRenderer::RenderSceneDesaturated()
 
 void GLRenderer::ShutdownNightDesaturation()
 {
-    if (m_nightSceneTex && m_hrc) { glDeleteTextures(1, &m_nightSceneTex); m_nightSceneTex = 0; }
+    if (m_nightSceneTex && m_hasContext) { glDeleteTextures(1, &m_nightSceneTex); m_nightSceneTex = 0; }
     // m_nightDesatProgram destroyed by GLShader destructor
     m_nightTexWidth = 0;
     m_nightTexHeight = 0;

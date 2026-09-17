@@ -20,19 +20,9 @@
 #include <vector>
 
 #include "Renderer/GLUtils.h"
-#include "Platform/PlatformWin32.h"
+#include "Platform/Platform.h"
 #include "Core/TerrainFog.h"
 #include "Core/WaterColor.h"  // §3.1: water-colour-aware depth modulation
-
-#define WGL_CONTEXT_MAJOR_VERSION_ARB     0x2091
-#define WGL_CONTEXT_MINOR_VERSION_ARB     0x2092
-#define WGL_CONTEXT_PROFILE_MASK_ARB      0x9126
-#define WGL_CONTEXT_CORE_PROFILE_BIT_ARB  0x00000001
-
-using PFNWGLCREATECONTEXTATTRIBSARBPROC = HGLRC (WINAPI *)(HDC, HGLRC, const int*);
-
-
-
 
 GLRenderer* g_GLRenderer = nullptr;
 
@@ -47,98 +37,10 @@ bool GLRenderer::CreateContext()
 {
     LOG_INFO("OpenGL initialization started");
 
-    m_hwnd = Platform::Win32::GameWindow();
-    if (!m_hwnd) {
-        LOG_ERROR("hwndMain is null");
-        return false;
-    }
+    m_hasContext = Platform::CreateGLContext();
+    if (!m_hasContext) return false;
 
-    m_hdc = GetDC(m_hwnd);
-    if (!m_hdc) {
-        LOG_ERROR("GetDC failed");
-        return false;
-    }
-
-    PIXELFORMATDESCRIPTOR pfd = {
-        sizeof(PIXELFORMATDESCRIPTOR),
-        1,
-        PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,
-        PFD_TYPE_RGBA,
-        32,
-        0, 0, 0, 0, 0, 0,
-        0,
-        0,
-        0,
-        0, 0, 0, 0,
-        24,
-        8,
-        0,
-        PFD_MAIN_PLANE,
-        0,
-        0, 0, 0
-    };
-
-    int pixelFormat = ChoosePixelFormat(m_hdc, &pfd);
-    if (!pixelFormat) {
-        LOG_ERROR("Failed to choose pixel format");
-        return false;
-    }
-
-    if (!SetPixelFormat(m_hdc, pixelFormat, &pfd)) {
-        LOG_ERROR("Failed to set pixel format");
-        return false;
-    }
-
-    HGLRC tempContext = wglCreateContext(m_hdc);
-    if (!tempContext) {
-        LOG_ERROR("Failed to create temporary context");
-        return false;
-    }
-
-    if (!wglMakeCurrent(m_hdc, tempContext)) {
-        LOG_ERROR("Failed to make temporary context current");
-        wglDeleteContext(tempContext);
-        return false;
-    }
-
-    PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB =
-        (PFNWGLCREATECONTEXTATTRIBSARBPROC)wglGetProcAddress("wglCreateContextAttribsARB");
-
-    if (wglCreateContextAttribsARB) {
-        int attribs[] = {
-            WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
-            WGL_CONTEXT_MINOR_VERSION_ARB, 3,
-            WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
-            0
-        };
-
-        m_hrc = wglCreateContextAttribsARB(m_hdc, 0, attribs);
-        if (m_hrc) {
-            wglMakeCurrent(nullptr, nullptr);
-            wglDeleteContext(tempContext);
-            wglMakeCurrent(m_hdc, m_hrc);
-            LOG_INFO("OpenGL 3.3 Core Profile context created");
-        } else {
-            LOG_WARN("Failed to create 3.3 context; falling back to legacy");
-            m_hrc = tempContext;
-        }
-    } else {
-        LOG_WARN("wglCreateContextAttribsARB not found; using legacy context");
-        m_hrc = tempContext;
-    }
-
-    if (!m_hrc) {
-        LOG_ERROR("Failed to create any OpenGL context");
-        return false;
-    }
-
-    libGL = LoadLibraryA("opengl32.dll");
-    if (!libGL) {
-        LOG_ERROR("Failed to load opengl32.dll");
-        return false;
-    }
-
-    if (!gladLoadGLLoader((GLADloadproc)glad_get_proc)) {
+    if (!gladLoadGLLoader(Platform::GLProcAddress)) {
         LOG_ERROR("Failed to initialize GLAD");
         return false;
     }
@@ -320,7 +222,7 @@ void GLRenderer::Shutdown()
     glperf_shutdown();
 #endif
 
-    if (!m_Initialized && !m_hrc) return;
+    if (!m_Initialized && !m_hasContext) return;
 
     ShutdownTerrainPipeline();
     ShutdownModelPipeline();
@@ -329,46 +231,15 @@ void GLRenderer::Shutdown()
     ShutdownSkyPipeline();
     ShutdownHudPipeline();
 
-    if (m_hrc) {
-        if (wglGetCurrentContext() == m_hrc) {
-            wglMakeCurrent(nullptr, nullptr);
-        }
-        wglDeleteContext(m_hrc);
-        m_hrc = nullptr;
-    }
-
-    if (m_hdc && m_hwnd) {
-        ReleaseDC(m_hwnd, m_hdc);
-        m_hdc = nullptr;
-    }
-
-    if (libGL) {
-        FreeLibrary(libGL);
-        libGL = nullptr;
-    }
+    DestroyContext();
 
     m_Initialized = false;
 }
 
 void GLRenderer::DestroyContext()
 {
-    if (m_hrc) {
-        if (wglGetCurrentContext() == m_hrc) {
-            wglMakeCurrent(nullptr, nullptr);
-        }
-        wglDeleteContext(m_hrc);
-        m_hrc = nullptr;
-    }
-
-    if (m_hdc && m_hwnd) {
-        ReleaseDC(m_hwnd, m_hdc);
-        m_hdc = nullptr;
-    }
-
-    if (libGL) {
-        FreeLibrary(libGL);
-        libGL = nullptr;
-    }
+    Platform::DestroyGLContext();
+    m_hasContext = false;
 }
 
 
@@ -1543,11 +1414,11 @@ void GLRenderer::WaitRetrace()
 
 void GLRenderer::PostProcess()
 {
-    if (m_hdc && m_hwnd) {
+    if (m_hasContext) {
 #ifdef GL_PERF_HOOKS
         glperf_swap_begin();
 #endif
-        SwapBuffers(m_hdc);
+        Platform::SwapGLBuffers();
 #ifdef GL_PERF_HOOKS
         glperf_swap_end();
 #endif

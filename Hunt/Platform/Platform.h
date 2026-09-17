@@ -56,7 +56,14 @@ void EnableDpiAwareness();
 bool CreateGameWindow();
 bool HasGameWindow();
 void ShowAndFocusGameWindow();
+void FocusGameWindow(); // Foreground/focus without changing size.
 void SetProcessActive(bool active);
+
+// Single context for the game window. Renderer owns the call ordering and GLAD.
+bool CreateGLContext();
+void DestroyGLContext();
+void* GLProcAddress(const char* name);
+void SwapGLBuffers();
 
 enum class PumpResult { Idle, Dispatched, Quit };
 // Consume at most one event; quitCode is written only for Quit.

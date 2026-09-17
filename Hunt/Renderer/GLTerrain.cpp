@@ -3,6 +3,7 @@
 // ==========================================================================
 
 #include "Hunt.h"
+#include "Platform/Platform.h"
 #include "GLRenderer.h"
 #include "Renderer/GLUtils.h"
 
@@ -49,7 +50,7 @@ bool HasExtension(const char* name)
 bool SupportsBufferStorage()
 {
     const bool core44 = (GLVersion.major > 4) || (GLVersion.major == 4 && GLVersion.minor >= 4);
-    return (core44 || HasExtension("GL_ARB_buffer_storage")) && glad_get_proc("glBufferStorage") != nullptr;
+    return (core44 || HasExtension("GL_ARB_buffer_storage")) && Platform::GLProcAddress("glBufferStorage") != nullptr;
 }
 }
 
@@ -64,7 +65,7 @@ bool GLRenderer::InitializeTerrainPipeline()
 
     m_usePersistentTerrainVBO = SupportsBufferStorage();
     if (m_usePersistentTerrainVBO) {
-        g_glBufferStorage = reinterpret_cast<PFNGLBUFFERSTORAGEPROC_LOCAL>(glad_get_proc("glBufferStorage"));
+        g_glBufferStorage = reinterpret_cast<PFNGLBUFFERSTORAGEPROC_LOCAL>(Platform::GLProcAddress("glBufferStorage"));
         if (!g_glBufferStorage) {
             m_usePersistentTerrainVBO = false;
         }
