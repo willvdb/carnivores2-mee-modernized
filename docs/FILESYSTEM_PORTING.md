@@ -26,7 +26,7 @@ Categories: **content**, **user read**, **output**, **runtime**, **historical**.
 | Menu Resources.cpp `ReadTGAFile`, `LoadPicture`, `LoadMenuBackground` | content | Resolve TGA at ReadTGAFile, covering menu backgrounds, creature/hidden/weapon/accessory/area thumbnails and descriptor art. |
 | Menu Resources.cpp `LoadText` | content | Resolve area/creature/weapon/accessory descriptions, observer/nightvision NFO and descriptor text; preserve missing-file fallbacks. |
 | Menu Resources.cpp `LoadWave` | content | Resolve menugo/menuamb/menumov/type/typego WAVs; preserve optional failures. |
-| Menu Menu.cpp `MenuEventStart`: RAW hit-map stream | content | Resolve the selected menu hit map. |
+| Menu Menu.cpp `LoadGameMenu`: RAW hit-map stream | content | Resolve the selected menu hit map. |
 | Trophy.cpp LoadTrophy/LoadTrophy2; Menu TrophyLoad and registration header streams | user read | Leave existing relative trophyNN.sav/.sab paths unchanged, paired with current writes. |
 | EngineInit.cpp LoadConfig; Menu LoadConfig and SaveConfig's old-line read | user read | Leave executable-directory/cwd lookup and config.cfg preservation unchanged; not legacy asset reads. |
 | Trophy.cpp SaveTrophy/SaveTrophy2; Menu TrophySave/TrophyDelete; engine/menu SaveConfig | output | Preserve destinations, creation and deletion policies. |
@@ -85,6 +85,10 @@ are left to Windows std::filesystem; Linux reports an unsupported Windows root
 instead of inventing a mount mapping. No drive/UNC reference occurs in the
 available content; live network-share lookup was not tested. Windows device-name,
 8.3 alias and trailing-dot/space emulation are outside this ASCII filename contract.
+In particular, a logical request containing a DOS alias such as RUNNER~1 will
+not resolve unless that is an actual directory entry. Normal relative content
+lookup still works when Windows expresses the working directory via an alias: the
+native root is opened directly. No such alias occurs in the content inventory.
 
 `Hunt/Loaders/LegacyAssetPath.h` resolves required engine names and calls the
 existing DoHalt on resolution failure. The loaders still use CreateFile with
@@ -128,7 +132,9 @@ Native Linux GCC 16.2.1 and Clang 22.1.8: **41/41 pass** each (14 path tests,
 27 unchanged shared serialization codec tests). GCC ASan/UBSan including leak
 checking: **41/41 pass, no diagnostics**. LeakSanitizer required a rerun outside
 sandbox tracing; the initial tracing limitation was not a test assertion failure.
-These runs are on CachyOS, not a claim that the new Ubuntu CI job has executed.
+These local runs are on CachyOS. The new hosted Ubuntu jobs also passed with
+both GCC and Clang in [run 35261474221](https://github.com/willvdb/carnivores2-mee-modernized/actions/runs/35261474221)
+at code commit `cabcab9`.
 
 Path fixtures create private temporary trees, testing both slashes and mixed /
 repeated separators, every directory component's case, exact priority, file and
@@ -165,9 +171,30 @@ SingleLongRowIsClampedEvenWithoutPairing and FiveRowBlockFitsThePanelHeight.
 The preserved d62905a baseline was rerun and matches every configuration's
 38 versus 38 (twice), 145 versus 144 and 290 versus 288 measurements. CTest keeps
 reporting exit 8, 10/11 executables passing; no failures are suppressed. The full
-matrix ran before the final three menu tests were added; the changed menu test
-target was then rebuilt and all nine tests passed in all six configurations.
+matrix was rerun after the final fixture changes, including all nine production
+menu tests in each configuration.
 PE architectures match the selected targets; no new build warning was emitted.
+
+### Hosted Windows results and fixture correction
+
+Hosted [run 35261474221](https://github.com/willvdb/carnivores2-mee-modernized/actions/runs/35261474221)
+at `cabcab9` passed **all six native Windows full-build/test jobs**, including
+the UI tests, plus both Ubuntu compiler jobs. This verifies the final code; the
+subsequent commit only updates this report.
+
+The first hosted run (35260191408) passed both Ubuntu jobs and built all six
+Windows configurations, but path and production-loader tests failed because
+GetTempPath returned `C:\Users\RUNNER~1\...`. Directory iteration correctly
+returns the long username, and the defined resolver does not invent DOS aliases.
+Local Wine temp paths did not expose this distinction.
+
+`tests/test_temp_path.h` now expands only the Windows **test fixture directory**
+using GetLongPathNameW before creating files. Model/resource/media/path fixtures
+share it; Linux still uses std::filesystem::temp_directory_path. All original
+byte/loader assertions and runtime resolver semantics are unchanged. This keeps
+test inputs within the explicit actual-name/ASCII contract rather than broadening
+content lookup to DOS alias, punctuation or filename discovery rules. Production
+Windows absolute paths containing aliases remain the documented limitation above.
 
 ### Independent casing inventory and corpus probe
 
@@ -253,7 +280,7 @@ independently sampled in that menu run; direct engine runs independently returne
 0. This diagnostic bug is deferred as an unrelated launcher fix, not concealed
 as a filesystem regression or fixed opportunistically here.
 
-Native Windows execution, subjective audible quality, exhaustive gameplay/mod
+Native Windows gameplay, subjective audible quality, exhaustive gameplay/mod
 coverage and live UNC shares remain unverified. These are MSVC Windows binaries
 executed under Wine; Linux validation covers only shared utilities/codecs. No
 asset file was renamed or changed in the original or ordinary runtime copies;
