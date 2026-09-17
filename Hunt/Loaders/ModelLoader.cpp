@@ -68,6 +68,31 @@ static LegacyModel::Header ReadModelHeader(HANDLE file)
   return header;
 }
 
+static std::int32_t ReadModelInt32(HANDLE file, const char* what)
+{
+  std::array<std::uint8_t, 4> bytes{};
+  ReadModelExact(file, bytes.data(), 4, what);
+  std::int32_t value = 0;
+  LegacyModel::DecodeInt32(bytes.data(), bytes.size(), value);
+  return value;
+}
+
+static void ReadModelSamples(HANDLE file, short* out, size_t fileBytes, const char* what)
+{
+  std::array<std::uint8_t, 4096> bytes{};
+  std::array<std::int16_t, 2048> samples{};
+  while (fileBytes)
+  {
+    const size_t batch = (std::min)(fileBytes, bytes.size());
+    ReadModelExact(file, bytes.data(), static_cast<DWORD>(batch), what);
+    if (!LegacyModel::DecodeSamples(bytes.data(), batch, samples.data(), batch / 2))
+      DoHalt("Model loading error: invalid animation samples.");
+    std::copy_n(samples.data(), batch / 2, out);
+    out += batch / 2;
+    fileBytes -= batch;
+  }
+}
+
 // Face indices must address loaded vertices; renderer and lighting code
 // index gVertex[] with them unchecked.
 static void ValidateFaceIndices(const TModel* mptr)
@@ -523,16 +548,14 @@ void LoadModel(unique_obj_ptr<TModel> &mptr, MemoryTag tag)
 
 void LoadAnimation(TVTL &vtl, int modelVertexCount)
 {
-  int recordType = 0;
-  int vertexCount = 0;
-  int storedFrameCount = 0;
-
-  if (!ReadExact(hfile, &recordType, 4) ||
-      !ReadExact(hfile, &vertexCount, 4) ||
-      !ReadExact(hfile, &vtl.aniKPS, 4) ||
-      !ReadExact(hfile, &storedFrameCount, 4))
-    DoHalt("Model loading error: truncated animation header.");
-  (void)recordType;
+  std::array<std::uint8_t, LegacyModel::ObjectAnimationHeaderSize> bytes{};
+  ReadModelExact(hfile, bytes.data(), static_cast<DWORD>(bytes.size()), "animation header");
+  LegacyModel::ObjectAnimationHeader header;
+  LegacyModel::DecodeObjectAnimationHeader(bytes.data(), bytes.size(), header);
+  const int vertexCount = header.vertices;
+  const int storedFrameCount = header.frames;
+  vtl.aniKPS = header.kps;
+  // header.type remains ignored, as in the legacy reader.
 
   if (vertexCount != modelVertexCount)
     ModelLoadFail("animation vertex count does not match model", vertexCount, modelVertexCount);
@@ -541,9 +564,12 @@ void LoadAnimation(TVTL &vtl, int modelVertexCount)
     ModelLoadFail("animation frame count out of range", storedFrameCount, maxAnimationFrames - 1);
   vtl.FramesCount = storedFrameCount + 1;
 
-  // This buffer is read in one DWORD-sized Win32 transfer.
-  size_t anibytes = 0;
-  if (!CheckedTransferBytes3((size_t)vertexCount, (size_t)vtl.FramesCount, 6, anibytes))
+  // Preserve the legacy file-transfer ceiling, separately from native storage.
+  size_t anibytes = 0, storageBytes = 0;
+  if (!CheckedTransferBytes3((size_t)vertexCount, (size_t)vtl.FramesCount,
+                            LegacyModel::SampleSize, anibytes) ||
+      !CheckedBytes3((size_t)vertexCount, (size_t)vtl.FramesCount,
+                     3 * sizeof(short), storageBytes))
     ModelLoadFail("animation size overflow", vertexCount, vtl.FramesCount);
   if (!CheckedAnimationDuration(vtl.FramesCount, vtl.aniKPS, vtl.AniTime))
     ModelLoadFail("animation duration is invalid", vtl.FramesCount, vtl.aniKPS);
@@ -551,8 +577,8 @@ void LoadAnimation(TVTL &vtl, int modelVertexCount)
   // Phase 5E follow-up (Gap #2): LoadAnimation is only called from
   // LoadResources (per-level). Tag as Level for arena reclamation.
   vtl.aniData.reset((short int*)
-                _HeapAlloc(Heap, 0, anibytes, MemoryTag::Level));
-  ReadModelExact(hfile, vtl.aniData.get(), (DWORD)anibytes, "object animation data");
+                _HeapAlloc(Heap, 0, storageBytes, MemoryTag::Level));
+  ReadModelSamples(hfile, vtl.aniData.get(), anibytes, "object animation data");
 
 }
 
@@ -922,9 +948,13 @@ void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
 //============= read animations =============//
   for (int a=0; a<chinfo.AniCount; a++)
   {
-    ReadModelExact(hfile, chinfo.Animation[a].aniName, 32, "animation name");
-    ReadModelExact(hfile, &chinfo.Animation[a].aniKPS, 4, "animation rate");
-    ReadModelExact(hfile, &chinfo.Animation[a].FramesCount, 4, "animation frame count");
+    std::array<std::uint8_t, LegacyModel::AnimationHeaderSize> bytes{};
+    ReadModelExact(hfile, bytes.data(), static_cast<DWORD>(bytes.size()), "character animation header");
+    LegacyModel::AnimationHeader animation;
+    LegacyModel::DecodeAnimationHeader(bytes.data(), bytes.size(), animation);
+    memcpy(chinfo.Animation[a].aniName, animation.name.data(), 32);
+    chinfo.Animation[a].aniKPS = animation.kps;
+    chinfo.Animation[a].FramesCount = animation.frames;
     const int fileFrames = chinfo.Animation[a].FramesCount;
     constexpr int maxAnimationFrames = (std::numeric_limits<int>::max)() / 256;
     if (fileFrames <= 0 || fileFrames > maxAnimationFrames)
@@ -933,9 +963,9 @@ void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
     // File bytes retain the Win32 transfer limit; the duplicate frame is runtime storage.
     size_t fileAniBytes = 0, storageAniBytes = 0;
     if (!CheckedTransferBytes3((size_t)chinfo.mptr->VCount,
-                       (size_t)fileFrames, 6, fileAniBytes) ||
+                       (size_t)fileFrames, LegacyModel::SampleSize, fileAniBytes) ||
         !CheckedBytes3((size_t)chinfo.mptr->VCount,
-                       (size_t)storageFrames, 6, storageAniBytes))
+                       (size_t)storageFrames, 3 * sizeof(short), storageAniBytes))
       ModelLoadFail("animation size overflow", fileFrames, 0);
     if (!CheckedAnimationDuration(fileFrames,
                                   chinfo.Animation[a].aniKPS,
@@ -945,11 +975,14 @@ void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
     chinfo.Animation[a].aniData.reset((short int*)
                                   _HeapAlloc(Heap, 0, storageAniBytes, tag));
 
-    ReadModelExact(hfile, chinfo.Animation[a].aniData.get(),
-                   (DWORD)fileAniBytes, "character animation data");
+    ReadModelSamples(hfile, chinfo.Animation[a].aniData.get(),
+                     fileAniBytes, "character animation data");
     if (fileFrames == 1)
-      memcpy(reinterpret_cast<BYTE*>(chinfo.Animation[a].aniData.get()) + fileAniBytes,
-             chinfo.Animation[a].aniData.get(), fileAniBytes);
+    {
+      const size_t frameSamples = static_cast<size_t>(chinfo.mptr->VCount) * 3;
+      std::copy_n(chinfo.Animation[a].aniData.get(), frameSamples,
+                  chinfo.Animation[a].aniData.get() + frameSamples);
+    }
   }
 
 //============= read sound fx ==============//
@@ -957,7 +990,7 @@ void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
   for (int s=0; s<chinfo.SfxCount; s++)
   {
     ReadModelExact(hfile, tmp, 32, "sound effect name");
-    ReadModelExact(hfile, &chinfo.SoundFX[s].length, 4, "sound effect length");
+    chinfo.SoundFX[s].length = ReadModelInt32(hfile, "sound effect length");
     // Phase 5B.1: lpData is now std::vector<short int>. A malformed length
     // previously drove a huge assign (or, when odd, a 1-byte heap overflow
     // on the read below); bound it and round the allocation up.
@@ -978,9 +1011,12 @@ void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
   CorrectModel(chinfo.mptr.get(), tag);
 
 
-  ReadFile(hfile, chinfo.Anifx, 64*4, &l, nullptr);
-  if (l!=256)
-    for (l=0; l<64; l++) chinfo.Anifx[l] = -1;
+  std::array<std::uint8_t, LegacyModel::AssociationsSize> associationBytes{};
+  std::array<std::int32_t, 64> associations{};
+  if (!ReadExact(hfile, associationBytes.data(), static_cast<DWORD>(associationBytes.size())) ||
+      !LegacyModel::DecodeAssociations(associationBytes.data(), associationBytes.size(), associations))
+    associations.fill(-1);
+  std::copy(associations.begin(), associations.end(), chinfo.Anifx);
   CloseHandle(hfile); 
 }
 
