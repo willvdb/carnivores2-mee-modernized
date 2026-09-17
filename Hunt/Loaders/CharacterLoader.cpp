@@ -3,6 +3,7 @@
 // ==========================================================================
 
 #include "Hunt.h"
+#include "LoadValidate.h"
 
 // Forward declarations
 void PlaceHunter();
@@ -98,7 +99,11 @@ void LoadCharacters()
   // so a Level tag would strand unreclaimable arena space on restarts.
   // Tag it Global: the heap free on reset is real, and the report stays
   // clean because the owner always releases it.
-  Weapon.normals.reset((Vector3d*)_HeapAlloc(Heap, 0, sizeof(Vector3d) * maxWeaponVCount, MemoryTag::Global));
+  size_t normalBytes = 0;
+  if (maxWeaponVCount < 0 ||
+      !CheckedBytes2(static_cast<size_t>(maxWeaponVCount), sizeof(Vector3d), normalBytes))
+    DoHalt("Weapon normal allocation size overflow.");
+  Weapon.normals.reset((Vector3d*)_HeapAlloc(Heap, 0, normalBytes, MemoryTag::Global));
 
   for (int c=10; c<20; c++)
     if (TargetDino & (1<<c))
@@ -324,8 +329,14 @@ void ReInitGame()
   if (rVertex) { (void)_HeapFree(Heap, 0, rVertex); rVertex = nullptr; }
   if (gScrp) { (void)_HeapFree(Heap, 0, gScrp); gScrp = nullptr; }
   if (PhongMapping) { (void)_HeapFree(Heap, 0, PhongMapping); PhongMapping = nullptr; }
-  rVertex = (Vector3d*)_HeapAlloc(Heap, 0, sizeof(Vector3d) * MaxObjectVCount, MemoryTag::Global);
-  gScrp = (Vector2di*)_HeapAlloc(Heap, 0, sizeof(Vector2di) * MaxObjectVCount, MemoryTag::Global);
-  PhongMapping = (Vector2df*)_HeapAlloc(Heap, 0, sizeof(Vector2df) * MaxObjectVCount, MemoryTag::Global);
+  size_t vertexBytes = 0, screenBytes = 0, mappingBytes = 0;
+  if (MaxObjectVCount < 0 ||
+      !CheckedBytes2(static_cast<size_t>(MaxObjectVCount), sizeof(Vector3d), vertexBytes) ||
+      !CheckedBytes2(static_cast<size_t>(MaxObjectVCount), sizeof(Vector2di), screenBytes) ||
+      !CheckedBytes2(static_cast<size_t>(MaxObjectVCount), sizeof(Vector2df), mappingBytes))
+    DoHalt("Vertex scratch allocation size overflow.");
+  rVertex = (Vector3d*)_HeapAlloc(Heap, 0, vertexBytes, MemoryTag::Global);
+  gScrp = (Vector2di*)_HeapAlloc(Heap, 0, screenBytes, MemoryTag::Global);
+  PhongMapping = (Vector2df*)_HeapAlloc(Heap, 0, mappingBytes, MemoryTag::Global);
   AllocateRenderTables();
 }

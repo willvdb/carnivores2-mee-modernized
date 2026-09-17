@@ -296,3 +296,115 @@ test was run for this cleanup; the earlier developer playtest remains the
 interactive evidence. Disk, network and GPU formats and gameplay behavior were
 not intentionally changed. The deferred work and native Windows validation
 limits above still apply.
+
+## Native allocation-width slice (2026-09-17)
+
+The `port/x64-memory-width` slice addresses R04–R07 on top of stable `main`
+`67368b1`. It supersedes the allocation-width deferral above; other deferred
+platform, serialization, GPU and packaging work remains separate.
+
+### Runtime and transfer contracts
+
+- `CheckedBytes2/3` now check native `size_t` overflow **before** multiplying.
+  Three-factor zero products succeed regardless of the other factors; failure
+  leaves the output unchanged. `CheckedTransferBytes2/3` additionally enforce
+  `UINT32_MAX` for a single legacy/Win32 transfer.
+- `_HeapAlloc` (all overloads), `_HeapAllocImpl` and `AllocDispatch` carry
+  `size_t` bytes end to end. Heap flags remain `DWORD`. Object factories pass
+  native `sizeof(T)`; array factories check `SIZE_MAX / sizeof(T)` before
+  multiplying. Debug metadata already stores `size_t` and no longer receives
+  a narrowed input. Cumulative `HeapAllocated/HeapReleased` use `uint64_t`,
+  including in x86 builds; live leak totals remain `size_t`.
+- Model/light storage, face and normal scratch, character scratch, snow arrays
+  and mipmaps use checked native products. Allocation-site `DWORD` casts are
+  removed. The face copy reuses its checked native byte count.
+- Arena and leak diagnostics use `%zu` for native byte/count values. Arena log
+  buffers have room for the longer values. Arena generations remain `unsigned`;
+  these are epoch identifiers, not byte counts.
+- Heap/deleter pairing, zero filling, tags, tracking, arena reset, constructor
+  failure cleanup and smart-pointer storage invariants are preserved. Backing
+  allocations still use Windows `HeapAlloc` and `VirtualAlloc`.
+
+The final call-site audit intentionally retains these bounded quantities:
+
+| Quantity | Retained limit and reason |
+| --- | --- |
+| `ReadExact`, `ReadModelExact`, `ReadRscExact`, `ReadFile`/`WriteFile` counts | `DWORD`; unchanged single-transfer Windows API. Animation payloads and resource-table byte products use explicit transfer checks before conversion. |
+| Model vertex/face counts | Existing `1 << 20` content caps; also keep downstream signed indexing and fixed 16-/64-byte record reads safe. Object records remain capped at 1024. |
+| Character animation storage | Native byte product, separate from the bounded file payload; one-frame duplication stays unchanged. Object animations still read their entire allocation in one bounded transfer. Frame counts retain the existing `INT_MAX / 256` fixed-point limit. |
+| Model `TextureSize` | Nonnegative signed 32-bit file field. GL uses the existing 256-row normalization; SOFT rounds down with `>> 9`, then multiplies by 512, which cannot exceed the validated original value. These proven bounded byte values promote safely into the native allocator. |
+| Picture pixels | `CheckedPictureBytes` checks native products and retains `INT_MAX` pixels for existing signed pixel indexing. For 16-bit pixels this accepts the same range as the old `UINT32_MAX` byte limit. BMP width remains at most 800; TGA dimensions remain 16-bit. Individual row reads still fit `DWORD`. |
+| Snow | Existing nonnegative cumulative `1 << 20` element cap; runtime storage multiplication is now independently checked. Area tables themselves use existing fixed arrays. |
+| Audio | Existing 16 MiB length cap and rounded-up 16-bit sample storage; signed OpenAL byte counts and PCM layout unchanged. |
+| Fixed objects/textures | Native `sizeof(T)` or small compile-time byte constants; no count narrowing. |
+| Fog/water records | Existing 255/256 entry caps and 20-/16-byte disk records, plus explicit transfer checks. |
+
+No disk, profile, network or GPU record definitions, byte layouts, or serialized
+layout tests changed. No content conversion or proprietary validation assets are
+part of this branch.
+
+### Build and asset-free test results
+
+Validation used the installed Microsoft MSVC 19.44.35229 / SDK 10.0.26100.0
+through Wine 11.17, with the same presets and local toolchain helper described
+above. All six default builds passed, including their selected engine, menu and
+test targets. PE machine types match the requested architectures.
+
+| Configuration | Build | Individual tests |
+| --- | --- | --- |
+| Windows x86 GL Debug | Passed | 136/139 passed |
+| Windows x86 GL Release | Passed | 136/139 passed |
+| Windows x64 GL Debug | Passed | 139/142 passed |
+| Windows x64 GL Release | Passed | 139/142 passed |
+| Windows x86 SOFT Release | Passed | 136/139 passed |
+| Windows x86 menu Release | Passed | 136/139 passed |
+
+Every row passes all core tests (99 on x86, 100 on x64), allocator factory tests
+in both plain and `MEM_DEBUG` modes (7 each on x86, 8 each on x64), the menu
+layout test (1), and fog sampling (14). UI text remains 8/11, so CTest correctly
+reports 5/6 executables passing and exit code 8. The three failing test names
+are the documented baseline cases above. Rerunning the preserved untouched
+`d62905a` baseline UI executable reproduced the same failures and measurements;
+all six configurations matched: 38 versus 38 for both font checks, and 145 versus
+144 / 290 versus 288 for the height check. UI code/tests were not changed.
+The existing `Controls.cpp:309` C4805 warning also remains unchanged.
+
+Arithmetic coverage includes zero and identity products, native and transfer
+limits, one byte beyond `UINT32_MAX`, `SIZE_MAX * 2`, `(size_t(1) << 63) * 2`
+on x64, both stages of three-factor overflow, normal asset sizes and picture
+pixel limits. Factory probes intercept the allocation boundary to verify native
+sizes (including values above 4 GiB on x64), flags, tags, debug forwarding,
+zero-size ownership, matching frees and constructor exceptions without actually
+allocating enormous buffers. Arena tests cover native-width rejection and x64
+capacity logging without truncation, alongside the existing reset/ownership
+tests. All existing serialized-layout fixtures remain unchanged and pass.
+
+Commands are the cleanup validation commands above, using the same
+`build/cleanup-msvc-<preset>` directories. New configure/build/test logs, baseline
+comparison and final allocation-search evidence are retained separately under
+`~/.cache/carnivores-memory-width-20260917/`. Individual test output remains in
+each build directory's `Testing/Temporary/LastTest.log`.
+
+### Bounded runtime validation
+
+New independent copies of the user-owned Genesis Redux 1.1 content and profiles
+were prepared under `~/Games/carnivores-memory-width-validation/`; the earlier
+validation copies and original installation were preserved. Each received the
+newly built engine and matching existing OpenAL DLL. All four x86/x64 GL
+Debug/Release runs used headless Gamescope at 1024×768 and loaded area1 in observer
+mode, with profile 0, dinosaur 1 and weapon 1. Each run:
+
+- Loaded the hunt, models, textures and sounds and entered the game loop.
+- Initialized OpenAL and confirmed its loaded module.
+- Responded to the existing window-message and minimize/restore probes.
+- Shut down normally through `WM_CLOSE`, including OpenAL cleanup, with exit
+  code 0. Both Debug runs reported `No memory leaks detected.` and printed arena
+  usage statistics (150 allocations, 5837 KiB used).
+
+Logs, loaded-module evidence and result JSON are in that directory's `evidence/`
+subdirectory. Automated screenshot capture again failed; no visual comparison is
+claimed. These checks do not establish audible playback, exhaustive gameplay,
+save/evacuation interchange, repeated-level runtime behavior, native Windows
+execution or successful physical allocations above 4 GiB. Existing arena reset
+unit tests do pass. Native Windows playtesting and the other deferred audit
+findings remain follow-up work.

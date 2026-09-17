@@ -316,7 +316,12 @@ void CorrectModel(TModel *mptr, MemoryTag tag)
 	// per-allocation, so borrowing the arena here would inflate the per-level
 	// high-water mark for no reason. `tag` still governs the model's own buffers.
 	(void)tag;
-	TFace *tface = (TFace*)_HeapAlloc(Heap, 0, sizeof(TFace) * mptr->FCount * 2, MemoryTag::Global);
+	size_t faceBytes = 0, scratchBytes = 0;
+	if (mptr->FCount < 0 ||
+	    !CheckedBytes2(static_cast<size_t>(mptr->FCount), sizeof(TFace), faceBytes) ||
+	    !CheckedBytes2(faceBytes, 2, scratchBytes))
+	  ModelLoadFail("face scratch size overflow", mptr->FCount, 0);
+	TFace *tface = (TFace*)_HeapAlloc(Heap, 0, scratchBytes, MemoryTag::Global);
 
   for (int f=0; f<mptr->FCount; f++)
   {
@@ -381,7 +386,7 @@ void CorrectModel(TModel *mptr, MemoryTag tag)
 
 
 
-  memcpy( mptr->gFace, tface, mptr->FCount << 6 );
+  memcpy( mptr->gFace, tface, faceBytes );
   (void)_HeapFree(Heap, 0, tface);
 }
 
@@ -395,17 +400,17 @@ void AllocateMemoryForModel(TModel* mptr, MemoryTag tag) {
 	// hostile files while leaving legitimate mods effectively unlimited.
 	if (mptr->VCount <= 0 || mptr->VCount > (1 << 20) ||
 	    !IsValidCount(mptr->FCount, 1 << 20) ||
-	    !CheckedTransferBytes2((size_t)mptr->VCount, 16, vbytes) ||
-	    !CheckedTransferBytes2((size_t)mptr->FCount, 64, fbytes) ||
-	    !CheckedTransferBytes3((size_t)mptr->VCount, 4, sizeof(float), lbytes))
+	    !CheckedBytes2((size_t)mptr->VCount, sizeof(TPoint3d), vbytes) ||
+	    !CheckedBytes2((size_t)mptr->FCount, sizeof(TFace), fbytes) ||
+	    !CheckedBytes3((size_t)mptr->VCount, 4, sizeof(float), lbytes))
 	  ModelLoadFail("VCount/FCount size overflow", mptr->VCount, mptr->FCount);
-	mptr->gVertex.reset((TPoint3d*)_HeapAlloc(Heap, 0, (DWORD)vbytes, tag));
-	mptr->gFace = (TFace*)_HeapAlloc(Heap, 0, (DWORD)fbytes, tag);
+	mptr->gVertex.reset((TPoint3d*)_HeapAlloc(Heap, 0, vbytes, tag));
+	mptr->gFace = (TFace*)_HeapAlloc(Heap, 0, fbytes, tag);
 
 	// Keep track of maximum VCount value
 	MaxObjectVCount = MAX(MaxObjectVCount, mptr->VCount);
 
-	float *lightBuffer = static_cast<float*>(_HeapAlloc(Heap, 0, (DWORD)lbytes, tag));
+	float *lightBuffer = static_cast<float*>(_HeapAlloc(Heap, 0, lbytes, tag));
 	mptr->VLight[0] = lightBuffer;
 	mptr->VLight[1] = lightBuffer + mptr->VCount;
 	mptr->VLight[2] = lightBuffer + mptr->VCount * 2;
@@ -495,6 +500,7 @@ void LoadAnimation(TVTL &vtl, int modelVertexCount)
     ModelLoadFail("animation frame count out of range", storedFrameCount, maxAnimationFrames - 1);
   vtl.FramesCount = storedFrameCount + 1;
 
+  // This buffer is read in one DWORD-sized Win32 transfer.
   size_t anibytes = 0;
   if (!CheckedTransferBytes3((size_t)vertexCount, (size_t)vtl.FramesCount, 6, anibytes))
     ModelLoadFail("animation size overflow", vertexCount, vtl.FramesCount);
@@ -504,7 +510,7 @@ void LoadAnimation(TVTL &vtl, int modelVertexCount)
   // Phase 5E follow-up (Gap #2): LoadAnimation is only called from
   // LoadResources (per-level). Tag as Level for arena reclamation.
   vtl.aniData.reset((short int*)
-                _HeapAlloc(Heap, 0, (DWORD)anibytes, MemoryTag::Level));
+                _HeapAlloc(Heap, 0, anibytes, MemoryTag::Level));
   ReadModelExact(hfile, vtl.aniData.get(), (DWORD)anibytes, "object animation data");
 
 }
@@ -632,14 +638,21 @@ void GenerateAlphaFlags(TModel *mptr)
 
 void GenerateModelMipMaps(TModel *mptr, MemoryTag tag)
 {
+  if (mptr->TextureHeight < 0)
+    ModelLoadFail("negative mipmap height", mptr->TextureHeight, 0);
   int th = (mptr->TextureHeight) / 2;
+  size_t mipBytes = 0;
+  if (!CheckedBytes3(static_cast<size_t>(th) + 1, 128, sizeof(WORD), mipBytes))
+    ModelLoadFail("mipmap size overflow", th, 0);
   mptr->lpTexture2.reset(
-    static_cast<WORD*>(_HeapAlloc(Heap, HEAP_ZERO_MEMORY, (1+th)*128*2, tag)));
+    static_cast<WORD*>(_HeapAlloc(Heap, HEAP_ZERO_MEMORY, mipBytes, tag)));
   CreateMipMapMT(mptr->lpTexture2.get(), mptr->lpTexture.get(), th);
 
   th = (mptr->TextureHeight) / 4;
+  if (!CheckedBytes3(static_cast<size_t>(th) + 1, 64, sizeof(WORD), mipBytes))
+    ModelLoadFail("mipmap size overflow", th, 0);
   mptr->lpTexture3.reset(
-    static_cast<WORD*>(_HeapAlloc(Heap, HEAP_ZERO_MEMORY, (1+th)*64*2, tag)));
+    static_cast<WORD*>(_HeapAlloc(Heap, HEAP_ZERO_MEMORY, mipBytes, tag)));
   CreateMipMapMT2(mptr->lpTexture3.get(), mptr->lpTexture2.get(), th);
 }
 
@@ -877,10 +890,11 @@ void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
     if (fileFrames <= 0 || fileFrames > maxAnimationFrames)
       ModelLoadFail("animation frame count out of range", fileFrames, maxAnimationFrames);
     const int storageFrames = fileFrames == 1 ? 2 : fileFrames;
+    // File bytes retain the Win32 transfer limit; the duplicate frame is runtime storage.
     size_t fileAniBytes = 0, storageAniBytes = 0;
     if (!CheckedTransferBytes3((size_t)chinfo.mptr->VCount,
                        (size_t)fileFrames, 6, fileAniBytes) ||
-        !CheckedTransferBytes3((size_t)chinfo.mptr->VCount,
+        !CheckedBytes3((size_t)chinfo.mptr->VCount,
                        (size_t)storageFrames, 6, storageAniBytes))
       ModelLoadFail("animation size overflow", fileFrames, 0);
     if (!CheckedAnimationDuration(fileFrames,
@@ -889,7 +903,7 @@ void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
       ModelLoadFail("animation duration is invalid",
                     fileFrames, chinfo.Animation[a].aniKPS);
     chinfo.Animation[a].aniData.reset((short int*)
-                                  _HeapAlloc(Heap, 0, (DWORD)storageAniBytes, tag));
+                                  _HeapAlloc(Heap, 0, storageAniBytes, tag));
 
     ReadModelExact(hfile, chinfo.Animation[a].aniData.get(),
                    (DWORD)fileAniBytes, "character animation data");

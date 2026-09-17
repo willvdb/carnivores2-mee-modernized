@@ -913,8 +913,11 @@ void ReadAreaTable (FILE *stream, int areaNumber)
 						    (void)_HeapFree(Heap, 0, Snow);
 						    Snow = nullptr;
 						}
+						size_t snowBytes = 0;
+						if (!CheckedBytes2(static_cast<size_t>(totalSnowTemp), sizeof(TSnowElement), snowBytes))
+						    DoHalt("Snow allocation size overflow.");
 						Snow = totalSnowTemp > 0
-						    ? (TSnowElement*)_HeapAlloc(Heap, 0, totalSnowTemp * sizeof(TSnowElement), MemoryTag::Global)
+						    ? (TSnowElement*)_HeapAlloc(Heap, 0, snowBytes, MemoryTag::Global)
 						    : nullptr;
 					}
 					TotalAreaInfo++;

@@ -328,7 +328,7 @@ void PrintMemoryLeaks()
     }
 
     char buf[512];
-    sprintf(buf, "Memory leaks detected: %u blocks\n", (unsigned)g_Allocations->size());
+    sprintf(buf, "Memory leaks detected: %zu blocks\n", g_Allocations->size());
     PrintLog(buf);
 
     std::map<MemoryTag, size_t> tagTotals;
@@ -338,13 +338,13 @@ void PrintMemoryLeaks()
         void* ptr = kv.first;
         const AllocationInfo& info = kv.second;
         if (info.backend == AllocBackend::Arena)
-            sprintf(buf, "[%s/arena gen %u] Leak: %p, size: %u, at %s:%d\n",
+            sprintf(buf, "[%s/arena gen %u] Leak: %p, size: %zu, at %s:%d\n",
                     MemoryTagToString(info.tag), info.arenaGen, ptr,
-                    (unsigned)info.size, info.file.c_str(), info.line);
+                    info.size, info.file.c_str(), info.line);
         else
-            sprintf(buf, "[%s/heap] Leak: %p, size: %u, at %s:%d\n",
+            sprintf(buf, "[%s/heap] Leak: %p, size: %zu, at %s:%d\n",
                     MemoryTagToString(info.tag), ptr,
-                    (unsigned)info.size, info.file.c_str(), info.line);
+                    info.size, info.file.c_str(), info.line);
         PrintLog(buf);
         tagTotals[info.tag] += info.size;
         total += info.size;
@@ -352,12 +352,12 @@ void PrintMemoryLeaks()
 
     PrintLog("\nMemory leaks summary by category:\n");
     for (auto const& kv : tagTotals) {
-        sprintf(buf, "  %-10s: %u bytes\n",
-                MemoryTagToString(kv.first), (unsigned)kv.second);
+        sprintf(buf, "  %-10s: %zu bytes\n",
+                MemoryTagToString(kv.first), kv.second);
         PrintLog(buf);
     }
 
-    sprintf(buf, "Total leaked memory: %u bytes\n", (unsigned)total);
+    sprintf(buf, "Total leaked memory: %zu bytes\n", total);
     PrintLog(buf);
 
     delete g_Allocations;

@@ -135,6 +135,19 @@ inline bool IsValidVertexIndex(int index, int vcount)
 // structural, not aesthetic. Height is heap-checked via CheckedBytes.
 inline bool IsValidBmpWidth(int w) { return w > 0 && w <= 800; }
 
+// Pictures are native storage, read one bounded row at a time. Existing
+// renderers index pixels with signed int, so retain that distinct count cap.
+// For 16-bit pixels this preserves the historical UINT32_MAX byte ceiling.
+inline bool CheckedPictureBytes(int width, int height, size_t& out)
+{
+    size_t pixels = 0;
+    if (width <= 0 || height <= 0 ||
+        !CheckedBytes2(static_cast<size_t>(width), static_cast<size_t>(height), pixels) ||
+        pixels > static_cast<size_t>((std::numeric_limits<int>::max)()))
+        return false;
+    return CheckedBytes2(pixels, sizeof(uint16_t), out);
+}
+
 // WAV data length sanity: non-negative, bounded (16 MiB of 16-bit audio is
 // far beyond any shipped effect), so a corrupt header cannot drive a
 // gigantic vector::assign.
