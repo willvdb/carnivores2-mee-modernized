@@ -25,7 +25,7 @@
 // ==========================================================================
 #pragma once
 
-#include <windows.h>
+#include "CPUText.h"
 
 namespace uitxt {
 
@@ -39,7 +39,7 @@ int Px(int artPixels);
 // One coloured run of text.
 struct Seg {
     const char* text;
-    COLORREF    color;
+    std::uint32_t    color;
 };
 
 // One line, drawn left to right with a gap between consecutive segments.
@@ -57,7 +57,7 @@ struct Row {
 // Every row shares one font size, starting from the resolution-scaled 16px and
 // shrinking until the widest row fits maxW and all rows fit maxH. Returns the
 // pixel height actually used, or 0 if nothing could be drawn.
-int DrawBox(HDC hdc, int x, int y,
+int DrawBox(CPUText::Canvas* canvas, int x, int y,
             int padX, int padY, int step,
             int maxW, int maxH,
             const Row* rows, int rowCount);

@@ -6,6 +6,7 @@
 #include "GLRenderer.h"
 #include "Renderer/GLUtils.h"
 #include "Renderer/UIText.h"
+#include "Platform/Platform.h"
 
 #ifdef _gl
 
@@ -14,13 +15,10 @@
 void GLRenderer::Render_LifeInfo(int index)
 {
     // Draw dino info when looking through binoculars
-    if (!hdcCMain || !hbmpVideoBuf || !lpVideoBuf) return;
+    auto* canvas = CPUText::GameCanvas();
+    if (!canvas) return;
     if (index < 0 || index >= ChCount) return;
 
-    HBITMAP hbmpOld = reinterpret_cast<HBITMAP>(SelectObject(hdcCMain, hbmpVideoBuf));
-    SetBkMode(hdcCMain, TRANSPARENT);
-    HFONT oldFont = nullptr;
-    if (fnt_Small) oldFont = reinterpret_cast<HFONT>(SelectObject(hdcCMain, fnt_Small));
 
     int ctype = Characters[index].CType;
     float scale = Characters[index].scale;
@@ -30,10 +28,8 @@ void GLRenderer::Render_LifeInfo(int index)
     int y = VideoCY + static_cast<int>((WinH / 6.8));
 
     auto textOut = [&](int px, int py, const char* str, int color) {
-        SetTextColor(hdcCMain, 0x00000000);
-        TextOut(hdcCMain, px + 1, py + 1, str, static_cast<int>(strlen(str)));
-        SetTextColor(hdcCMain, color);
-        TextOut(hdcCMain, px, py, str, static_cast<int>(strlen(str)));
+        canvas->Draw(px + 1, py + 1, str, 0x00000000, CPUText::SmallFont());
+        canvas->Draw(px, py, str, color, CPUText::SmallFont());
     };
 
     textOut(x, y, DinoInfo[ctype].Name, 0x0000b000);
@@ -50,8 +46,6 @@ void GLRenderer::Render_LifeInfo(int index)
     // Mark dirty: 3 lines × 16px step + shadow + font height
     MarkDirtyRect(x - 1, y - 1, 140, 50);
 
-    if (oldFont) SelectObject(hdcCMain, oldFont);
-    SelectObject(hdcCMain, hbmpOld);
 }
 
 void GLRenderer::Render_Cross(int x, int y)
@@ -142,7 +136,8 @@ void GLRenderer::DrawTrophyText(int x, int y)
     // For GL, we draw text onto lpVideoBuf using GDI, then DrawHUDOverlay uploads it.
     // We need to use the hdcCMain + hbmpVideoBuf to draw onto lpVideoBuf.
 
-    if (!hdcCMain || !hbmpVideoBuf || !lpVideoBuf) return;
+    auto* canvas = CPUText::GameCanvas();
+    if (!canvas) return;
 
     const int   dtype = TrophyDisplayBody.ctype;
     const int   time  = TrophyDisplayBody.time;
@@ -175,8 +170,8 @@ void GLRenderer::DrawTrophyText(int x, int y)
     // in trophy.tga/collect.tga is only ~76 art pixels tall, so eight rows at a
     // resolution-scaled font cannot fit it. This is the layout C2's software
     // renderer and both C1 renderers already use - all eight stats are kept.
-    const COLORREF kLabel = 0x00BFBFBF;
-    const COLORREF kValue = 0x0000BFBF;
+    const std::uint32_t kLabel = 0x00BFBFBF;
+    const std::uint32_t kValue = 0x0000BFBF;
 
     const uitxt::Seg rowName[]   = { { "Name: ",        kLabel }, { DinoInfo[dtype].Name, kValue } };
     const uitxt::Seg rowSize[]   = { { "Weight: ",      kLabel }, { tWeight,  kValue },
@@ -195,11 +190,10 @@ void GLRenderer::DrawTrophyText(int x, int y)
         { rowWhen,  4 },
     };
 
-    HBITMAP hbmpOld = reinterpret_cast<HBITMAP>(SelectObject(hdcCMain, hbmpVideoBuf));
 
     // trophy.tga / collect.tga are 210x124; the recessed panel spans rows
     // 22..98, so the text area starts 18px down and is 80px tall.
-    uitxt::DrawBox(hdcCMain, x, y,
+    uitxt::DrawBox(canvas, x, y,
                    /*padX*/ 16, /*padY*/ 18, /*step*/ 16,
                    /*maxW*/ 190, /*maxH*/ 80,
                    rows, 5);
@@ -209,7 +203,38 @@ void GLRenderer::DrawTrophyText(int x, int y)
     MarkDirtyRect(x + uitxt::Px(16) - 2, y + uitxt::Px(18) - 2,
                   uitxt::Px(190) + 4, uitxt::Px(80) + 6);
 
-    SelectObject(hdcCMain, hbmpOld);
+}
+
+// Present the existing CPU loading picture through the same UI shader/quad.
+// No native window or separate GL context is involved.
+void GLRenderer::PresentLoading(const std::uint16_t* pixels, int width, int height, int pitch)
+{
+    if (!pixels || !m_uiShader.IsValid() || width <= 0 || height <= 0) return;
+    GLuint texture = 0;
+    glGenTextures(1, &texture);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, width, height);
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, pitch);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB5, width, height, 0,
+                 GL_BGRA, GL_UNSIGNED_SHORT_1_5_5_5_REV, pixels);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    m_uiShader.Use();
+    glBindVertexArray(m_uiVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
+    glDeleteTextures(1, &texture);
+    glEnable(GL_DEPTH_TEST);
+    Platform::SwapGLBuffers();
 }
 
 void GLRenderer::DrawHUDOverlay()
@@ -222,6 +247,9 @@ void GLRenderer::DrawHUDOverlay()
 
     EnsureUITexture();
 
+    // CPU RGB555 rows use the explicit pixel pitch, including odd widths.
+    // The default four-byte unpack alignment would silently pad those rows.
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
     glBindTexture(GL_TEXTURE_2D, m_uiTexture);
 #ifdef GL_PERF_HOOKS
     GL_PERF_TEXTURE_BIND(m_uiTexture);
@@ -287,6 +315,7 @@ void GLRenderer::DrawHUDOverlay()
             }
     }
 
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     glDisable(GL_DEPTH_TEST);
     glDepthMask(GL_FALSE);
     glEnable(GL_BLEND);

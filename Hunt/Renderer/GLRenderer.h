@@ -706,6 +706,7 @@ public:
     void RenderFSRect(uint32_t color, bool additive = true);
     void ApplySunDepthOcclusion();
     void DrawHUDOverlay();
+    void PresentLoading(const std::uint16_t* pixels, int width, int height, int pitch);
 
     // Called by functions that write to lpVideoBuf to mark the affected
     // screen region (in lpVideoBuf pixel coordinates, clamped).

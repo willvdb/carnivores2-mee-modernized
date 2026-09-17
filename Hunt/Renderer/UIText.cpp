@@ -3,7 +3,8 @@
 // just multiplying by the HUD scale.
 // ==========================================================================
 
-#include "Hunt.h"
+extern int WinH;
+extern float UIScale;
 #include "Renderer/UIText.h"
 
 #include <algorithm>
@@ -22,62 +23,34 @@ constexpr int kMinFontPx = 6;
 constexpr int kBaseFontPx  = 16;
 constexpr int kBaseFontWidth = 7;
 
-// One cached font at a time: the HUD draws a handful of boxes per frame and
-// they all settle on the same size, so a single-entry cache avoids both the
-// CreateFont churn and a font table.
-HFONT FontFor(int px)
+CPUText::Font FontFor(int px)
 {
-    static HFONT cached = nullptr;
-    static int   cachedPx = -1;
-
-    if (cached && cachedPx == px) return cached;
-
-    if (cached) {
-        DeleteObject(cached);
-        cached = nullptr;
-    }
-
-    const int width = static_cast<int>(
-        std::lround(static_cast<double>(px) * kBaseFontWidth / kBaseFontPx));
-
-    cached = CreateFont(
-        px, width, 0, 0,
-        100, 0, 0, 0,
-#ifdef __rus
-        RUSSIAN_CHARSET,
-#else
-        ANSI_CHARSET,
-#endif
-        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
-        DEFAULT_PITCH | FF_SWISS, nullptr);
-    cachedPx = px;
-
-    return cached;
+    return {px, static_cast<int>(std::lround(static_cast<double>(px) * kBaseFontWidth / kBaseFontPx)), 100};
+}
+int MulDiv(int a, int b, int c)
+{
+    return static_cast<int>(std::lround(static_cast<double>(a) * b / c));
+}
+int TextWidth(CPUText::Canvas* canvas, const char* s, int px)
+{
+    return s ? canvas->Width(s, FontFor(px)) : 0;
 }
 
-int TextWidth(HDC hdc, const char* s)
-{
-    if (!s) return 0;
-    SIZE sz;
-    if (!GetTextExtentPoint32(hdc, s, static_cast<int>(strlen(s)), &sz)) return 0;
-    return sz.cx;
-}
-
-int RowWidth(HDC hdc, const Row& row, int gap)
+int RowWidth(CPUText::Canvas* canvas, const Row& row, int gap, int px)
 {
     int total = 0;
     for (int i = 0; i < row.count; i++) {
-        total += TextWidth(hdc, row.seg[i].text);
+        total += TextWidth(canvas, row.seg[i].text, px);
         if (i + 1 < row.count) total += gap;
     }
     return total;
 }
 
-int WidestRow(HDC hdc, const Row* rows, int rowCount, int gap)
+int WidestRow(CPUText::Canvas* canvas, const Row* rows, int rowCount, int gap, int px)
 {
     int widest = 0;
     for (int i = 0; i < rowCount; i++) {
-        widest = (std::max)(widest, RowWidth(hdc, rows[i], gap));
+        widest = (std::max)(widest, RowWidth(canvas, rows[i], gap, px));
     }
     return widest;
 }
@@ -94,12 +67,12 @@ int Px(int artPixels)
     return static_cast<int>(std::lround(static_cast<double>(artPixels) * Scale()));
 }
 
-int DrawBox(HDC hdc, int x, int y,
+int DrawBox(CPUText::Canvas* canvas, int x, int y,
             int padX, int padY, int step,
             int maxW, int maxH,
             const Row* rows, int rowCount)
 {
-    if (!hdc || !rows || rowCount <= 0) return 0;
+    if (!canvas || !rows || rowCount <= 0) return 0;
 
     const float s = Scale();
     if (s <= 0.0f) return 0;
@@ -120,9 +93,7 @@ int DrawBox(HDC hdc, int x, int y,
     for (int iter = 0; iter < 6; iter++) {
         const int gap = (std::max)(1, px / 2);
 
-        HGDIOBJ oldFont = SelectObject(hdc, FontFor(px));
-        const int widest = WidestRow(hdc, rows, rowCount, gap);
-        SelectObject(hdc, oldFont);
+        const int widest = WidestRow(canvas, rows, rowCount, gap, px);
 
         const int byWidth = (widest > 0) ? MulDiv(px, availW, widest) : px;
 
@@ -141,8 +112,6 @@ int DrawBox(HDC hdc, int x, int y,
     const int gap = (std::max)(1, px / 2);
     const int lineStep = (std::max)(px, MulDiv(stepPx, px, nominal));
 
-    HGDIOBJ oldFont = SelectObject(hdc, FontFor(px));
-    const int oldBk = SetBkMode(hdc, TRANSPARENT);
 
     for (int r = 0; r < rowCount; r++) {
         const Row& row = rows[r];
@@ -153,18 +122,14 @@ int DrawBox(HDC hdc, int x, int y,
             const Seg& seg = row.seg[i];
             if (seg.text && seg.text[0]) {
                 const int len = static_cast<int>(strlen(seg.text));
-                SetTextColor(hdc, 0x00101010);
-                TextOut(hdc, cx + 1, cy + 1, seg.text, len);
-                SetTextColor(hdc, seg.color);
-                TextOut(hdc, cx, cy, seg.text, len);
-                cx += TextWidth(hdc, seg.text);
+                canvas->Draw(cx + 1, cy + 1, seg.text, 0x00101010, FontFor(px));
+                canvas->Draw(cx, cy, seg.text, seg.color, FontFor(px));
+                cx += TextWidth(canvas, seg.text, px);
             }
             if (i + 1 < row.count) cx += gap;
         }
     }
 
-    SetBkMode(hdc, oldBk);
-    SelectObject(hdc, oldFont);
 
     return px;
 }

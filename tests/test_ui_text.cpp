@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "Hunt.h"
 #include "Renderer/UIText.h"
+#include "Renderer/CPUTextWin32.h"
 
 #include <algorithm>
 #include <cmath>
@@ -101,11 +102,13 @@ std::vector<std::vector<std::string>> EightRowRows(const std::string& name)
 class UITextTest : public testing::Test {
 protected:
     HDC hdc = nullptr;
+    CPUText::GDICanvas canvas;
 
     void SetUp() override
     {
         hdc = CreateCompatibleDC(nullptr);
         ASSERT_NE(hdc, nullptr);
+        canvas.dc = hdc;
         WinH = 600;
         UIScale = 1.0f;
     }
@@ -117,7 +120,7 @@ protected:
 
     int Draw(const Layout& layout, int maxH = kMaxH)
     {
-        return uitxt::DrawBox(hdc, 0, 0, kPadX, kPadY, kStep, kMaxW, maxH,
+        return uitxt::DrawBox(&canvas, 0, 0, kPadX, kPadY, kStep, kMaxW, maxH,
                               layout.rows(), layout.count());
     }
 
@@ -285,8 +288,8 @@ TEST_F(UITextTest, DegenerateInputIsRejectedWithoutCrashing)
 
     EXPECT_EQ(uitxt::DrawBox(nullptr, 0, 0, kPadX, kPadY, kStep, kMaxW, kMaxH,
                              layout.rows(), layout.count()), 0);
-    EXPECT_EQ(uitxt::DrawBox(hdc, 0, 0, kPadX, kPadY, kStep, kMaxW, kMaxH,
+    EXPECT_EQ(uitxt::DrawBox(&canvas, 0, 0, kPadX, kPadY, kStep, kMaxW, kMaxH,
                              nullptr, 0), 0);
-    EXPECT_EQ(uitxt::DrawBox(hdc, 0, 0, kPadX, kPadY, kStep, 0, kMaxH,
+    EXPECT_EQ(uitxt::DrawBox(&canvas, 0, 0, kPadX, kPadY, kStep, 0, kMaxH,
                              layout.rows(), layout.count()), 0);
 }

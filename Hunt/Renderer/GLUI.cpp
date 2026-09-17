@@ -702,13 +702,14 @@ void DrawTrophyText(int x, int y)
 void DrawScoreText(int x, int y)
 {
     // Draw score text onto lpVideoBuf via GDI
-    if (!hdcMain || !hbmpVideoBuf || !lpVideoBuf) return;
+    auto* canvas = CPUText::GameCanvas();
+    if (!canvas) return;
 
     char t[32];
     sprintf_s(t, sizeof(t), "%d", ScoreDisp);
 
-    const COLORREF kLabel = 0x00BFBFBF;
-    const COLORREF kValue = 0x0000BFBF;
+    const std::uint32_t kLabel = 0x00BFBFBF;
+    const std::uint32_t kValue = 0x0000BFBF;
 
     const uitxt::Seg segs[] = {
         { "Unclaimed Kill - Score Added: ", kLabel },
@@ -716,10 +717,9 @@ void DrawScoreText(int x, int y)
     };
     const uitxt::Row rows[] = { { segs, 2 } };
 
-    HBITMAP hbmpOld = reinterpret_cast<HBITMAP>(SelectObject(hdcCMain, hbmpVideoBuf));
 
     // score.tga is 210x42; its recessed panel is the strip around row 18.
-    uitxt::DrawBox(hdcCMain, x, y,
+    uitxt::DrawBox(canvas, x, y,
                    /*padX*/ 14, /*padY*/ 18, /*step*/ 16,
                    /*maxW*/ 192, /*maxH*/ 16,
                    rows, 1);
@@ -729,20 +729,20 @@ void DrawScoreText(int x, int y)
     if (g_GLRenderer) g_GLRenderer->MarkDirtyRect(x + uitxt::Px(14) - 2, y + uitxt::Px(18) - 2,
                                                   uitxt::Px(192) + 4, uitxt::Px(16) + 6);
 
-    SelectObject(hdcCMain, hbmpOld);
 }
 
 void DrawSurvivalText(int x, int y)
 {
     // Draw survival text onto lpVideoBuf via GDI
-    if (!hdcMain || !hbmpVideoBuf || !lpVideoBuf) return;
+    auto* canvas = CPUText::GameCanvas();
+    if (!canvas) return;
 
     char tWaves[32], tHigh[32];
     sprintf_s(tWaves, sizeof(tWaves), "%i", SurvivalWave - 1);
     sprintf_s(tHigh,  sizeof(tHigh),  "%i", TrophyRoom2.survivalHighScore);
 
-    const COLORREF kLabel = 0x00BFBFBF;
-    const COLORREF kValue = 0x0000BFBF;
+    const std::uint32_t kLabel = 0x00BFBFBF;
+    const std::uint32_t kValue = 0x0000BFBF;
 
     const uitxt::Seg rowWaves[] = { { "Waves Survived: ", kLabel }, { tWaves, kValue } };
     const uitxt::Seg rowHigh[]  = { { "High Score: ",     kLabel }, { tHigh,  kValue } };
@@ -752,11 +752,10 @@ void DrawSurvivalText(int x, int y)
         { rowHigh,  2 },
     };
 
-    HBITMAP hbmpOld = reinterpret_cast<HBITMAP>(SelectObject(hdcCMain, hbmpVideoBuf));
 
     // exit_s.tga is 212x196; the original drew these two lines at +40/+98 and
     // +40/+124, so they sit 26 art pixels apart rather than the usual 16.
-    uitxt::DrawBox(hdcCMain, x, y,
+    uitxt::DrawBox(canvas, x, y,
                    /*padX*/ 40, /*padY*/ 98, /*step*/ 26,
                    /*maxW*/ 164, /*maxH*/ 88,
                    rows, 2);
@@ -765,7 +764,6 @@ void DrawSurvivalText(int x, int y)
     if (g_GLRenderer) g_GLRenderer->MarkDirtyRect(x + uitxt::Px(40) - 2, y + uitxt::Px(98) - 2,
                                                   uitxt::Px(164) + 4, uitxt::Px(88) + 6);
 
-    SelectObject(hdcCMain, hbmpOld);
 }
 
 void Render_Cross(int x, int y)
@@ -827,7 +825,8 @@ void RenderHealthBar()
 
 void ShowControlElements()
 {
-    if (!hdcMain || !hbmpVideoBuf || !lpVideoBuf) return;
+    auto* canvas = CPUText::GameCanvas();
+    if (!canvas) return;
 
 #ifdef GL_PERF_HOOKS
     GLPerfScope scope_control("ShowControlElements", false);
@@ -836,16 +835,10 @@ void ShowControlElements()
     char buf[128];
 
     // Draw text elements onto lpVideoBuf via GDI
-    HBITMAP hbmpOld = reinterpret_cast<HBITMAP>(SelectObject(hdcCMain, hbmpVideoBuf));
-    SetBkMode(hdcCMain, TRANSPARENT);
-    HFONT oldFont = nullptr;
-    if (fnt_Small) oldFont = reinterpret_cast<HFONT>(SelectObject(hdcCMain, fnt_Small));
 
     auto textOut = [&](int px, int py, const char* str, int color) {
-        SetTextColor(hdcCMain, 0x00101010);
-        TextOut(hdcCMain, px + 1, py + 1, str, static_cast<int>(strlen(str)));
-        SetTextColor(hdcCMain, color);
-        TextOut(hdcCMain, px, py, str, static_cast<int>(strlen(str)));
+        canvas->Draw(px + 1, py + 1, str, 0x00101010, CPUText::SmallFont());
+        canvas->Draw(px, py, str, color, CPUText::SmallFont());
     };
 
     if (TIMER)
@@ -953,9 +946,9 @@ void ShowControlElements()
     {
         int yline = WinH / 3;
         sprintf_s(buf, sizeof(buf), "Preparing for evacuation...");
-        textOut(VideoCX - GetTextW(hdcMain, buf) / 2, yline, buf, 0x0060C0D0);
+        textOut(VideoCX - canvas->Width(buf, CPUText::MiddleFont()) / 2, yline, buf, 0x0060C0D0);
         sprintf_s(buf, sizeof(buf), "%d seconds left.", 1 + ExitTime / 1000);
-        textOut(VideoCX - GetTextW(hdcMain, buf) / 2, yline + 18, buf, 0x0060C0D0);
+        textOut(VideoCX - canvas->Width(buf, CPUText::MiddleFont()) / 2, yline + 18, buf, 0x0060C0D0);
         // 2 lines centered, ~300px wide
         if (g_GLRenderer) g_GLRenderer->MarkDirtyRect(VideoCX - 150, yline - 1, 300, 36);
     }
@@ -964,13 +957,11 @@ void ShowControlElements()
     {
         int yline = WinH / 3;
         sprintf_s(buf, sizeof(buf), "Waves Survived: %i", SurvivalWave - 1);
-        textOut(VideoCX - GetTextW(hdcMain, buf) / 2, yline, buf, 0x0060C0D0);
+        textOut(VideoCX - canvas->Width(buf, CPUText::MiddleFont()) / 2, yline, buf, 0x0060C0D0);
         // 1 line centered
         if (g_GLRenderer) g_GLRenderer->MarkDirtyRect(VideoCX - 120, yline - 1, 240, 18);
     }
 
-    if (oldFont) SelectObject(hdcCMain, oldFont);
-    SelectObject(hdcCMain, hbmpOld);
 
     // Health bar is drawn into lpVideoBuf after the text elements so it
     // sits on top in the overlay upload.

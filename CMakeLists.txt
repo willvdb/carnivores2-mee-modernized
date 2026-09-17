@@ -226,6 +226,8 @@ set(CORE_FILES
     Hunt/Loaders/PictureLoader.cpp
     Hunt/Loaders/CharacterLoader.cpp
     Hunt/Renderer/UIText.cpp
+    Hunt/Renderer/CPUTextGame.cpp
+    Hunt/Renderer/CPUTextWin32.cpp
     Hunt/Renderer/UIText.h
     Hunt/AppRes.rc
     Hunt/Carnivores1.manifest
@@ -438,6 +440,7 @@ if(MSVC)
     add_executable(Carnivores2UITests
         tests/test_ui_text.cpp
         Hunt/Renderer/UIText.cpp
+        Hunt/Renderer/CPUTextWin32.cpp
     )
     target_include_directories(Carnivores2UITests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Hunt)
     target_link_libraries(Carnivores2UITests PRIVATE gtest_main gdi32)

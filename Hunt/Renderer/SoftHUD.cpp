@@ -293,7 +293,7 @@ void DrawSurvivalText(int x0, int y0)
     HBITMAP hbmpOld = reinterpret_cast<HBITMAP>(SelectObject(hdcCMain, hbmpVideoBuf));
 
     // exit_s.tga is 212x196; the two lines sit 26 art pixels apart.
-    uitxt::DrawBox(hdcCMain, x0, y0,
+    uitxt::DrawBox(CPUText::GameCanvas(), x0, y0,
                    /*padX*/ 40, /*padY*/ 98, /*step*/ 26,
                    /*maxW*/ 164, /*maxH*/ 88,
                    rows, 2);
@@ -317,7 +317,7 @@ void DrawScoreText(int x0, int y0) {
     HBITMAP hbmpOld = reinterpret_cast<HBITMAP>(SelectObject(hdcCMain, hbmpVideoBuf));
 
     // score.tga is 210x42; its recessed panel is the strip around row 18.
-    uitxt::DrawBox(hdcCMain, x0, y0,
+    uitxt::DrawBox(CPUText::GameCanvas(), x0, y0,
                    /*padX*/ 14, /*padY*/ 18, /*step*/ 16,
                    /*maxW*/ 192, /*maxH*/ 16,
                    rows, 1);
@@ -379,7 +379,7 @@ void DrawTrophyText(int x0, int y0)
   HBITMAP hbmpOld = reinterpret_cast<HBITMAP>(SelectObject(hdcCMain, hbmpVideoBuf));
 
   // trophy.tga / collect.tga are 210x124; the recessed panel spans rows 22..98.
-  uitxt::DrawBox(hdcCMain, x0, y0,
+  uitxt::DrawBox(CPUText::GameCanvas(), x0, y0,
                  /*padX*/ 16, /*padY*/ 18, /*step*/ 16,
                  /*maxW*/ 190, /*maxH*/ 80,
                  rows, 5);

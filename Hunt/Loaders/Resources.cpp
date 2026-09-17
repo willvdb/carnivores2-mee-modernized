@@ -1,4 +1,8 @@
 #include "Hunt.h"
+#ifndef _WIN32
+#include "Renderer/CPUTextRaster.h"
+static CPUText::Buffer videoBuffer;
+#endif
 #include "Platform/Platform.h"
 #include "LoadValidate.h"
 #include "ResourceIO.h"
@@ -490,6 +494,7 @@ void CreateVideoDIB()
 
 void CreateVideoDIB(int W, int H)
 {
+#ifdef _WIN32
   if (hdcMain == nullptr) {
     hdcMain = GetDC(hwndMain);
     hdcCMain = CreateCompatibleDC(hdcMain);
@@ -520,6 +525,12 @@ void CreateVideoDIB(int W, int H)
   binfo.bmiHeader = bmih;
   hbmpVideoBuf =
     CreateDIBSection(hdcMain, &binfo, DIB_RGB_COLORS, &lpVideoBuf, nullptr, 0);
+#else
+  if (!videoBuffer.Resize(W, H)) DoHalt("CPU video buffer allocation failed.");
+  lpVideoBuf = videoBuffer.Pixels();
+  VideoPitch = videoBuffer.Pitch();
+  VideoPitchB = VideoPitch * 2;
+#endif
 }
 
 int GetObjectH(int x, int y, int R)

@@ -1,6 +1,7 @@
 #define INITGUID
 #include "Hunt.h"
 #include "Platform/Platform.h"
+#include "Renderer/CPUText.h"
 #ifdef _gl
 #include "Renderer/GLRenderer.h"
 #endif
@@ -53,6 +54,7 @@ void wait_mouse_release()
 }
 
 
+#ifdef _WIN32
 int GetTextW(HDC hdc, LPSTR s)
 {
   SIZE sz;
@@ -60,17 +62,13 @@ int GetTextW(HDC hdc, LPSTR s)
   return sz.cx;
 }
 
+#endif
 void PrintText(LPSTR s, int x, int y, int rgb)
 {
-  HBITMAP hbmpOld = reinterpret_cast<HBITMAP>(SelectObject(hdcCMain,hbmpVideoBuf));
-  SetBkMode(hdcCMain, TRANSPARENT);
-
-  SetTextColor(hdcCMain, 0x00000000);
-  TextOut(hdcCMain, x+1, y+1, s, strlen(s));
-  SetTextColor(hdcCMain, rgb);
-  TextOut(hdcCMain, x, y, s, strlen(s));
-
-  SelectObject(hdcCMain,hbmpOld);
+  if (auto* canvas = CPUText::GameCanvas()) {
+    canvas->Draw(x+1, y+1, s, 0, CPUText::MiddleFont());
+    canvas->Draw(x, y, s, rgb, CPUText::MiddleFont());
+  }
 }
 
 void DoHalt(LPSTR Mess)
@@ -208,9 +206,11 @@ TPicture LoadWall;
 void UpdateLoadingWindow()
 {
 
+#ifdef _WIN32
   HBITMAP hbmpOld = reinterpret_cast<HBITMAP>(SelectObject(hdcCMain, hbmpVideoBuf));
   HFONT   hfntOld = reinterpret_cast<HFONT>(SelectObject(hdcCMain, fnt_Small));
 
+#endif
 
   for (int y=0; y<LoadWall.H/2; y++)
     memcpy( static_cast<WORD*>(lpVideoBuf) + y*VideoPitch,
@@ -231,10 +231,15 @@ void UpdateLoadingWindow()
   	SetTextColor(hdcCMain, 0xB0B070);
       TextOut(hdcCMain, 18, LoadWall.H/2-23, loadtxt, strlen(loadtxt) );
   */
+#ifdef _WIN32
   BitBlt(hdcMain,0,0,LoadWall.W,LoadWall.H/2, hdcCMain,0,0, SRCCOPY);
 
   SelectObject(hdcCMain,hfntOld);
   SelectObject(hdcCMain,hbmpOld);
+#else
+  if (g_GLRenderer) g_GLRenderer->PresentLoading(static_cast<std::uint16_t*>(lpVideoBuf), LoadWall.W, LoadWall.H/2, VideoPitch);
+#endif
+
 }
 
 
@@ -244,12 +249,21 @@ void UpdateLoadingWindow()
 void StartLoading()
 {
   LoadPictureTGA(LoadWall,   "HUNTDAT\\MENU\\loading.tga");
+#ifndef _WIN32
+  // Loading art may exceed a low-resolution game buffer. Keep game dimensions
+  // intact; its next SetVideoMode call restores the gameplay allocation.
+  CreateVideoDIB((std::max)(WinW, LoadWall.W), (std::max)(WinH, LoadWall.H / 2));
+#endif
   Platform::ShowLoadingWindow({LoadWall.W, LoadWall.H / 2});
 }
 
 void EndLoading()
 {
+#ifdef _WIN32
   FillMemory(lpVideoBuf, VideoPitchB*768, 0);
+#else
+  memset(lpVideoBuf, 0, static_cast<size_t>(VideoPitchB)*WinH);
+#endif
   LoadWall.lpImage.reset();
 }
 

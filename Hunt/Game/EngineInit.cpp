@@ -402,6 +402,7 @@ void InitEngine()
   Host = false;
   result = nullptr;
 
+#ifdef _WIN32
   fnt_BIG = CreateFont(
               static_cast<int>((23 * UIScale)), static_cast<int>((10 * UIScale)), 0, 0,
               600, 0,0,0,
@@ -440,6 +441,7 @@ void InitEngine()
                 OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, nullptr);
 
 
+#endif
   Heap = Platform::CreateHeap();
   if( Heap == nullptr )
   {
@@ -634,7 +636,9 @@ void ShutDownEngine()
   // ReleaseResources() call will also trigger LevelArena->Reset().
   ReleaseResources();
   ReleaseGlobalResources();
+#ifdef _WIN32
   ReleaseDC(hwndMain,hdcMain);
+#endif
 
   // Phase 5F.2: Print the leak report to carnivor.log before tearing
   // down the arena. Must run AFTER Release* (so the per-level
