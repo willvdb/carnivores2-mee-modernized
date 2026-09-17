@@ -330,6 +330,7 @@ TEST_F(ResourceLoader, MapTruncationNeverReachesPostprocessing)
     }
     MapFile map(resource); map.Truncate(MapGolden::Size-1);
     EXPECT_THROW(resource.Load(),std::runtime_error);
+    CloseHandle(hfile); hfile=INVALID_HANDLE_VALUE;
 }
 TEST_F(ResourceLoader, MapReferenceValidationRetainsFullWordsAndSentinels)
 {
@@ -354,4 +355,84 @@ TEST_F(ResourceLoader, MapReferenceValidationRetainsFullWordsAndSentinels)
         if(count==64) EXPECT_THROW(resource.Load(),MapComplete);
         else { EXPECT_THROW(resource.Load(),std::runtime_error); CloseHandle(hfile); hfile=INVALID_HANDLE_VALUE; }
     }
+}
+
+#include "Loaders/MapIO.h"
+TEST_F(ResourceLoader, MapIOExactBytesCapacityAndWordChunkEdges)
+{
+    const std::vector<std::uint8_t> bytes{0,128,255}; File byteFile(bytes); byteFile.Open();
+    std::uint8_t out[3]{};
+    EXPECT_FALSE(EngineMap::ReadBytes(hfile,out,2,3));
+    EXPECT_FALSE(EngineMap::ReadBytes(hfile,nullptr,3,3));
+    EXPECT_FALSE(EngineMap::ReadBytes(hfile,out,SIZE_MAX,SIZE_MAX));
+    EXPECT_TRUE(EngineMap::ReadBytes(hfile,nullptr,0,0));
+    EXPECT_EQ(SetFilePointer(hfile,0,nullptr,FILE_CURRENT),0u);
+    ASSERT_TRUE(EngineMap::ReadBytes(hfile,out,3,3));
+    EXPECT_EQ(out[0],0); EXPECT_EQ(out[1],128); EXPECT_EQ(out[2],255);
+    SetFilePointer(hfile,1,nullptr,FILE_BEGIN);
+    EXPECT_FALSE(EngineMap::ReadBytes(hfile,out,3,3)); // exactly one byte short
+    CloseHandle(hfile); hfile=INVALID_HANDLE_VALUE;
+
+    std::vector<std::uint8_t> words(8194);
+    for(std::size_t i=0;i<4097;++i) {
+        const auto v=MapGolden::Values[i%7]; words[2*i]=v%256; words[2*i+1]=v/256;
+    }
+    File wordFile(words); wordFile.Open(); std::vector<WORD> decoded(4097,0xa55a);
+    EXPECT_FALSE(EngineMap::ReadWords(hfile,decoded.data(),4096,4097));
+    EXPECT_FALSE(EngineMap::ReadWords(hfile,nullptr,4097,4097));
+    EXPECT_FALSE(EngineMap::ReadWords(hfile,decoded.data(),SIZE_MAX,SIZE_MAX));
+    EXPECT_TRUE(EngineMap::ReadWords(hfile,nullptr,0,0));
+    EXPECT_EQ(decoded.front(),0xa55a); EXPECT_EQ(decoded.back(),0xa55a);
+    EXPECT_EQ(SetFilePointer(hfile,0,nullptr,FILE_CURRENT),0u);
+    ASSERT_TRUE(EngineMap::ReadWords(hfile,decoded.data(),decoded.size(),decoded.size()));
+    for(std::size_t i=0;i<decoded.size();++i) EXPECT_EQ(decoded[i],MapGolden::Values[i%7]);
+    EXPECT_EQ(SetFilePointer(hfile,0,nullptr,FILE_CURRENT),8194u);
+    SetFilePointer(hfile,0,nullptr,FILE_BEGIN);
+    decoded.push_back(0xa55a);
+    EXPECT_FALSE(EngineMap::ReadWords(hfile,decoded.data(),decoded.size(),decoded.size()));
+    EXPECT_EQ(decoded.back(),0xa55a);
+    // Last incomplete chunk is not assigned, earlier complete chunks may be.
+    SetFilePointer(hfile,0,nullptr,FILE_BEGIN);
+    EXPECT_FALSE(EngineMap::ReadLightPlane(hfile,LMap,-1));
+    EXPECT_FALSE(EngineMap::ReadLightPlane(hfile,LMap,3));
+    EXPECT_FALSE(EngineMap::SkipLightBytes(hfile,3*1048576));
+    EXPECT_FALSE(EngineMap::SkipLightBytes(hfile,1048576));
+    EXPECT_EQ(SetFilePointer(hfile,0,nullptr,FILE_CURRENT),0u);
+}
+TEST_F(ResourceLoader, MapFogMutationRemainsSeparateFromSerializedInput)
+{
+    auto bytes=MapResource(); Fixture original;
+    // The added texture shifts the fog record. Set YBegin=2.0f.
+    ResourceGolden::Put32(bytes,static_cast<unsigned>(original.fog+32768+8),0x40000000);
+    File resource(bytes); MapFile map(resource); loadMap=true;
+    EXPECT_THROW(resource.Load(),MapComplete);
+    EXPECT_EQ(FogsMap[0][0],1); // raw zero, changed by the existing pass
+    EXPECT_EQ(FogsMap[0][1],128); EXPECT_EQ(FogsMap[0][2],255);
+    EXPECT_EQ(FogsMap[509][509],1); EXPECT_EQ(FogsMap[510][510],0);
+    EXPECT_EQ(closedPosition,MapGolden::Size);
+}
+
+TEST_F(ResourceLoader, MapReferencesAtRowEdgesAndSentinelRequiresTextureOne)
+{
+    loadMap=true;
+    {
+        Fixture onlyOne; File resource(onlyOne.bytes); MapFile map(resource);
+        EXPECT_THROW(resource.Load(),std::runtime_error); // 0xffff requires texture 1
+        CloseHandle(hfile); hfile=INVALID_HANDLE_VALUE;
+    }
+    File resource(MapResource()); MapFile map(resource);
+    for(unsigned plane:{1u,2u}) {
+        map.Patch(MapGolden::Offsets[plane]+2*1023,{1,0});
+        map.Patch(MapGolden::Offsets[plane]+2*1024,{255,255});
+        map.Patch(MapGolden::Offsets[plane]+2*(1048576-1),{1,0});
+    }
+    map.Patch(MapGolden::Offsets[4]+2*(1048576-1),{0xa3,0xc4}); // known and reserved bits
+    map.Patch(MapGolden::Offsets[8]+1048576-1,{0}); // valid water index for that flag
+    EXPECT_THROW(resource.Load(),MapComplete);
+    for(auto plane:{TMap1,TMap2}) {
+        EXPECT_EQ(plane[0][1023],1); EXPECT_EQ(plane[1][0],0xffff);
+        EXPECT_EQ(plane[1023][1023],1);
+    }
+    EXPECT_EQ(FMap[1023][1023],0xc4a3);
+    EXPECT_EQ(WMap[1023][1023],0);
 }
