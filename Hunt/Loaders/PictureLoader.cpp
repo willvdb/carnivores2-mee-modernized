@@ -4,6 +4,7 @@
 
 #include "Hunt.h"
 #include "LoadValidate.h"
+#include "ImageIO.h"
 
 static void PicLoadFail(const char* what, int value, int limit)
 {
@@ -38,9 +39,8 @@ void LoadPicture(TPicture &pic, LPSTR pname, MemoryTag tag)
 {
   int C;
   byte fRGB[800][3];
-  BITMAPFILEHEADER bmpFH;
-  BITMAPINFOHEADER bmpIH;
-  DWORD l;
+  std::array<std::uint8_t,LegacyImage::BmpHeaderSize> headerBytes;
+  LegacyImage::BmpHeader header;
   HANDLE hfile;
 
   hfile = CreateFile(pname, GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr );
@@ -51,16 +51,15 @@ void LoadPicture(TPicture &pic, LPSTR pname, MemoryTag tag)
     DoHalt(sz);
   }
 
-  if (!ReadExact(hfile, &bmpFH, sizeof(BITMAPFILEHEADER)) ||
-      !ReadExact(hfile, &bmpIH, sizeof(BITMAPINFOHEADER)))
+  if (!ReadExact(hfile, headerBytes.data(), static_cast<DWORD>(headerBytes.size())) ||
+      !LegacyImage::DecodeBmpHeader(headerBytes.data(), headerBytes.size(), header))
     DoHalt("Picture loading error: truncated BMP header.");
-  l = sizeof(BITMAPINFOHEADER);
 
   pic.lpImage.reset();
   pic.lpImage = nullptr;
 
-  pic.W = bmpIH.biWidth;
-  pic.H = bmpIH.biHeight;
+  pic.W = header.width;
+  pic.H = header.height;
   // Rows land in byte fRGB[800][3] on the stack: width is structural.
   // Height is heap-checked; both must be positive (negative heights
   // previously wrapped the allocation size).
@@ -75,7 +74,6 @@ void LoadPicture(TPicture &pic, LPSTR pname, MemoryTag tag)
   {
     if (!ReadExact(hfile, fRGB, (DWORD)(3 * pic.W)))
       DoHalt("Picture loading error: truncated BMP rows.");
-    l = (DWORD)(3 * pic.W);
     for (int x=0; x<pic.W; x++)
     {
       C = (static_cast<int>(fRGB[x][2])/8<<10) + (static_cast<int>(fRGB[x][1])/8<< 5) + (static_cast<int>(fRGB[x][0])/8) ;
@@ -88,7 +86,8 @@ void LoadPicture(TPicture &pic, LPSTR pname, MemoryTag tag)
 
 void LoadPictureTGA(TPicture &pic, LPSTR pname, MemoryTag tag)
 {
-  WORD w = 0, h = 0;
+  std::array<std::uint8_t,LegacyImage::TgaHeaderSize> headerBytes;
+  LegacyImage::TgaHeader header;
   HANDLE hfile;
 
   hfile = CreateFile(pname, GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr );
@@ -99,20 +98,17 @@ void LoadPictureTGA(TPicture &pic, LPSTR pname, MemoryTag tag)
     DoHalt(sz);
   }
 
-  if (SetFilePointer(hfile, 12, nullptr, FILE_BEGIN) == INVALID_SET_FILE_POINTER ||
-      !ReadExact(hfile, &w, 2) || !ReadExact(hfile, &h, 2))
-    DoHalt("Picture loading error: truncated TGA header.");
-
-  if (SetFilePointer(hfile, 18, nullptr, FILE_BEGIN) == INVALID_SET_FILE_POINTER)
+  if (!ReadExact(hfile, headerBytes.data(), static_cast<DWORD>(headerBytes.size())) ||
+      !LegacyImage::DecodeTgaHeader(headerBytes.data(), headerBytes.size(), header))
     DoHalt("Picture loading error: truncated TGA header.");
 
   pic.lpImage.reset();
   pic.lpImage = nullptr;
 
-  pic.W = w;
-  pic.H = h;
-  // w/h are WORDs but their product still overflows 32-bit int arithmetic
-  // (65535^2*2); compute checked. Reads go straight to the heap buffer,
+  pic.W = header.width;
+  pic.H = header.height;
+  // Serialized dimensions are uint16 values but their product still overflows 32-bit int arithmetic
+  // (65535^2*2); compute checked. Decoded rows land in the heap buffer,
   // so no stack width cap applies here.
   size_t tpxbytes = 0;
   if (!CheckedPictureBytes(pic.W, pic.H, tpxbytes))
@@ -120,9 +116,8 @@ void LoadPictureTGA(TPicture &pic, LPSTR pname, MemoryTag tag)
   pic.lpImage.reset(static_cast<WORD*>(_HeapAlloc(Heap, 0, tpxbytes, tag)));
 
   for (int y=0; y<pic.H; y++)
-    if (!ReadExact(hfile,
-                   (void*)(pic.lpImage.get() + (pic.H-y-1)*pic.W),
-                   (DWORD)(2*pic.W)))
+    if (!EngineImage::ReadPixels(hfile,
+                   pic.lpImage.get() + (pic.H-y-1)*pic.W, pic.W, pic.W))
       DoHalt("Picture loading error: truncated TGA rows.");
 
   CloseHandle( hfile );
