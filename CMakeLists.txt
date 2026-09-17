@@ -313,6 +313,18 @@ if(MSVC)
     target_link_libraries(Carnivores2Tests PRIVATE gtest_main)
     add_test(NAME Carnivores2Tests COMMAND Carnivores2Tests)
 
+    # Compile the same allocator-boundary probes with and without debug forwarding.
+    foreach(memory_mode IN ITEMS Plain Debug)
+        set(memory_test_target Carnivores2Memory${memory_mode}Tests)
+        add_executable(${memory_test_target} tests/test_memory_factories.cpp)
+        target_include_directories(${memory_test_target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Hunt)
+        target_link_libraries(${memory_test_target} PRIVATE gtest_main)
+        if(memory_mode STREQUAL "Debug")
+            target_compile_definitions(${memory_test_target} PRIVATE MEM_DEBUG)
+        endif()
+        add_test(NAME Carnivores2Tests.Memory${memory_mode} COMMAND ${memory_test_target})
+    endforeach()
+
     # Menu and engine headers define different global types. Keep the menu
     # record checks in a separate executable and compare against the same bytes.
     add_executable(Carnivores2MenuLayoutTests tests/test_menu_serialized_layout.cpp)

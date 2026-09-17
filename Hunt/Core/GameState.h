@@ -373,7 +373,8 @@ GLOBAL   int u,vused, CCX, CCY;
 
 GLOBAL   DWORD Mask1,Mask2;
 
-GLOBAL   DWORD HeapAllocated, HeapReleased;
+// Cumulative runtime accounting may exceed 4 GiB even in an x86 session.
+GLOBAL   uint64_t HeapAllocated, HeapReleased;
 
 GLOBAL   EPoint VMap[kViewGridSize][kViewGridSize];
 

@@ -25,6 +25,7 @@
 #include <cstddef>
 #include <windows.h>
 #include <memory>
+#include <limits>
 #include <new>
 #include <type_traits>
 #include <utility>
@@ -80,8 +81,8 @@ inline bool IsReclaimedByArenaReset(MemoryTag allocationTag,
 // ----------------------------------------------------------------------------
 
 extern HANDLE Heap;
-[[nodiscard]] LPVOID _HeapAlloc(HANDLE hHeap, DWORD dwFlags, DWORD dwBytes);
-[[nodiscard]] LPVOID _HeapAlloc(HANDLE hHeap, DWORD dwFlags, DWORD dwBytes, MemoryTag tag);
+[[nodiscard]] LPVOID _HeapAlloc(HANDLE hHeap, DWORD dwFlags, size_t bytes);
+[[nodiscard]] LPVOID _HeapAlloc(HANDLE hHeap, DWORD dwFlags, size_t bytes, MemoryTag tag);
 [[nodiscard]] BOOL   _HeapFree(HANDLE hHeap, DWORD dwFlags, LPVOID lpMem);
 [[noreturn]] void   DoHalt(char* msg);
 void   PrintLog(char* msg);
@@ -142,7 +143,7 @@ using unique_obj_ptr = std::unique_ptr<T, HeapDeleter<T>>;
 template<typename T, typename... Args>
 unique_obj_ptr<T> make_heap_object(Args&&... args)
 {
-    void* storage = _HeapAlloc(Heap, 0, static_cast<DWORD>(sizeof(T)), MemoryTag::Global);
+    void* storage = _HeapAlloc(Heap, 0, sizeof(T), MemoryTag::Global);
     try {
         return unique_obj_ptr<T>(new(storage) T(std::forward<Args>(args)...));
     } catch (...) {
@@ -156,10 +157,10 @@ unique_heap_ptr<T[]> make_heap_array(size_t count)
 {
     static_assert(std::is_trivially_destructible_v<T>,
                   "make_heap_array requires trivially destructible elements");
-    if (count > static_cast<size_t>(MAXDWORD) / sizeof(T))
+    if (count > (std::numeric_limits<size_t>::max)() / sizeof(T))
         DoHalt("Heap array allocation size overflow.");
     return unique_heap_ptr<T[]>(static_cast<T*>(
-        _HeapAlloc(Heap, 0, static_cast<DWORD>(count * sizeof(T)), MemoryTag::Global)));
+        _HeapAlloc(Heap, 0, count * sizeof(T), MemoryTag::Global)));
 }
 
 
@@ -368,12 +369,12 @@ void ClearTagAllocations(MemoryTag tag);
 // Only 3-arg and 4-arg shapes exist in the codebase (verified by audit);
 // a call with any other arity fails loudly at the selector instead of
 // silently recording a wrong tag.
-LPVOID _HeapAllocImpl(HANDLE hHeap, DWORD dwFlags, DWORD dwBytes,
+LPVOID _HeapAllocImpl(HANDLE hHeap, DWORD dwFlags, size_t bytes,
                       MemoryTag tag, const char* file, int line);
-#define _HeapAlloc3Dbg(hHeap, dwFlags, dwBytes) \
-    _HeapAllocImpl(hHeap, dwFlags, dwBytes, MemoryTag::Global, __FILE__, __LINE__)
-#define _HeapAlloc4Dbg(hHeap, dwFlags, dwBytes, tag) \
-    _HeapAllocImpl(hHeap, dwFlags, dwBytes, tag, __FILE__, __LINE__)
+#define _HeapAlloc3Dbg(hHeap, dwFlags, bytes) \
+    _HeapAllocImpl(hHeap, dwFlags, bytes, MemoryTag::Global, __FILE__, __LINE__)
+#define _HeapAlloc4Dbg(hHeap, dwFlags, bytes, tag) \
+    _HeapAllocImpl(hHeap, dwFlags, bytes, tag, __FILE__, __LINE__)
 #define _HeapAllocSelect(_1, _2, _3, _4, NAME, ...) NAME
 // Extra indirection: MSVC's traditional preprocessor (C++17 without
 // /Zc:preprocessor) does not rescan the selector result before the

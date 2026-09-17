@@ -103,28 +103,28 @@ void GenerateAlphaFlags(TModel *mptr);
 // --------------------------------------------------------------------------
 static LPVOID AllocDispatch(HANDLE hHeap,
                             DWORD dwFlags,
-                            DWORD dwBytes,
+                            size_t bytes,
                             MemoryTag tag)
 {
   LPVOID res = nullptr;
 
   if (tag == MemoryTag::Level && LevelArena != nullptr)
   {
-    res = LevelArena->Allocate(dwBytes);
+    res = LevelArena->Allocate(bytes);
     if (res)
-      memset(res, 0, dwBytes);
+      memset(res, 0, bytes);
   }
   else
   {
     res = HeapAlloc(hHeap,
                     dwFlags | HEAP_ZERO_MEMORY,
-                    dwBytes);
+                    bytes);
   }
 
   if (!res)
     DoHalt("Memory allocation error!");
 
-  HeapAllocated += dwBytes;
+  HeapAllocated += bytes;
   return res;
 }
 
@@ -143,9 +143,9 @@ static LPVOID AllocDispatch(HANDLE hHeap,
 // heap where LevelArena->Reset() cannot invalidate them.
 LPVOID _HeapAlloc(HANDLE hHeap,
                   DWORD dwFlags,
-                  DWORD dwBytes)
+                  size_t bytes)
 {
-  return _HeapAlloc(hHeap, dwFlags, dwBytes, MemoryTag::Global);
+  return _HeapAlloc(hHeap, dwFlags, bytes, MemoryTag::Global);
 }
 
 
@@ -162,18 +162,18 @@ LPVOID _HeapAlloc(HANDLE hHeap,
 // tooling may parse, so the accounting is preserved verbatim.
 LPVOID _HeapAlloc(HANDLE hHeap,
                   DWORD dwFlags,
-                  DWORD dwBytes,
+                  size_t bytes,
                   MemoryTag tag)
 {
 #ifndef MEM_DEBUG
-  return AllocDispatch(hHeap, dwFlags, dwBytes, tag);
+  return AllocDispatch(hHeap, dwFlags, bytes, tag);
 #else
   // In MEM_DEBUG builds, every allocation is recorded so the leak report
   // has complete coverage — even call sites that don't use _AllocTrack.
   std::lock_guard<std::mutex> lock(g_AllocMutex);
   if (!g_Allocations) g_Allocations = new std::map<void*, AllocationInfo>();
-  LPVOID res = AllocDispatch(hHeap, dwFlags, dwBytes, tag);
-  (*g_Allocations)[res] = { (size_t)dwBytes, tag,
+  LPVOID res = AllocDispatch(hHeap, dwFlags, bytes, tag);
+  (*g_Allocations)[res] = { bytes, tag,
                             "unknown", 0 };
   return res;
 #endif
@@ -191,7 +191,7 @@ LPVOID _HeapAlloc(HANDLE hHeap,
 // report at shutdown.
 LPVOID _HeapAlloc(HANDLE hHeap,
                   DWORD dwFlags,
-                  DWORD dwBytes,
+                  size_t bytes,
                   MemoryTag tag,
                   const char* file,
                   int line)
@@ -199,9 +199,9 @@ LPVOID _HeapAlloc(HANDLE hHeap,
   std::lock_guard<std::mutex> lock(g_AllocMutex);
   if (!g_Allocations) g_Allocations = new std::map<void*, AllocationInfo>();
 
-  LPVOID res = AllocDispatch(hHeap, dwFlags, dwBytes, tag);
+  LPVOID res = AllocDispatch(hHeap, dwFlags, bytes, tag);
 
-  (*g_Allocations)[res] = { (size_t)dwBytes, tag,
+  (*g_Allocations)[res] = { bytes, tag,
                             file ? file : "unknown", line };
   return res;
 }
@@ -212,7 +212,7 @@ LPVOID _HeapAlloc(HANDLE hHeap,
 // and ClearTagAllocations can no longer silently hide heap-fallback blocks.
 LPVOID _HeapAllocImpl(HANDLE hHeap,
                       DWORD dwFlags,
-                      DWORD dwBytes,
+                      size_t bytes,
                       MemoryTag tag,
                       const char* file,
                       int line)
@@ -220,9 +220,9 @@ LPVOID _HeapAllocImpl(HANDLE hHeap,
   std::lock_guard<std::mutex> lock(g_AllocMutex);
   if (!g_Allocations) g_Allocations = new std::map<void*, AllocationInfo>();
 
-  LPVOID res = AllocDispatch(hHeap, dwFlags, dwBytes, tag);
+  LPVOID res = AllocDispatch(hHeap, dwFlags, bytes, tag);
 
-  AllocationInfo info{ (size_t)dwBytes, tag,
+  AllocationInfo info{ bytes, tag,
                        file ? file : "unknown", line };
   if (tag == MemoryTag::Level && LevelArena != nullptr &&
       LevelArena->Contains(res)) {
