@@ -37,3 +37,9 @@ TEST(SerializedLayout, MenuProfileMatchesLegacyBytes)
     EXPECT_FLOAT_EQ(profile.Body[0].m_Scale, 2.0f);
     EXPECT_EQ(profile.Body[23].m_Reserved[3], 0x76543210);
 }
+
+#include "legacy_profile_fixtures.h"
+TEST(SerializedLayout, CompleteLegacyProfileFixture)
+{
+    ProfileGolden::CheckLegacySave<Profile, TKeyMap>();
+}
