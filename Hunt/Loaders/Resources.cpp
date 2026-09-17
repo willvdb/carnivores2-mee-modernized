@@ -1,6 +1,7 @@
 #include "Hunt.h"
 #include "LoadValidate.h"
 #include "ResourceIO.h"
+#include "MapIO.h"
 #include "stdio.h"
 #include "timeapi.h"
 
@@ -16,9 +17,9 @@ static void RscLoadFail(const char* what, int value, int limit)
   DoHalt(sz);
 }
 
-static void ReadRscExact(HANDLE file, void* dst, DWORD bytes, const char* what)
+static void RequireMapRead(bool success, const char* what)
 {
-  if (!ReadExact(file, dst, bytes))
+  if (!success)
   {
     char sz[256];
     sprintf_s(sz, sizeof(sz), "Resource loading error: truncated %s.", what);
@@ -1008,20 +1009,16 @@ void LoadResources()
   if (hfile==INVALID_HANDLE_VALUE)
     DoHalt("Error opening map file.");
 
-  ReadRscExact(hfile, HMap, sizeof(HMap), "height map");
-  ReadRscExact(hfile, TMap1, sizeof(TMap1), "primary texture map");
-  ReadRscExact(hfile, TMap2, sizeof(TMap2), "secondary texture map");
-  ReadRscExact(hfile, OMap, sizeof(OMap), "object map");
-  ReadRscExact(hfile, FMap, sizeof(FMap), "flags map");
-  if (SetFilePointer(hfile, 1024*1024*OptDayNight, nullptr, FILE_CURRENT) == INVALID_SET_FILE_POINTER)
-    DoHalt("Map loading error: truncated light-map table.");
-  ReadRscExact(hfile, LMap, sizeof(LMap), "light map");
-  if (SetFilePointer(hfile, 1024*1024*(2-OptDayNight), nullptr, FILE_CURRENT) == INVALID_SET_FILE_POINTER)
-    DoHalt("Map loading error: truncated light-map table.");
-  ReadRscExact(hfile, WMap, sizeof(WMap), "water map");
-  ReadRscExact(hfile, HMapO, sizeof(HMapO), "object-height map");
-  ReadRscExact(hfile, FogsMap, sizeof(FogsMap), "fog map");
-  ReadRscExact(hfile, AmbMap, sizeof(AmbMap), "ambient map");
+  RequireMapRead(EngineMap::ReadBytePlane(hfile, HMap), "height map");
+  RequireMapRead(EngineMap::ReadWordPlane(hfile, TMap1), "primary texture map");
+  RequireMapRead(EngineMap::ReadWordPlane(hfile, TMap2), "secondary texture map");
+  RequireMapRead(EngineMap::ReadBytePlane(hfile, OMap), "object map");
+  RequireMapRead(EngineMap::ReadWordPlane(hfile, FMap), "flags map");
+  RequireMapRead(EngineMap::ReadLightPlane(hfile, LMap, OptDayNight), "light-map table");
+  RequireMapRead(EngineMap::ReadBytePlane(hfile, WMap), "water map");
+  RequireMapRead(EngineMap::ReadBytePlane(hfile, HMapO), "object-height map");
+  RequireMapRead(EngineMap::ReadBytePlane(hfile, FogsMap), "fog map");
+  RequireMapRead(EngineMap::ReadBytePlane(hfile, AmbMap), "ambient map");
 
   ValidateMapReferences(tc, mc, WtrCount);
 
