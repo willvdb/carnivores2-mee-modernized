@@ -2,7 +2,8 @@
 
 Phase 3a reference record. The subsequent selectable SDL3 Windows GL backend,
 remaining native boundaries and validation are documented in
-[SDL3_WINDOWS.md](SDL3_WINDOWS.md).
+[SDL3_WINDOWS.md](SDL3_WINDOWS.md). The subsequent native Linux milestone is recorded in
+[LINUX.md](LINUX.md).
 
 Baseline: `5863c4e70aafdbd5bc9b1abb1a1144f91883899d`. This Phase 3 slice
 extracts mechanisms, preserving Windows x86 GL/SOFT and x64 GL behavior. It

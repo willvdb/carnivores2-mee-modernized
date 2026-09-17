@@ -6,6 +6,9 @@ not a Linux game executable. Native Windows gameplay approval remains pending;
 the owner chose native Windows CI plus local Wine/Gamescope validation for this
 branch. Do not treat those runs as certification of native Windows playability.
 
+The stacked Phase 3c changes and native Linux validation are documented in
+[LINUX.md](LINUX.md). This document retains the Phase 3b scope/acceptance record.
+
 ## Build and ownership
 
 The existing presets still select `CARNIVORES_PLATFORM=WIN32`. Four additional
