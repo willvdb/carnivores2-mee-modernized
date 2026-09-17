@@ -13,6 +13,10 @@ jobs:
           - { preset: windows-x86-gl-release, arch: x86 }
           - { preset: windows-x64-gl-debug, arch: x64 }
           - { preset: windows-x64-gl-release, arch: x64 }
+          - { preset: windows-x86-sdl-gl-debug, arch: x86 }
+          - { preset: windows-x86-sdl-gl-release, arch: x86 }
+          - { preset: windows-x64-sdl-gl-debug, arch: x64 }
+          - { preset: windows-x64-sdl-gl-release, arch: x64 }
           - { preset: soft-release, arch: x86 }
           - { preset: menu-release, arch: x86 }
 
