@@ -4,7 +4,7 @@
 #include <vector>
 
 // Single game window, main application thread. No engine globals or native
-// handles belong to this interface. Native event/WGL scaffolding is separate.
+// handles belong to this interface. Backends and native compatibility are separate.
 namespace Platform {
 
 struct Size { std::int32_t width, height; };
@@ -20,7 +20,7 @@ DisplayInfo QueryDisplayInfo();
 using Tick = std::int64_t;
 Tick CounterFrequency();
 Tick Counter();
-void BeginFrameTiming(); // Preserve the legacy process-life 1 ms timer request.
+void BeginFrameTiming(); // Request 1 ms delay precision for the existing limiter.
 void SleepMilliseconds(std::uint32_t milliseconds);
 // Legacy gameplay clock: milliseconds modulo 2^32, backend epoch unspecified.
 constexpr std::uint32_t WrapMilliseconds(std::uint64_t ticks)
@@ -60,8 +60,8 @@ void EnableDpiAwareness();
 bool InitializeApplication();
 void ShutdownApplication(); // After renderer, audio and native-window borrowers.
 const char* LastError();
-// The transitional Win32 entry point supplies its instance/WndProc separately.
-// False means class registration failed, matching the legacy creation contract.
+// The Win32 reference entry supplies its instance/WndProc separately. SDL owns
+// its application entry/window. False reports backend window setup failure.
 bool CreateGameWindow();
 bool HasGameWindow();
 void ShowAndFocusGameWindow();
@@ -86,6 +86,6 @@ void ShowLoadingWindow(Size size);
 void RestoreDesktopMode();
 void LoadArrowCursor();
 void HideArrowCursor();
-void ShowCursorOnExit(); // Exactly one visibility-counter increment.
+void ShowCursorOnExit(); // Win32: one counter increment. SDL: show cursor.
 
 } // namespace Platform

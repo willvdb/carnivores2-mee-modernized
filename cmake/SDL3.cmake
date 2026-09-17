@@ -14,5 +14,12 @@ else()
         URL https://www.libsdl.org/release/SDL3-3.2.28.tar.gz
         URL_HASH SHA256=1330671214d146f8aeb1ed399fc3e081873cdb38b5189d1f8bb6ab15bbc04211
     )
+    # SDL_mslibc.c deliberately disables /GL. Inheriting the game's Release
+    # IPO would build SDL's PCH with /GL and produce MSVC C4652 on that file.
+    # Compile the dependency without IPO; retain the game's existing LTO.
+    set(carnivores_saved_release_ipo "${CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE}")
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE OFF)
     FetchContent_MakeAvailable(SDL3)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE "${carnivores_saved_release_ipo}")
+    unset(carnivores_saved_release_ipo)
 endif()
