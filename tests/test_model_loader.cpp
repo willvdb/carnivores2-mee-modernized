@@ -149,6 +149,8 @@ TEST(ModelLoader, CharacterPCMAndAssociationAlignment)
         Append(b,ModelGolden::Vertex());b.resize(b.size()+512);
         std::vector<std::uint8_t> pcm(length);
         for(size_t i=0;i<length;++i) pcm[i]=static_cast<std::uint8_t>(i*37+0xab);
+        const std::uint8_t extremes[]{0,0x80,255,0x7f,255,255,0,0,0x34,0x12};
+        for(size_t i=0;i<length && i<10;++i) pcm[i]=extremes[i];
         b.resize(b.size()+32,'S');Word(b,static_cast<unsigned>(length));Append(b,pcm);
         b.resize(b.size()+32,'T');Word(b,2);b.push_back(0);b.push_back(0x80);
         for(int i=0;i<64;++i) Word(b,0x12340000+i);

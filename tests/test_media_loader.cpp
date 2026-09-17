@@ -54,3 +54,40 @@ TEST(MediaLoader, WavRejectsTruncationAndLengths) {
     for(size_t n=0;n<good.size();++n) {auto b=good;b.resize(n);MediaFile f(b);TSFX s;EXPECT_THROW(LoadWav(f.path,s),std::runtime_error);}
     for(unsigned n:{0xffffffffu,0x80000000u,16777217u}) {auto b=good;MediaGolden::Put(b,42,n);MediaFile f(b);TSFX s;EXPECT_THROW(LoadWav(f.path,s),std::runtime_error);}
 }
+
+#include "Loaders/ImageIO.h"
+#include "Loaders/AudioIO.h"
+TEST(MediaLoader, ChunkedTgaAndIgnoredMetadata) {
+    auto b=MediaGolden::Tga();MediaGolden::Put(b,12,2051,2);b.resize(18+2051*2*2);
+    // Engine historically ignores ID, color map, type, depth and origin.
+    b[0]=7;b[1]=1;b[2]=10;b[16]=24;b[17]=0x30;
+    for(size_t i=0;i<4102;++i) MediaGolden::Put(b,18+2*i,static_cast<unsigned>(i*37),2);
+    MediaFile f(b);TPicture p;LoadPictureTGA(p,f.path,MemoryTag::Global);
+    ASSERT_EQ(p.W,2051);ASSERT_EQ(p.H,2);EXPECT_EQ(MediaEndPosition,b.size());
+    for(size_t i=0;i<4102;++i) EXPECT_EQ(p.lpImage[i],static_cast<std::uint16_t>(((i+2051)%4102)*37));
+}
+TEST(MediaLoader, StreamingCapacityFailuresDoNotConsumeInput) {
+    auto b=MediaGolden::Wav();MediaFile f(b);
+    HANDLE file=CreateFileA(f.path,GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr);
+    WORD pixels[2]{99,99};short pcm[2]{99,99};
+    EXPECT_FALSE(EngineImage::ReadPixels(file,pixels,2,3));
+    EXPECT_FALSE(EngineImage::ReadPixels(file,pixels,SIZE_MAX,SIZE_MAX));
+    EXPECT_FALSE(EngineImage::ReadPixels(file,nullptr,2,2));
+    EXPECT_FALSE(EngineAudio::ReadPCM16(file,pcm,2,5));
+    EXPECT_FALSE(EngineAudio::ReadPCM16(file,pcm,2,SIZE_MAX));
+    EXPECT_FALSE(EngineAudio::ReadPCM16(file,nullptr,2,3));
+    EXPECT_EQ(SetFilePointer(file,0,nullptr,FILE_CURRENT),0u);
+    EXPECT_EQ(pixels[0],99);EXPECT_EQ(pcm[0],99);
+    EXPECT_TRUE(EngineImage::ReadPixels(file,nullptr,0,0));
+    EXPECT_TRUE(EngineAudio::ReadPCM16(file,nullptr,0,0));
+    SetFilePointer(file,static_cast<LONG>(b.size()-1),nullptr,FILE_BEGIN);
+    EXPECT_FALSE(EngineImage::ReadPixels(file,pixels,2,1));EXPECT_EQ(pixels[0],99);
+    SetFilePointer(file,static_cast<LONG>(b.size()-1),nullptr,FILE_BEGIN);
+    EXPECT_FALSE(EngineAudio::ReadPCM16(file,pcm,2,2));EXPECT_EQ(pcm[0],99);
+    CloseHandle(file);
+}
+TEST(MediaLoader, WavSignedExtremes) {
+    MediaFile f(MediaGolden::Wav());TSFX s;LoadWav(f.path,s);
+    const int expected[]{-32768,32767,-1,0,0x1234};
+    ASSERT_EQ(s.lpData.size(),5u);for(int i=0;i<5;++i) EXPECT_EQ(s.lpData[i],expected[i]);
+}
