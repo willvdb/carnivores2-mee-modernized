@@ -4,10 +4,10 @@
 
 #include "Hunt.h"
 #include "LoadValidate.h"
+#include "AudioIO.h"
 
 void LoadWav(char* FName, TSFX &sfx)
 {
-  DWORD l;
 
   HANDLE hfile = CreateFile(FName, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
   if( hfile==INVALID_HANDLE_VALUE )
@@ -54,9 +54,11 @@ void LoadWav(char* FName, TSFX &sfx)
     }
   }
 
-  if (!ReadExact(hfile, &sfx.length, 4))
+  std::uint8_t lengthBytes[4];
+  std::uint32_t length=0;
+  if (!ReadExact(hfile, lengthBytes, 4) ||
+      !LegacyAudio::DecodeLength(lengthBytes, 4, length))
     DoHalt("Sound loading error: truncated WAV data length.");
-  l = 4;
   pos += 4;
 
   // sfx.length is in bytes; std::vector is element-counted. Bound it first
@@ -65,10 +67,11 @@ void LoadWav(char* FName, TSFX &sfx)
   // assign() value-initializes to zero, matching the old HEAP_ZERO_MEMORY
   // behavior. Reject a short payload instead of silently accepting a
   // partially initialized sound.
-  if (!IsValidWavLength(sfx.length))
+  if (length > (16u << 20))
     DoHalt("Sound loading error: WAV data length out of range.");
+  sfx.length = static_cast<int>(length);
   sfx.lpData.assign(WavAllocSamples(sfx.length), 0);
-  if (!ReadExact(hfile, sfx.lpData.data(), (DWORD)sfx.length))
+  if (!EngineAudio::ReadPCM16(hfile, sfx.lpData.data(), sfx.lpData.size(), length))
     DoHalt("Sound loading error: truncated WAV data.");
   CloseHandle(hfile);
 }

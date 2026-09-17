@@ -308,6 +308,7 @@ if(MSVC)
         tests/test_legacy_resource.cpp
         tests/test_legacy_map.cpp
         tests/test_legacy_image.cpp
+        tests/test_legacy_audio.cpp
         tests/test_projectile_math.cpp
         tests/test_terrain_fog.cpp
         tests/test_water_object_visibility.cpp
