@@ -802,14 +802,14 @@ void Audio_SetEnvironment(int e, float f)
 
 // ---------------------------------------------------------------------------
 // Terrain geometry upload  (no‑op for OpenAL)
-// Still calls UploadGeometry() to keep the data array populated, but
-// never sends it to any audio driver.
+// Windows retains its legacy geometry array. Linux has no DirectSound
+// consumer and must not run that path (its renderer-only cell indices can be
+// unset on the first GL frame). OpenAL has no terrain-occlusion equivalent.
 // ---------------------------------------------------------------------------
 void Audio_UploadGeometry()
 {
-    UploadGeometry();
-
 #ifdef _WIN32
+    UploadGeometry();
     if (g_AudioBackend == AudioBackend::LegacyDLL) {
         if (g_LegacyAudioUploadGeometry)
             g_LegacyAudioUploadGeometry(AudioFCount, data);
