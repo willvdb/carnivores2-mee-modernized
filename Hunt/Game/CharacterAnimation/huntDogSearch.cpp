@@ -10,7 +10,7 @@
 extern int CurDino;
 extern int NewPhase;
 
-boolean huntDogSearch(TCharacter *cptr)
+std::uint8_t huntDogSearch(TCharacter *cptr)
 {
 	bool preyFound = false;
 	Vector3d preyPos;

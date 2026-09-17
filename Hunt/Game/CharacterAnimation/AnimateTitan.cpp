@@ -12,6 +12,8 @@ extern int NewPhase;
 
 void AnimateTitan(TCharacter *cptr)
 {
+    bool fleeMode;
+    float FlDst;
 	NewPhase = false;
 	int _Phase = cptr->Phase;
 	int _FTime = cptr->FTime;
@@ -60,7 +62,7 @@ TBEGIN:
 
 	//============================================//			// (run away)
 	if (!MyHealth) cptr->State = 0;
-	bool fleeMode = false;
+	fleeMode = false;
 	if (cptr->State)
 	{
 
@@ -252,7 +254,7 @@ NOTHINK:
 
 	if (cptr->Phase == DinoInfo[cptr->CType].killType[cptr->killType].anim && DinoInfo[cptr->CType].killTypeCount)  goto ENDPSELECT;
 
-	float FlDst = ctViewR * DinoInfo[cptr->CType].flyDist + OptAgres / AIInfo[cptr->Clone].agressMulti;
+	FlDst = ctViewR * DinoInfo[cptr->CType].flyDist + OptAgres / AIInfo[cptr->Clone].agressMulti;
 	if (!alertInit) FlDst *= 1.5;
 	if (!cptr->gliding && cptr->State && pdist > FlDst) cptr->gliding = true;
     else if (cptr->pos.y < landUpH + 50

@@ -366,10 +366,12 @@ void DrawPostObjects()
 {
   float b;
   TWeapon* wptr = &Weapon;
+  int phas;
 
   Hardware_ZBuffer(false);
 
   if (DemoPoint.DemoTime) goto SKIPWEAPON;
+  { // Weapon-only temporaries must not outlive the skipped block.
 
   GlassL = 0;
   // Keep near-model projection anchored to the classic 4:3 FOV so
@@ -629,7 +631,7 @@ SKIPWIND:
   }
   */
 
-  int phas;
+
   switch (wptr->state)
   {
   case 1:
@@ -789,6 +791,7 @@ SKIPWIND:
     CameraH = savedCH;
   }
 
+  }
 SKIPWEAPON:
 
   if (ChCallTime)
@@ -1496,8 +1499,10 @@ std::int32_t CreateMainWindow()
   PrintLog("Creating main window...");
   if (!Platform::CreateGameWindow()) return false;
   // Transitional alias for the untouched GDI/DirectDraw/audio consumers.
+#ifdef _WIN32
   hwndMain = Platform::Win32::GameWindow();
-  if (hwndMain) PrintLog("Ok.\n");
+#endif
+  PrintLog("Ok.\n");
   return true;
 }
 

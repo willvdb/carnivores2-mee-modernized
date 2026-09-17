@@ -25,7 +25,7 @@ void AnimateHuntable(TCharacter *cptr);
 void AnimateMicro(TCharacter *cptr);
 
 // Forward declaration from huntDogSearch.cpp
-boolean huntDogSearch(TCharacter *cptr);
+std::uint8_t huntDogSearch(TCharacter *cptr);
 
 // Forward declaration from AnimateHuntdog.cpp
 void AnimateHuntdog(TCharacter *cptr);

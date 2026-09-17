@@ -151,9 +151,9 @@ void CreateMipMap(std::uint16_t* src, std::uint16_t* dst, int Ls, int Ld)
 
   int R[64][64], G[64][64], B[64][64];
 
-  FillMemory(R, sizeof(R), 0);
-  FillMemory(G, sizeof(R), 0);
-  FillMemory(B, sizeof(R), 0);
+  memset(R, 0, sizeof(R));
+  memset(G, 0, sizeof(R));
+  memset(B, 0, sizeof(R));
 
   for (int y=0; y<Ls; y++)
     for (int x=0; x<Ls; x++)

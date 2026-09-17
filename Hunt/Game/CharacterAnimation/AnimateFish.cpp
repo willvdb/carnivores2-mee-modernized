@@ -12,6 +12,8 @@ extern int NewPhase;
 
 void AnimateFish(TCharacter *cptr)
 {
+    int ao;
+    float attackDist;
 	NewPhase = false;
 	int _Phase = cptr->Phase;
 	int _FTime = cptr->FTime;
@@ -104,9 +106,9 @@ TBEGIN:
 	//============================================//
 	if (!MyHealth) cptr->State = 0;
 
-	int ao = 0;
+	ao = 0;
 	if (DinoInfo[cptr->CType].DangerFish)ao = OptAgres;
-	float attackDist = ctViewR * DinoInfo[cptr->CType].aggress + ao / AIInfo[cptr->Clone].agressMulti;
+	attackDist = ctViewR * DinoInfo[cptr->CType].aggress + ao / AIInfo[cptr->Clone].agressMulti;
 
 	if (!cptr->State)
 	{

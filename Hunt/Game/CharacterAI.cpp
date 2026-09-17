@@ -74,6 +74,7 @@ void CheckAfraid()
 
 		if (cptr->Clone == AI_TREX && (cptr->AfraidTime || cptr->State == 1)) continue; //here to check if hunter detected once it starts running from fear call, trex doesn't like it tho
 
+		float kALook, kASmell, kRes; // Declarations precede the legacy jump for standard C++.
 		if (g_GameMode == GameMode::SurvivalMode) goto isAfraid;
 
 		rlook = SubVectors(ppos, cptr->pos);
@@ -97,7 +98,7 @@ void CheckAfraid()
 
 		//============= reasons ==============//
 
-		float kALook = kR * ((klook + 3.f) / 3.f) * kstand * kmask;
+		kALook = kR * ((klook + 3.f) / 3.f) * kstand * kmask;
 		if (klook > 0.3) kALook *= 2.0;
 		if (klook > 0.8) kALook *= 2.0;
 		kALook /= DinoInfo[cptr->CType].LookK;
@@ -119,11 +120,11 @@ void CheckAfraid()
 		  }
 		  */
 
-		float kASmell = kR * ((kwind + 2.0f) / 2.0F) * ((klook + 3.f) / 3.f) * kscent;
+		kASmell = kR * ((kwind + 2.0f) / 2.0F) * ((klook + 3.f) / 3.f) * kscent;
 		if (kwind > 0) kASmell *= 2.0;
 		kASmell /= DinoInfo[cptr->CType].SmellK;
 
-		float kRes = MIN(kALook, kASmell);
+		kRes = MIN(kALook, kASmell);
 
 		if (kRes < 1.0)
 		{

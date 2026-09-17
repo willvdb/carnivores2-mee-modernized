@@ -40,7 +40,7 @@ void SetNewTargetPlace_Brahi(TCharacter *cptr, float R);
 void SetNewTargetPlaceFish(TCharacter *cptr, float R);
 void SetNewTargetPlaceMosasaurus(TCharacter *cptr, float R);
 std::int32_t ReplaceCharacterForward(TCharacter *cptr);
-boolean huntDogSearch(TCharacter *cptr);
+std::uint8_t huntDogSearch(TCharacter *cptr);
 
 // Character lifecycle
 void ResetCharacter(TCharacter *cptr);

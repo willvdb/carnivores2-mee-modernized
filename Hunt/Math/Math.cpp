@@ -1584,7 +1584,7 @@ void CalcNormals(TModel* mptr, Vector3d *nvs)
 
   Vector3d a, b, nv, rv;
 
-  FillMemory(nvs,   3*4*VCount, 0);
+  memset(nvs, 0, 3*4*VCount);
 
 
 

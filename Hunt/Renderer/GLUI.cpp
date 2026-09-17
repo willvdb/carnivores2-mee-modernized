@@ -807,8 +807,8 @@ void RenderHealthBar()
     const std::uint16_t BORDER = 0x0001; // non-zero so the overlay treats it as opaque
 
     // Top and bottom border rows (full width of bar + corners)
-    FillMemory(static_cast<std::uint16_t*>(lpVideoBuf) + ((y0 - 1) * VideoPitch) + x0 - 1, (L + 2) * 2, BORDER);
-    FillMemory(static_cast<std::uint16_t*>(lpVideoBuf) + ((y0 + H + 1) * VideoPitch) + x0 - 1, (L + 2) * 2, BORDER);
+    memset(static_cast<std::uint16_t*>(lpVideoBuf) + ((y0 - 1) * VideoPitch) + x0 - 1, BORDER, (L + 2) * 2);
+    memset(static_cast<std::uint16_t*>(lpVideoBuf) + ((y0 + H + 1) * VideoPitch) + x0 - 1, BORDER, (L + 2) * 2);
 
     // Bar body
     for (int y = 0; y <= H; y++) {

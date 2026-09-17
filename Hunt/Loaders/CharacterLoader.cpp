@@ -11,7 +11,7 @@ void PlaceHunter();
 void LoadCharacters()
 {
   std::int32_t pres[DINOINFO_MAX];
-  FillMemory(pres, sizeof(pres), 0);
+  memset(pres, 0, sizeof(pres));
   pres[0]=true;
   for (int c=0; c<ChCount; c++)
   {

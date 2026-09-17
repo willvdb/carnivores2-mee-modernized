@@ -46,7 +46,7 @@ void LoadWav(char* FName, TSFX &sfx)
       if (!ReadExact(hfile, &c[1], 3))
         DoHalt("Sound loading error: truncated WAV chunk header.");
       pos += 3;
-      if( !lstrcmp( c, "data" ) ) break;
+      if( !strcmp( c, "data" ) ) break;
       else {
         Platform::SeekFile(hfile, -3, Platform::SeekOrigin::Current);
         pos -= 3;
