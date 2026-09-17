@@ -68,6 +68,23 @@ static LegacyModel::Header ReadModelHeader(HANDLE file)
   return header;
 }
 
+static void ReadModelTexture(HANDLE file, WORD* out, size_t fileBytes)
+{
+  std::array<std::uint8_t, 4096> bytes{};
+  std::array<std::uint16_t, 2048> words{};
+  while (fileBytes)
+  {
+    const size_t batch = (std::min)(fileBytes, bytes.size());
+    ReadModelExact(file, bytes.data(), static_cast<DWORD>(batch), "model texture");
+    if (!LegacyModel::DecodeTexture(bytes.data(), batch, words.data(), words.size()))
+      DoHalt("Model loading error: invalid texture words.");
+    const size_t count = batch / 2 + batch % 2;
+    std::copy_n(words.data(), count, out);
+    out += count;
+    fileBytes -= batch;
+  }
+}
+
 static std::int32_t ReadModelInt32(HANDLE file, const char* what)
 {
   std::array<std::uint8_t, 4> bytes{};
@@ -531,7 +548,7 @@ void LoadModel(unique_obj_ptr<TModel> &mptr, MemoryTag tag)
   // it, so reject instead of reading.
   if (ts < 0 || (size_t)ts > (size_t)mptr->TextureSize)
     ModelLoadFail("texture byte count exceeds buffer", ts, mptr->TextureSize);
-  ReadModelExact(hfile, mptr->lpTexture.get(), (DWORD)ts, "model texture");
+  ReadModelTexture(hfile, mptr->lpTexture.get(), static_cast<size_t>(ts));
   BrightenTexture(mptr->lpTexture.get(), ts/2);
 
   for (int v=0; v<mptr->VCount; v++)
@@ -627,7 +644,7 @@ void LoadModelEx(unique_obj_ptr<TModel> &mptr, char* FName, MemoryTag tag)
 
   if (ts < 0 || (size_t)ts > (size_t)mptr->TextureSize)
     ModelLoadFail("texture byte count exceeds buffer", ts, mptr->TextureSize);
-  ReadModelExact(hfile, mptr->lpTexture.get(), (DWORD)ts, "model texture");
+  ReadModelTexture(hfile, mptr->lpTexture.get(), static_cast<size_t>(ts));
   BrightenTexture(mptr->lpTexture.get(), ts/2);
 
   for (int v=0; v<mptr->VCount; v++)
@@ -935,7 +952,7 @@ void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
 
   if (ts < 0 || (size_t)ts > (size_t)chinfo.mptr->TextureSize)
     ModelLoadFail("texture byte count exceeds buffer", ts, chinfo.mptr->TextureSize);
-  ReadModelExact(hfile, chinfo.mptr->lpTexture.get(), (DWORD)ts, "character texture");
+  ReadModelTexture(hfile, chinfo.mptr->lpTexture.get(), static_cast<size_t>(ts));
   BrightenTexture(chinfo.mptr->lpTexture.get(), ts/2);
 
   DATASHIFT(chinfo.mptr->lpTexture.get(), chinfo.mptr->TextureSize);
