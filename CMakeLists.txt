@@ -346,8 +346,8 @@ if(MSVC)
     target_link_libraries(Carnivores2ModelTests PRIVATE gtest_main)
     add_test(NAME Carnivores2Tests.ModelLoader COMMAND Carnivores2ModelTests)
 
-    # Complete production RSC path; the test's PrintLoad stops at the existing
-    # MAP notification. Unused engine/platform functions are discarded.
+    # Production RSC/MAP paths; tests stop at existing PrintLoad notifications
+    # and observe the real file-close position. Unused functions are discarded.
     add_executable(Carnivores2ResourceTests tests/test_resource_loader.cpp
         tests/resource_loader_source.cpp Hunt/Loaders/ModelLoader.cpp Hunt/Core/StateDefs.cpp)
     target_include_directories(Carnivores2ResourceTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Hunt ${CMAKE_CURRENT_SOURCE_DIR}/deps)
