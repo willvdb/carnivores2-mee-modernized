@@ -357,6 +357,18 @@ if(MSVC)
     target_link_libraries(Carnivores2ResourceTests PRIVATE gtest_main winmm)
     add_test(NAME Carnivores2Tests.ResourceLoader COMMAND Carnivores2ResourceTests)
 
+    add_executable(Carnivores2MediaTests tests/test_media_loader.cpp tests/media_loader_source.cpp)
+    target_include_directories(Carnivores2MediaTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Hunt ${CMAKE_CURRENT_SOURCE_DIR}/deps)
+    target_link_libraries(Carnivores2MediaTests PRIVATE gtest_main)
+    add_test(NAME Carnivores2Tests.MediaLoader COMMAND Carnivores2MediaTests)
+
+    add_executable(Carnivores2MenuMediaTests tests/test_menu_media.cpp Menu/Resources.cpp)
+    target_include_directories(Carnivores2MenuMediaTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Hunt)
+    target_compile_options(Carnivores2MenuMediaTests PRIVATE /Gy)
+    target_link_options(Carnivores2MenuMediaTests PRIVATE /OPT:REF /INCREMENTAL:NO)
+    target_link_libraries(Carnivores2MenuMediaTests PRIVATE gtest_main)
+    add_test(NAME Carnivores2Tests.MenuMedia COMMAND Carnivores2MenuMediaTests)
+
     # Exercise the production world-model sampler without a GL context.
     # Engine globals / CalcFogLevel are controlled test doubles in this target.
     add_executable(Carnivores2FogTests
