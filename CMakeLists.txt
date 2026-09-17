@@ -348,7 +348,7 @@ if(MSVC)
     # Complete production RSC path; the test's PrintLoad stops at the existing
     # MAP notification. Unused engine/platform functions are discarded.
     add_executable(Carnivores2ResourceTests tests/test_resource_loader.cpp
-        Hunt/Loaders/Resources.cpp Hunt/Loaders/ModelLoader.cpp Hunt/Core/StateDefs.cpp)
+        tests/resource_loader_source.cpp Hunt/Loaders/ModelLoader.cpp Hunt/Core/StateDefs.cpp)
     target_include_directories(Carnivores2ResourceTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Hunt ${CMAKE_CURRENT_SOURCE_DIR}/deps)
     target_compile_definitions(Carnivores2ResourceTests PRIVATE ${RENDER_DEFINES})
     target_compile_options(Carnivores2ResourceTests PRIVATE /Gy)

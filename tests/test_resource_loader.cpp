@@ -2,13 +2,24 @@
 #include "Hunt.h"
 #include "Loaders/ResourceIO.h"
 #include "legacy_resource_fixtures.h"
+#include "legacy_map_fixtures.h"
 #include <stdexcept>
 #include <string>
 
 // Actual LoadResources + ModelLoader + StateDefs, with no graphics context.
-// Stop at the existing notification AFTER the RSC handle closes, BEFORE MAP I/O.
+// Existing notifications bound RSC-only tests and complete MAP loads.
 struct ResourceComplete {};
-void PrintLoad(char* text) { if(std::string(text)=="Loading .map...") throw ResourceComplete{}; }
+struct MapComplete {};
+static bool loadMap = false;
+static DWORD closedPosition = 0;
+BOOL ResourceTestCloseHandle(HANDLE file) {
+    if(file==hfile) closedPosition=SetFilePointer(file,0,nullptr,FILE_CURRENT);
+    return CloseHandle(file);
+}
+void PrintLoad(char* text) {
+    if(std::string(text)=="Loading .map..." && !loadMap) throw ResourceComplete{};
+    if(std::string(text)=="Prepearing maps...") throw MapComplete{};
+}
 [[noreturn]] void DoHalt(char* text) { throw std::runtime_error(text); }
 void CalcLights(TModel*) {}
 void CalcBoundBox(TModel*,TBound*) {}
@@ -77,13 +88,14 @@ struct File {
     void Load() {
         auto stem=path.substr(0,path.size()-4); strcpy_s(ProjectName,stem.c_str());
         try { LoadResources(); } catch(const ResourceComplete&) { hfile=INVALID_HANDLE_VALUE; throw; }
+        catch(const MapComplete&) { hfile=INVALID_HANDLE_VALUE; throw; }
     }
     ~File() { if(hfile!=INVALID_HANDLE_VALUE) { CloseHandle(hfile); hfile=INVALID_HANDLE_VALUE; } DeleteFileA(path.c_str()); }
 };
 class ResourceLoader : public testing::Test {
     void SetUp() override {
         Heap=GetProcessHeap(); hfile=INVALID_HANDLE_VALUE; hlog=INVALID_HANDLE_VALUE;
-        OptBrightness=128; OptDayNight=1; srand(1);
+        OptBrightness=128; OptDayNight=1; srand(1); loadMap=false; closedPosition=0;
 #ifdef _soft
         HARD3D=FALSE;
 #else
@@ -230,4 +242,116 @@ TEST_F(ResourceLoader, OptionalAnimationRemainsAtLegacyBoundary)
     EXPECT_EQ(SkyPic[0],0x1235); EXPECT_EQ(Ambient[0].AVolume,123);
     b.resize(f.sky+animation.size()-1); File shortFile(b);
     EXPECT_THROW(shortFile.Load(),std::runtime_error);
+}
+
+namespace {
+// Streaming fixture writer uses one row, not copies of a whole map.
+struct MapFile {
+    std::string path;
+    explicit MapFile(const File& rsc) : path(rsc.path.substr(0,rsc.path.size()-4)+".map") {
+        HANDLE f=CreateFileA(path.c_str(),GENERIC_WRITE,0,nullptr,CREATE_ALWAYS,0,nullptr);
+        for(unsigned plane=0;plane<12;++plane) {
+            const bool word=plane==1 || plane==2 || plane==4;
+            const unsigned width=plane>=10 ? 512 : 1024;
+            std::vector<std::uint8_t> row(width*(word ? 2 : 1),plane==3 ? 255 : 0);
+            for(unsigned y=0;y<width;++y) {
+                std::fill(row.begin(),row.end(),plane==3 ? 255 : 0);
+                if(y==0) {
+                    if(plane==1 || plane==2) { row[2]=255; row[3]=255; } // sentinel
+                    else if(plane==4) {
+                        for(unsigned x=0;x<MapGolden::Flags.size();++x) {
+                            row[2*x]=MapGolden::Flags[x]%256;
+                            row[2*x+1]=MapGolden::Flags[x]/256;
+                        }
+                    } else if(plane==3) { row[0]=0; row[1]=254; }
+                    else if(plane==8) { row[0]=255; } // dry cell, intentionally unvalidated
+                    else { row[0]=0; row[1]=128; row[2]=255; }
+                }
+                if(plane>=5 && plane<=7) row[width-1]=static_cast<std::uint8_t>(40+plane);
+                DWORD wrote=0; EXPECT_TRUE(WriteFile(f,row.data(),static_cast<DWORD>(row.size()),&wrote,nullptr));
+                EXPECT_EQ(wrote,row.size());
+            }
+        }
+        EXPECT_EQ(SetFilePointer(f,0,nullptr,FILE_CURRENT),MapGolden::Size);
+        CloseHandle(f);
+    }
+    void Patch(std::size_t offset,std::initializer_list<std::uint8_t> bytes) {
+        HANDLE f=CreateFileA(path.c_str(),GENERIC_WRITE,0,nullptr,OPEN_EXISTING,0,nullptr);
+        SetFilePointer(f,static_cast<LONG>(offset),nullptr,FILE_BEGIN); DWORD wrote=0;
+        ASSERT_TRUE(WriteFile(f,bytes.begin(),static_cast<DWORD>(bytes.size()),&wrote,nullptr));
+        CloseHandle(f);
+    }
+    void Truncate(std::size_t size) {
+        HANDLE f=CreateFileA(path.c_str(),GENERIC_WRITE,0,nullptr,OPEN_EXISTING,0,nullptr);
+        SetFilePointer(f,static_cast<LONG>(size),nullptr,FILE_BEGIN); EXPECT_TRUE(SetEndOfFile(f)); CloseHandle(f);
+    }
+    ~MapFile() { DeleteFileA(path.c_str()); }
+};
+std::vector<std::uint8_t> MapResource() {
+    Fixture f;
+    // Two textures make the 0xffff -> 1 sentinel valid. Other counts stay 1.
+    ResourceGolden::Put32(f.bytes,0,2);
+    f.bytes.insert(f.bytes.begin()+f.object,32768,0);
+    return f.bytes;
+}
+}
+TEST_F(ResourceLoader, MapCompletePlanesAndAllLightSelections)
+{
+    File resource(MapResource()); MapFile map(resource); loadMap=true;
+    for(int day=0;day<3;++day) {
+        SCOPED_TRACE(day); OptDayNight=day;
+        EXPECT_THROW(resource.Load(),MapComplete);
+        EXPECT_EQ(closedPosition,14155776u);
+        for(auto plane:{HMap,HMapO,LMap}) {
+            EXPECT_EQ(plane[0][0],0); EXPECT_EQ(plane[0][1],128); EXPECT_EQ(plane[0][2],255);
+        }
+        EXPECT_EQ(LMap[1023][1023],45+day);
+        EXPECT_EQ(TMap1[0][1],0xffff); EXPECT_EQ(TMap2[0][1],0xffff);
+        EXPECT_EQ(TMap1[1023][1023],0); EXPECT_EQ(TMap2[1023][1023],0);
+        for(unsigned x=0;x<MapGolden::Flags.size();++x) EXPECT_EQ(FMap[0][x],MapGolden::Flags[x]);
+        EXPECT_EQ(OMap[0][0],0); EXPECT_EQ(OMap[0][1],254); EXPECT_EQ(OMap[1023][1023],255);
+        EXPECT_EQ(WMap[0][0],255); EXPECT_EQ(WMap[0][1],0);
+        for(auto plane:{FogsMap,AmbMap}) {
+            EXPECT_EQ(plane[0][0],0); EXPECT_EQ(plane[0][1],128); EXPECT_EQ(plane[0][2],255);
+            EXPECT_EQ(plane[511][511],0);
+        }
+    }
+}
+TEST_F(ResourceLoader, MapTruncationNeverReachesPostprocessing)
+{
+    File resource(MapResource()); loadMap=true;
+    // Includes each boundary and its interior, including all skipped light maps.
+    for(int day=0;day<3;++day) for(auto end:MapGolden::Offsets) for(auto delta:{0u,17u}) {
+        SCOPED_TRACE(day);
+        SCOPED_TRACE(end+delta); OptDayNight=day;
+        MapFile map(resource); map.Truncate(end+delta);
+        EXPECT_THROW(resource.Load(),std::runtime_error);
+        CloseHandle(hfile); hfile=INVALID_HANDLE_VALUE;
+    }
+    MapFile map(resource); map.Truncate(MapGolden::Size-1);
+    EXPECT_THROW(resource.Load(),std::runtime_error);
+}
+TEST_F(ResourceLoader, MapReferenceValidationRetainsFullWordsAndSentinels)
+{
+    File resource(MapResource()); loadMap=true;
+    for(unsigned plane:{1u,2u}) for(auto value:{2u,0x1234u,0x9234u}) {
+        MapFile map(resource); map.Patch(MapGolden::Offsets[plane],{static_cast<std::uint8_t>(value%256),static_cast<std::uint8_t>(value/256)});
+        try { resource.Load(); FAIL()<<"expected texture rejection"; }
+        catch(const std::runtime_error& e) { EXPECT_NE(std::string(e.what()).find("texture index out of range"),std::string::npos); }
+        EXPECT_EQ(TMap1[0][0],plane==1 ? value : 0);
+        EXPECT_EQ(TMap2[0][0],plane==2 ? value : 0);
+        EXPECT_EQ(SetFilePointer(hfile,0,nullptr,FILE_CURRENT),MapGolden::Size);
+        CloseHandle(hfile); hfile=INVALID_HANDLE_VALUE;
+    }
+    for(auto entry:{std::pair<unsigned,unsigned>{3,1},{8,1},{8,255}}) {
+        MapFile map(resource); map.Patch(MapGolden::Offsets[entry.first]+1,{static_cast<std::uint8_t>(entry.second)});
+        EXPECT_THROW(resource.Load(),std::runtime_error);
+        CloseHandle(hfile); hfile=INVALID_HANDLE_VALUE;
+    }
+    for(unsigned count:{64u,65u}) {
+        MapFile map(resource);
+        for(unsigned i=0;i<count;++i) map.Patch(MapGolden::Offsets[3]+i,{254});
+        if(count==64) EXPECT_THROW(resource.Load(),MapComplete);
+        else { EXPECT_THROW(resource.Load(),std::runtime_error); CloseHandle(hfile); hfile=INVALID_HANDLE_VALUE; }
+    }
 }
