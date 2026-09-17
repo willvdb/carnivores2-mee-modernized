@@ -4,6 +4,7 @@
 
 #include "Hunt.h"
 #include "LoadValidate.h"
+#include "ResourceIO.h"
 #include "ModelSerialization.h"
 
 // Corrupt/modded-model fail-fast. All shipped .CAR files pass these checks
@@ -329,7 +330,8 @@ void LoadTexture(unique_obj_ptr<TEXTURE> &T)
   // LoadResources (per-level). Tag as Level so the arena reclaims
   // per-level textures in bulk on Reset().
   T.reset((TEXTURE*) _HeapAlloc(Heap, 0, sizeof(TEXTURE), MemoryTag::Level));
-  ReadModelExact(hfile, T->DataA, 128*128*2, "terrain texture");
+  if (!EngineResource::ReadTexture(hfile, T->DataA, 128*128, 128*128))
+    DoHalt("Model loading error: truncated terrain texture.");
   for (int y=0; y<128; y++)
     for (int x=0; x<128; x++)
       if (!T->DataA[y*128+x]) T->DataA[y*128+x]=1;
@@ -356,7 +358,8 @@ void LoadTexture(unique_obj_ptr<TEXTURE> &T)
 void LoadSky()
 {
   SetFilePointer(hfile, 256*512*OptDayNight, nullptr, FILE_CURRENT);
-  ReadModelExact(hfile, SkyPic, 256*256*2, "sky texture");
+  if (!EngineResource::ReadTexture(hfile, SkyPic, 256*256, 256*256))
+    DoHalt("Model loading error: truncated sky texture.");
   SetFilePointer(hfile, 256*512*(2-OptDayNight), nullptr, FILE_CURRENT);
 
   BrightenTexture(SkyPic, 256*256);
@@ -777,7 +780,8 @@ void LoadBMPModel(TObject &obj)
   //ReadFile(hfile, lpT, 256*256*2, &l, nullptr);
   //DATASHIFT(obj.bmpmodel.lpTexture.get(), 128*128*2);
   //BrightenTexture(lpT, 256*256);
-  ReadModelExact(hfile, obj.bmpmodel.lpTexture.get(), 128*128*2, "billboard texture");
+  if (!EngineResource::ReadTexture(hfile, obj.bmpmodel.lpTexture.get(), 128*128, 128*128))
+    DoHalt("Model loading error: truncated billboard texture.");
   BrightenTexture(obj.bmpmodel.lpTexture.get(), 128*128);
   DATASHIFT(obj.bmpmodel.lpTexture.get(), 128*128*2);
   //CreateMipMapMT(obj.bmpmodel.lpTexture, lpT, 128);
