@@ -7,7 +7,8 @@
 #endif
 #include <cmath>
 #include <algorithm>
-#include <timeapi.h>
+#include "Platform/Platform.h"
+#include "Game/FrameTiming.h"
 
 #ifndef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
 #define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 ((DPI_AWARENESS_CONTEXT)-4)
@@ -1553,38 +1554,33 @@ BOOL CreateMainWindow()
 
 
 
-// FPS limit values matching menu indexes: 0=Unlimited, 1=60, 2=120, 3=240
-static const int kFpsValues[] = { 0, 60, 120, 240 };
-
 static void LimitFPS()
 {
-	int targetFps = kFpsValues[OptFpsLimit];
-	if (targetFps <= 0) return;
+	const std::int64_t target_us = FrameTiming::TargetMicroseconds(OptFpsLimit);
+	if (target_us <= 0) return;
 
-	static LARGE_INTEGER freq = { 0 };
-	static LARGE_INTEGER frameStart = { 0 };
+	static Platform::Tick freq = 0;
+	static Platform::Tick frameStart = 0;
 	static bool init = false;
 
 	if (!init) {
-		QueryPerformanceFrequency(&freq);
-		QueryPerformanceCounter(&frameStart);
-		timeBeginPeriod(1);
+		freq = Platform::CounterFrequency();
+		frameStart = Platform::Counter();
+		Platform::BeginFrameTiming();
 		init = true;
 	}
 
-	INT64 target_us = 1000000 / targetFps;
-	LARGE_INTEGER now;
-	QueryPerformanceCounter(&now);
-	INT64 elapsed_us = (now.QuadPart - frameStart.QuadPart) * 1000000 / freq.QuadPart;
+	Platform::Tick now = Platform::Counter();
+	std::int64_t elapsed_us = FrameTiming::ElapsedMicroseconds(frameStart, now, freq);
 
 	while (elapsed_us < target_us) {
 		if (target_us - elapsed_us > 2000)
-			Sleep(1);
-		QueryPerformanceCounter(&now);
-		elapsed_us = (now.QuadPart - frameStart.QuadPart) * 1000000 / freq.QuadPart;
+			Platform::SleepMilliseconds(1);
+		now = Platform::Counter();
+		elapsed_us = FrameTiming::ElapsedMicroseconds(frameStart, now, freq);
 	}
 
-	QueryPerformanceCounter(&frameStart);
+	frameStart = Platform::Counter();
 }
 
 void ProcessGame()
@@ -1856,7 +1852,7 @@ int PASCAL WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     else
     {
       if (blActive) { ProcessGame(); LimitFPS(); }
-      else Sleep(100);
+      else Platform::SleepMilliseconds(100);
     }
   }
 
