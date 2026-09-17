@@ -120,7 +120,7 @@ void AnimateElements()
 //====== remove finished process =========//
     if (!Elements[eg].ECount)
     {
-      memcpy(&Elements[eg], &Elements[eg+1], (ElCount+1-eg) * sizeof(TElements));
+      memmove(&Elements[eg], &Elements[eg+1], (ElCount+1-eg) * sizeof(TElements));
       ElCount--;
       eg--;
       continue;

@@ -28,7 +28,7 @@ void AddElementsA(float x, float y, float z, int etype, int cnt, int mag, bool a
 {
   if (ElCount > 697)
   {
-    memcpy(&Elements[0], &Elements[1], (ElCount-1) * sizeof(TElements));
+    memmove(&Elements[0], &Elements[1], (ElCount-1) * sizeof(TElements));
     ElCount--;
   }
 
