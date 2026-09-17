@@ -140,3 +140,36 @@ TEST(ModelLoader, RejectsInvalidAnimationHeadersAndTruncation)
     TVTL vtl{}; EXPECT_THROW(LoadAnimation(vtl,1),std::runtime_error);
     EXPECT_EQ(vtl.aniData.get(),nullptr);
 }
+
+TEST(ModelLoader, CharacterPCMAndAssociationAlignment)
+{
+    for(size_t length:{size_t(0),size_t(10),size_t(11),size_t(4097)}) {
+        std::vector<std::uint8_t> b(32,'C');
+        Word(b,0);Word(b,2);Word(b,1);Word(b,0);Word(b,512);
+        Append(b,ModelGolden::Vertex());b.resize(b.size()+512);
+        std::vector<std::uint8_t> pcm(length);
+        for(size_t i=0;i<length;++i) pcm[i]=static_cast<std::uint8_t>(i*37+0xab);
+        b.resize(b.size()+32,'S');Word(b,static_cast<unsigned>(length));Append(b,pcm);
+        b.resize(b.size()+32,'T');Word(b,2);b.push_back(0);b.push_back(0x80);
+        for(int i=0;i<64;++i) Word(b,0x12340000+i);
+        File file(b);TCharacterInfo ch{};LoadCharacterInfo(ch,file.path);
+        ASSERT_EQ(ch.SoundFX[0].lpData.size(),length/2+length%2);
+        EXPECT_EQ(ch.SoundFX[0].length,length);
+        for(size_t i=0;i<ch.SoundFX[0].lpData.size();++i) {
+            int v=pcm[2*i]+(2*i+1<length?256*pcm[2*i+1]:0);
+            EXPECT_EQ(ch.SoundFX[0].lpData[i],v<32768?v:v-65536);
+        }
+        EXPECT_EQ(ch.SoundFX[1].length,2);EXPECT_EQ(ch.SoundFX[1].lpData[0],-32768);
+        for(int i=0;i<64;++i) EXPECT_EQ(ch.Anifx[i],0x12340000+i);
+        ReleaseCharacterInfo(ch);
+    }
+}
+TEST(ModelLoader, CharacterPCMRejectsBadLengthAndTruncation)
+{
+    for(unsigned length:{0xffffffffu,0x80000000u,16777217u,1u,4097u}) {
+        std::vector<std::uint8_t> b(32,'C');Word(b,0);Word(b,1);Word(b,1);Word(b,0);Word(b,512);
+        Append(b,ModelGolden::Vertex());b.resize(b.size()+512+32);Word(b,length);
+        File file(b);TCharacterInfo ch{};EXPECT_THROW(LoadCharacterInfo(ch,file.path),std::runtime_error);
+        ReleaseCharacterInfo(ch);
+    }
+}
