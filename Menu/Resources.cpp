@@ -8,6 +8,7 @@
 
 #include "Hunt.h"
 #include "ProfileSerialization.h"
+#include "LegacyAssetPath.h"
 #include "Targa.h"
 #include "../Shared/LegacyImage.h"
 #include "../Shared/LegacyAudio.h"
@@ -87,7 +88,7 @@ AreaInfo MakeOldAreaInfo(int index, int price)
 	// Load the description
 	ss << "huntdat/menu/txt/area" << index << ".txt";
 	std::cout << "  Desc file: " << ss.str();
-	std::ifstream f(ss.str());
+	std::ifstream f(ResolveMenuAssetReadPath(ss.str()));
 
 	if (f.is_open())
 	{
@@ -141,7 +142,7 @@ AreaInfo MakeOldAreaInfo(int index, int price)
 	if (index == 6) {
 		mapName = "huntdat/areas/external.map";
 		std::cout << "  Map:   " << mapName;
-		f.open(mapName.c_str());
+		f.open(ResolveMenuAssetReadPath(mapName));
 		a.m_Valid = f.is_open();
 		std::cout << " -> " << (a.m_Valid ? "OK" : "FAILED") << std::endl;
 		f.close();
@@ -150,7 +151,7 @@ AreaInfo MakeOldAreaInfo(int index, int price)
 		} else {
 			mapName = "huntdat/areas/area6.map";
 			std::cout << "  Map:   " << mapName << " (fallback)";
-			f.open(mapName.c_str());
+			f.open(ResolveMenuAssetReadPath(mapName));
 			a.m_Valid = f.is_open();
 			std::cout << " -> " << (a.m_Valid ? "OK" : "FAILED") << std::endl;
 			f.close();
@@ -161,7 +162,7 @@ AreaInfo MakeOldAreaInfo(int index, int price)
 		ss << "huntdat/areas/area" << index << ".map";
 		mapName = ss.str();
 		std::cout << "  Map:   " << mapName;
-		f.open(mapName.c_str());
+		f.open(ResolveMenuAssetReadPath(mapName));
 		a.m_Valid = f.is_open();
 		std::cout << " -> " << (a.m_Valid ? "OK" : "FAILED") << std::endl;
 		f.close();
@@ -632,7 +633,8 @@ void LoadC2Maps()
 	const std::string areasDir = "huntdat/areas";
 
 	std::error_code ec;
-	if (!fs::is_directory(areasDir, ec)) {
+	const auto nativeAreasDir = ResolveMenuAssetReadPath(areasDir);
+	if (nativeAreasDir.empty() || !fs::is_directory(nativeAreasDir, ec)) {
 		// No areas directory -- not a hard error, modder may not have any c2maps
 		return;
 	}
@@ -642,7 +644,7 @@ void LoadC2Maps()
 	int skipped = 0;
 	int duplicates = 0;
 
-	for (const auto& entry : fs::directory_iterator(areasDir, ec)) {
+	for (const auto& entry : fs::directory_iterator(nativeAreasDir, ec)) {
 		if (ec) break;
 		if (!entry.is_regular_file()) continue;
 		if (entry.path().extension() != ".c2map") continue;
@@ -777,7 +779,7 @@ void LoadC2Maps()
 		bool mapFound = false;
 		std::string usedMap;
 		for (const auto& candidate : mapCandidates) {
-			std::ifstream mf(candidate, std::ios::binary);
+			std::ifstream mf(ResolveMenuAssetReadPath(candidate), std::ios::binary);
 			if (mf.is_open()) {
 				mapFound = true;
 				usedMap = candidate;
@@ -841,9 +843,9 @@ void LoadResourcesScript()
 
 	// Try _MENU.TXT first (simplified menu data with prices)
 	// Fall back to _res.txt if _MENU.TXT doesn't exist
-	file = fopen("huntdat/_menu.txt", "r");
+	file = fopen(ResolveMenuAssetReadPath("huntdat/_menu.txt").string().c_str(), "r");
 	if (!file) {
-		file = fopen("huntdat/_res.txt", "r");
+		file = fopen(ResolveMenuAssetReadPath("huntdat/_res.txt").string().c_str(), "r");
 	}
 	if (!file) {
 		throw std::runtime_error("Can't open resources file _menu.txt or _res.txt");
@@ -1203,7 +1205,7 @@ void TrophySave(Profile& profile)
 
 bool ReadTGAFile(const std::string& path, TargaImage& tga)
 {
-	std::ifstream fs(path, std::ios::binary);
+	std::ifstream fs(ResolveMenuAssetReadPath(path), std::ios::binary);
 
 	if (!fs.is_open()) {
 		std::cout << "Warning: Failed to open TGA file: " << path << std::endl;
@@ -1298,7 +1300,7 @@ bool LoadMenuBackground(uint16_t (&pixels)[800 * 600], const std::string& path)
 
 bool LoadText(std::vector<std::string>& txt, const std::string& path)
 {
-	std::ifstream tf(path);
+	std::ifstream tf(ResolveMenuAssetReadPath(path));
 
 	if (tf.is_open())
 	{
@@ -1322,7 +1324,7 @@ bool LoadText(std::vector<std::string>& txt, const std::string& path)
 
 bool LoadWave(SoundFX& sfx, const std::string& path)
 {
-	std::ifstream tf(path, std::ios::binary);
+	std::ifstream tf(ResolveMenuAssetReadPath(path), std::ios::binary);
 
 	if (tf.is_open())
 	{

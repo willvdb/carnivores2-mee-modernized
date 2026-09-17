@@ -376,7 +376,7 @@ if(MSVC)
     target_include_directories(Carnivores2MenuMediaTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Hunt)
     target_compile_options(Carnivores2MenuMediaTests PRIVATE /Gy)
     target_link_options(Carnivores2MenuMediaTests PRIVATE /OPT:REF /INCREMENTAL:NO)
-    target_link_libraries(Carnivores2MenuMediaTests PRIVATE gtest_main)
+    target_link_libraries(Carnivores2MenuMediaTests PRIVATE LegacyPath gtest_main)
     add_test(NAME Carnivores2Tests.MenuMedia COMMAND Carnivores2MenuMediaTests)
 
     # Exercise the production world-model sampler without a GL context.

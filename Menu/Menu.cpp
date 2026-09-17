@@ -7,6 +7,7 @@
 */
 
 #include "Hunt.h"
+#include "LegacyAssetPath.h"
 #include "../Shared/LegacyProfile.h"
 #include "SliderMath.h"
 #include <cassert>
@@ -1406,7 +1407,7 @@ void LoadGameMenu(int32_t menu)
 	}
 
 	if (!mf_map.empty()) {
-		std::ifstream fs(mf_map, std::ios::binary);
+		std::ifstream fs(ResolveMenuAssetReadPath(mf_map), std::ios::binary);
 		if (fs.is_open())
 			fs.read(reinterpret_cast<char*>(g_MenuItem.m_Image_Map), 400 * 300);
 	}

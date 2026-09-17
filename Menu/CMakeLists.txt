@@ -27,6 +27,7 @@ target_include_directories(Carnivores2Menu PRIVATE
 
 # Link libraries (same as main executable)
 target_link_libraries(Carnivores2Menu PRIVATE
+    LegacyPath
     kernel32
     user32
     gdi32
