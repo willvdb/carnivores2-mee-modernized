@@ -34,7 +34,7 @@ TEST(LegacyMap, AllFlagBitsAndChunkEdges)
     std::vector<std::uint16_t> values(4097,0x5555);
     // Includes every bit, unknown flags, and numeric patterns at chunk edges.
     for(std::size_t i=0;i<values.size();++i) {
-        const unsigned v=i%2 ? MapGolden::Flags[i%MapGolden::Flags.size()] : 1u<<(i%16);
+        const unsigned v=i<16 ? 1u<<i : MapGolden::Flags[i%MapGolden::Flags.size()];
         bytes[2*i]=v%256; bytes[2*i+1]=v/256;
     }
     for(std::size_t begin=0;begin<values.size();begin+=2048) {
@@ -42,7 +42,7 @@ TEST(LegacyMap, AllFlagBitsAndChunkEdges)
         ASSERT_TRUE(LegacyMap::DecodeWords(bytes.data()+2*begin,2*count,values.data()+begin,count,count));
     }
     for(std::size_t i=0;i<values.size();++i)
-        EXPECT_EQ(values[i],i%2 ? MapGolden::Flags[i%MapGolden::Flags.size()] : 1u<<(i%16));
+        EXPECT_EQ(values[i],i<16 ? 1u<<i : MapGolden::Flags[i%MapGolden::Flags.size()]);
 }
 TEST(LegacyMap, InvalidBoundsNeverPartiallyWrite)
 {
