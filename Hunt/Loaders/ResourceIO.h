@@ -54,4 +54,24 @@ inline bool ReadTexture(HANDLE file, unsigned short* out, std::size_t capacity, 
     }
     return true;
 }
+// Storage is already rounded and zero-filled by the caller. Even-sized
+// chunks keep a final odd byte in the low half of its own sample.
+inline bool ReadPCM16(HANDLE file, short* out, std::size_t capacity, std::size_t length)
+{
+    static_assert(sizeof(short)==2 && (std::numeric_limits<short>::min)()==INT16_MIN &&
+                  (std::numeric_limits<short>::max)()==INT16_MAX,
+                  "Existing audio backend requires signed 16-bit runtime samples");
+    if (length/2+length%2>capacity || (length && !out)) return false;
+    std::array<std::uint8_t,4096> bytes;
+    std::array<std::int16_t,2048> values;
+    while (length) {
+        const std::size_t count=(std::min)(length,bytes.size());
+        if (!ReadExact(file,bytes.data(),static_cast<DWORD>(count)) ||
+            !LegacyResource::DecodePCM16(bytes.data(),count,values.data(),values.size(),count)) return false;
+        const std::size_t samples=count/2+count%2;
+        for(std::size_t i=0;i<samples;++i) out[i]=values[i];
+        out+=samples; length-=count;
+    }
+    return true;
+}
 }

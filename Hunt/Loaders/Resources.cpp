@@ -921,8 +921,9 @@ void LoadResources()
     if (!IsValidWavLength(RandSound[r].length))
       RscLoadFail("random-sound length out of range", RandSound[r].length, 16 << 20);
     RandSound[r].lpData.assign(WavAllocSamples(RandSound[r].length), 0);
-    ReadRscExact(hfile, RandSound[r].lpData.data(),
-                 (DWORD)RandSound[r].length, "random-sound data");
+    if (!EngineResource::ReadPCM16(hfile, RandSound[r].lpData.data(),
+                                  RandSound[r].lpData.size(), RandSound[r].length))
+      DoHalt("Resource loading error: truncated random-sound data.");
   }
 
   ReadRscValue(hfile, AmbCount, "ambient count");
@@ -934,8 +935,9 @@ void LoadResources()
     if (!IsValidWavLength(Ambient[a].sfx.length))
       RscLoadFail("ambient-sound length out of range", Ambient[a].sfx.length, 16 << 20);
     Ambient[a].sfx.lpData.assign(WavAllocSamples(Ambient[a].sfx.length), 0);
-    ReadRscExact(hfile, Ambient[a].sfx.lpData.data(),
-                 (DWORD)Ambient[a].sfx.length, "ambient-sound data");
+    if (!EngineResource::ReadPCM16(hfile, Ambient[a].sfx.lpData.data(),
+                                  Ambient[a].sfx.lpData.size(), Ambient[a].sfx.length))
+      DoHalt("Resource loading error: truncated ambient-sound data.");
 
     ReadRscValue(hfile, Ambient[a].rdata, "ambient random-effect records");
     ReadRscValue(hfile, Ambient[a].RSFXCount, "ambient random-effect count");
