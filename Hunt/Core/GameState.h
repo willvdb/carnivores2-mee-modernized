@@ -17,6 +17,7 @@
 #include <cstdint>
 #include "Memory.h"
 #include "Platform/Files.h"
+#include "Platform/Platform.h"
 #include "Core/Constants.h"
 #include "Core/MathTypes.h"
 #include "Core/AudioTypes.h"
@@ -522,7 +523,8 @@ GLOBAL float UIScale;
 
 GLOBAL int  CurRes, ResCount;
 
-GLOBAL TRes ResolutionList[128];
+// Runtime dimensions; OptRes remains the legacy saved ordinal adapter.
+GLOBAL Platform::Size ResolutionList[128];
 
 GLOBAL std::int32_t SHADOWS3D,REVERSEMS;
 

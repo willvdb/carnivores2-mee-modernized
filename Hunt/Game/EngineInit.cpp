@@ -12,6 +12,7 @@
 #include <fstream>
 #include "Core/ConfigText.h"
 #include "Game/DisplayModes.h"
+#include "Game/ResolutionSelection.h"
 
 #ifdef _gl
 #include "Renderer/GLPerf.h"
@@ -72,32 +73,17 @@ void UploadGeometry()
 }
 void SetupRes()
 {
-  // OptRes is an index into ResolutionList[]. Fall back to the first
-  // 800x600 entry (or 0) if the saved index is out of range.
-  if (ResCount <= 0) {
-    WinW = 800;
-    WinH = 600;
-    return;
-  }
-  if (OptRes < 0 || OptRes >= ResCount) {
-    OptRes = 0;
-    for (int r = 0; r < ResCount; r++) {
-      if (ResolutionList[r].w == 800 && ResolutionList[r].h == 600) {
-        OptRes = r;
-        break;
-      }
-    }
-  }
-  WinW = ResolutionList[OptRes].w;
-  WinH = ResolutionList[OptRes].h;
+  const auto selected = GameDisplay::ResolveLegacyResolution(ResolutionList, ResCount, OptRes);
+  OptRes = selected.ordinal;
+  WinW = selected.size.width;
+  WinH = selected.size.height;
 }
 void EnumerateResolutions()
 {
   const auto resolutions = GameDisplay::SelectResolutions(Platform::QueryDisplayInfo());
   ResCount = resolutions.count;
   for (int i = 0; i < ResCount; ++i) {
-    ResolutionList[i].w = resolutions.modes[i].width;
-    ResolutionList[i].h = resolutions.modes[i].height;
+    ResolutionList[i] = resolutions.modes[i];
   }
 }
 void SubmitDinoScore (int cindex) {
@@ -960,13 +946,9 @@ static void LoadConfig()
         if (sscanf(keyval, "%d%c%d", &w, &sep, &h) == 3 &&
             (sep == 'x' || sep == 'X')) {
           if (w > 0 && h > 0) {
-            // Sync OptRes when the size exists in the enumerated list so the
-            // legacy index stays meaningful; WinW/H always win regardless.
-            // Reset first: an exotic size must not leave a stale profile index.
-            OptRes = -1;
-            for (int r = 0; r < ResCount; r++) {
-              if (ResolutionList[r].w == w && ResolutionList[r].h == h) { OptRes = r; break; }
-            }
+            // Config retains -1 for an unmatched size; CLI intentionally
+            // preserves the previous ordinal instead. Dimensions always win.
+            OptRes = GameDisplay::FindResolution(ResolutionList, ResCount, {w, h});
             WinW = w;
             WinH = h;
           } else {

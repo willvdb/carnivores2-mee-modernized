@@ -4,6 +4,7 @@
 
 #include "Hunt.h"
 #include "Platform/System.h"
+#include "Game/ResolutionSelection.h"
 #ifdef _WIN32
 #include "Network/NetworkManager.h"
 #endif
@@ -30,16 +31,6 @@ void ProcessCommandLine()
       return false;
     }
     return width > 0 && height > 0;
-  };
-
-  auto sync_resolution_option = [](int width, int height) {
-    for (int r = 0; r < ResCount; r++) {
-      if (ResolutionList[r].w == width && ResolutionList[r].h == height) {
-        CurRes = r;
-        OptRes = r;
-        return;
-      }
-    }
   };
 
   int requestedWidth = WinW;
@@ -157,8 +148,12 @@ void ProcessCommandLine()
   if (hasRequestedBorderless) BORDERLESS = requestedBorderless;
 
   if (hasRequestedResolution) {
-    if (ResCount > 0) {
-      sync_resolution_option(requestedWidth, requestedHeight);
+    const int index = GameDisplay::FindResolution(
+        ResolutionList, ResCount, {requestedWidth, requestedHeight});
+    // Unlike config.cfg, an unmatched CLI request keeps both ordinals.
+    if (index >= 0) {
+      CurRes = index;
+      OptRes = index;
     }
     WinW = requestedWidth;
     WinH = requestedHeight;
