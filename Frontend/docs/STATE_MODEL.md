@@ -21,8 +21,8 @@ Repository evidence: `Shared/LegacyProfile.h`, `docs/PROFILE_SERIALIZATION.md`,
   with identical content get different UUIDs. No marker is written into arbitrary
   installations.
 * Revision: versioned SHA-256 inventory of immutable content under HUNTDAT,
-  including relative names, sizes and bytes. Saves, logs, screenshots and other
-  recognized mutable files are excluded. Engine binaries are separate evidence;
+  including relative names, sizes and bytes; HUNTDAT configuration files are included. Saves, logs, screenshots and other
+  recognized mutable files are excluded. Engine/launcher byte hashes are separate evidence;
   identical content does not prove identical engine behavior. Revisions are kept
   in history; a content change invalidates interpretations and launch assumptions.
 * Engine/dialect: independent, evidence-bearing fields. A recognizable menu
@@ -35,7 +35,9 @@ Repository evidence: `Shared/LegacyProfile.h`, `docs/PROFILE_SERIALIZATION.md`,
   observable. A disagreement is a blocking diagnostic, never an implicit rename.
 * State set: `.sav`, optional `.sab`, and later explicitly recognized companions.
   Missing `.sab` can be valid; orphan `.sab` is retained and reported. Unknown
-  layouts/companions remain opaque, never synthesized or discarded. Exact bytes
+  layouts remain opaque; other files sharing a profile basename are reported as
+  unclassified companion candidates and block managed import until reviewed, never
+  synthesized or discarded. Exact bytes
   and hashes are the source of truth. Manifest fields never replace progression.
 
 ## Ownership and defaults
@@ -98,8 +100,12 @@ collisions, traversal, absolute references and symlinks outside the root fail
 closed. Managed discovery does not follow directory symlinks.
 
 Uninstall is observed as missing, never cascades into deleting hunter state.
-Reinstall gets a new ID unless explicitly reconciled with a missing instance.
-An update appends a revision and exposes change diagnostics; it never migrates
+A reinstall at a new path gets a new ID unless explicitly reconciled with a
+missing instance. Reusing a registered path retains its registry record and is
+subject to revision/state-drift checks, not automatic adoption of replacement
+profiles. An identical-byte reinstall at the same path is observationally
+indistinguishable from the original without a future installation marker; this
+cannot establish ownership continuity. An update appends a revision and exposes change diagnostics; it never migrates
 saves or retargets trophy metadata. Save hash drift is separately reported.
 
 Host settings own display/monitor/resolution/mode/refresh, audio and input.
