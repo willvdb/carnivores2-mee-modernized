@@ -28,6 +28,7 @@ void HLineTBGlass25( void );
 
 
 void SetVideoMode(int, int);
+void SyncLegacyDisplayState(); // Publish engine configuration to renderer/SOFT adapters.
 void SetFullScreen();
 void CaptureMouse(std::int32_t);
 void ResetMousePos();

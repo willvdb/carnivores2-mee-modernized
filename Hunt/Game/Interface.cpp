@@ -166,11 +166,8 @@ void SetFullScreen()
 #endif
   if (!_GameState) return;
 
-  FULLSCREEN = !FULLSCREEN;
-  if (BORDERLESS) {
-    BORDERLESS = false;
-    FULLSCREEN = true;
-  }
+  GameDisplay::ToggleWindowMode(DisplayConfiguration);
+  SyncLegacyDisplayState();
 
   // Leaving exclusive fullscreen restores the desktop display mode.
   // (ChangeDisplaySettings is per-process, so exit also restores it, but
@@ -297,10 +294,19 @@ void PrintLoad(char *t)
 }
 
 
+void SyncLegacyDisplayState()
+{
+  const auto legacy = GameDisplay::ProjectLegacyPresentation(DisplayConfiguration);
+  WinW = legacy.size.width;
+  WinH = legacy.size.height;
+  FULLSCREEN = legacy.fullscreen;
+  BORDERLESS = legacy.borderless;
+}
+
 void SetVideoMode(int W, int H)
 {
-  WinW = W;
-  WinH = H;
+  DisplayConfiguration.size = {W, H};
+  SyncLegacyDisplayState();
 
   // Reallocate the back-buffer DIB to match the new WinW/WinH so the
   // GDI pitch matches the runtime VideoPitchB. Required for widescreen
@@ -311,25 +317,24 @@ void SetVideoMode(int W, int H)
   // loading screen only.
   if (Platform::HasGameWindow()) CreateVideoDIB(WinW, WinH);
 
-  const auto mode = FULLSCREEN ? Platform::WindowMode::Exclusive :
-                    BORDERLESS ? Platform::WindowMode::Borderless : Platform::WindowMode::Windowed;
+  const auto mode = DisplayConfiguration.mode;
   std::optional<Platform::DisplayMode> exclusiveMode;
   std::optional<Platform::DisplayTarget> target;
-  const bool wantsRefresh = mode == Platform::WindowMode::Exclusive && Platform::HasRefresh(PreferredRefresh);
-  const bool wantsMonitor = PreferredMonitor.kind != GameDisplay::MonitorPreferenceKind::Primary;
+  const bool wantsRefresh = mode == Platform::WindowMode::Exclusive && Platform::HasRefresh(DisplayConfiguration.refresh);
+  const bool wantsMonitor = DisplayConfiguration.monitor.kind != GameDisplay::MonitorPreferenceKind::Primary;
   if ((wantsMonitor || wantsRefresh) && Platform::HasGameWindow()) {
     // One snapshot for presentation AND refresh selection. ResolutionList and
     // OptRes keep their primary/default compatibility projection unchanged.
     const auto catalog = Platform::QueryDisplayCatalog();
-    const auto selected = GameDisplay::SelectMonitor(catalog, PreferredMonitor, {W, H},
-        wantsRefresh ? PreferredRefresh : Platform::RefreshRate{});
+    const auto selected = GameDisplay::SelectMonitor(catalog, DisplayConfiguration.monitor, {W, H},
+        wantsRefresh ? DisplayConfiguration.refresh : Platform::RefreshRate{});
     target = selected.target;
     exclusiveMode = selected.exclusiveMode;
     if (wantsMonitor) {
       if (selected.fallback != GameDisplay::DisplayFallback::None)
         LOG_WARN("Display preference: %s; using primary/default display%s",
                  GameDisplay::DisplayFallbackReason(selected.fallback),
-                 PreferredMonitor.kind == GameDisplay::MonitorPreferenceKind::Identity ||
+                 DisplayConfiguration.monitor.kind == GameDisplay::MonitorPreferenceKind::Identity ||
                  selected.fallback == GameDisplay::DisplayFallback::AmbiguousBounds ? " and automatic refresh" : "");
       if (selected.index) {
         LOG_INFO("Display preference resolved to %s catalog index %zu",
@@ -341,7 +346,7 @@ void SetVideoMode(int W, int H)
     }
     if (wantsRefresh && !exclusiveMode && selected.fallback != GameDisplay::DisplayFallback::AmbiguousBounds)
       LOG_WARN("Exclusive %dx%d refresh %u/%u unavailable on selected display; using automatic refresh",
-               W, H, PreferredRefresh.numerator, PreferredRefresh.denominator);
+               W, H, DisplayConfiguration.refresh.numerator, DisplayConfiguration.refresh.denominator);
   }
   Platform::ConfigureGameWindow(mode, {W, H}, {VideoCX, VideoCY}, exclusiveMode, target);
 
@@ -364,8 +369,8 @@ void SetVideoMode(int W, int H)
       snprintf(logt, sizeof(logt), "Client area adjusted: requested %dx%d, actual %dx%d\n",
                WinW, WinH, actualW, actualH);
       PrintLog(logt);
-      WinW = actualW;
-      WinH = actualH;
+      GameDisplay::ApplyClientSize(DisplayConfiguration, {actualW, actualH});
+      SyncLegacyDisplayState();
       // DIB was allocated at the old WinW/WinH; reallocate to match the
       // actual client area so GDI TextOut/DrawPicture don't write past the
       // visible region.

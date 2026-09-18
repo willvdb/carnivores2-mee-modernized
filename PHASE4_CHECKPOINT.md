@@ -1,28 +1,52 @@
 # Phase 4 implementation checkpoint
 
-Worktree: `/home/willvdb/code/games/carnivores2-phase4-persistence`
-Branch: `port/display-persistence`; base: `a2cfec8ef3590c6c8d56d16c7a69e4c0e5327f5a`.
-No main merges authorized. Frontend worktree untouched. Deadline 2026-09-19 22:35 UTC.
+Worktree: `/home/willvdb/code/games/carnivores2-phase4-persistence`.
+4e branch `port/display-persistence`, completed implementation at
+`527762b31b1d85be04794bc78617647e712b0c4f`, based on
+`a2cfec8ef3590c6c8d56d16c7a69e4c0e5327f5a`.
+4f branch `port/display-configuration`, stacked on 4e; this commit is the implementation milestone.
+No main merge authorized; frontend checkout untouched. Deadline 2026-09-19 22:35 UTC.
 
-4e in progress: owned version/domain/value identity; Windows registered monitor
-interface identity; unique rectangle mapping; Linux explicitly unsupported.
-Opt-in manual config `display_identity`, asset-free `-list-displays`, session
-`-display=primary`, `-display-id=...`; existing index/refresh semantics retained.
-No profile format changes. 4f not started. Tests/documentation pending.
+4e implements Windows registered monitor-interface identity (device path, not
+physical serial), conservative native/SDL rectangle association, explicit Linux
+unsupported persistence, manual opt-in config, asset-free discovery, session
+overrides, retained intent and primary/automatic fallback. Source evidence and
+full contract are in docs/DISPLAY_CONFIGURATION.md.
 
-Pinned SDL 3.2.28 lacks public HMONITOR/wl_output display properties present in
-newer online docs. Source checked locally. Native Windows interface is a device
-registration, not a physical serial. Missing/ambiguous identifiers must fall
-back to primary+automatic without erasing saved intent.
+4e validation:
+- Exact-SHA CI all 12 jobs green: https://github.com/willvdb/carnivores2-mee-modernized/actions/runs/35403091566
+  Windows native+SDL x86/x64 Debug/Release, SOFT, Menu; Linux Debug/Release incl X11 regression.
+- Local GCC Debug/Release and Clang game builds and 14 active CTest checks pass
+  (15 total, ordinary opt-in X11 skipped); portable GCC/Clang strict ASan/UBSan/LSan 66/66.
+- MSVC x64/Wine Platform/MenuConfig/boundary pass. Asset-free -list-displays exits
+  0 under dummy and creates only logs, no config/profile.
+- Virtual X11: 20 cycles/display, zero SDL allocations, both modes restored.
+- Mutation removing saved-target failure refresh clearing fails its regression.
+Evidence /tmp/carnivores-phase4e; Debug logs /tmp/phase4-{build,tests}.log.
 
-Next: compile, add production-helper regression tests and exact contract/evidence.
+4f implementation in progress: single GameDisplay::Configuration authority,
+startup/profile/config/CLI adapters, narrow legacy projections, preserved
+actual-client-size/Alt+Enter state flow. Characterized {0,0} missing-profile
+startup sentinel retained. No parser syntax or profile format change.
+GCC Debug/Release and full Clang builds/tests pass. New portable configuration
+tests cover source composition, unmatched ordinals, SOFT, actual size and toggle.
+4f validation before push:
+- Strict GCC/Clang portable ASan/UBSan/LSan: 73/73 each.
+- MSVC x64/Wine Platform/MenuConfig/boundary: pass.
+- Ten copied-profile virtual full hunts: normal exits, expected targeting/refresh,
+  saved missing/unknown identity -> primary automatic, CLI index/primary overrides,
+  Alt+Enter, oversize borderless, config/CLI unmatched OptRes difference and
+  malformed-option isolation. Every desktop restored; .sav/.sab sizes 1660/7176
+  and 68 keybinding bytes unchanged. No host display/config/profile changes.
+- Fully instrumented SDL/engine CTest: 13 active passes, known SDL_video.c:1341
+  dummy null-source memcpy UBSan failure, one opt-in X11 skip. No suppression.
+- Fully instrumented virtual X11 mode regression: 20 cycles/display, zero SDL
+  allocations, both desktop modes restored.
+Next: push/inspect exact-SHA hosted matrix and independent review corrections.
+Instrumented full-game hunts can provide additional focused evidence.
+Evidence /tmp/carnivores-phase4f; Debug /tmp/carnivores-phase4f-{build,tests}.log.
 
-Validation at uncommitted 4e candidate (2026-09-18):
-- Linux GCC Debug: game builds; 14 active CTest checks pass, opt-in X11 skipped.
-- Portable GCC/Clang C++17 -Wall -Wextra -Werror with ASan/UBSan/LSan: 66/66 each.
-  Must run outside sandbox ptrace for LSan (initial sandbox exit is not an engine defect).
-- MSVC x64/Wine: Platform, MenuConfig and boundary tests pass.
-- Production -list-displays with dummy: exit 0, no assets/window/config/profile;
-  only logs, correctly says identity unavailable.
-- Release and virtual X11 regression currently running. Hosted exact-SHA matrix pending push.
-Evidence: /tmp/carnivores-phase4e and /tmp/phase4-{build,tests}.log.
+Known limits: unsupported Linux persistence (not faked from names/EDID/coordinates);
+no physical Windows multi-monitor acceptance; Hyprland/Xwayland exclusive limit;
+independent SDL X11 init/teardown leak and dummy null-source zero-length memcpy
+UBSan issue. Do not suppress these or claim full sanitizer/physical acceptance.

@@ -1062,3 +1062,76 @@ The 1,660-byte `.sav`, 7,176-byte `.sab`, signed OptRes and 68 keybinding bytes
 remain covered by existing golden tests. Physical Windows multi-monitor and
 Hyprland/Xwayland exclusive acceptance remain outstanding; CI/synthetic tests
 do not resolve those earlier limits.
+
+## Phase 4f: one engine configuration with legacy projections
+
+`Game/DisplayConfiguration.h` defines `GameDisplay::Configuration`: dimensions,
+`Platform::WindowMode`, monitor preference, and rational refresh. The engine's
+`DisplayConfiguration` object owns these values. Startup adapters and parsing
+write this object; `SetVideoMode` selects presentation/refresh from it and passes
+only owned portable values into Platform. No Platform source imports Game policy.
+
+### Characterized behavior retained
+
+Before consolidation, the only writers of WinW/WinH were profile resolution
+translation, config/CLI dimensions, `SetVideoMode`, and valid actual-client-size
+synchronization. FULLSCREEN/BORDERLESS were written by defaults, config/CLI mode
+selection, and Alt+Enter. These writes now converge through
+`SyncLegacyDisplayState` / `ProjectLegacyPresentation`. Renderer, SOFT, native
+message consumers and buffer geometry still read their familiar globals; those
+globals are compatibility projections, not separate preference authorities.
+Derived VideoCX/VideoCY, pitch, viewport, FOV and DIB allocation stay unchanged.
+
+The startup sequence is preserved:
+
+1. Explicit defaults: unspecified `{0,0}` dimensions, exclusive mode, primary
+   monitor, automatic refresh. `{0,0}` matches the old zero-initialized globals,
+   not an added new request. The missing/invalid-profile path does not call
+   SetupRes; this refactor deliberately does not invent an 800x600 first-run
+   setting. The existing backend fallback and default config behavior remain.
+2. The early CLI pass still supplies legacy session options.
+3. Enumerate the primary-based legacy ResolutionList, load a valid profile, and
+   adapt OptRes through `ApplyLegacyProfileResolution`. This changes dimensions
+   and OptRes only. Invalid ordinals still use 800x600/first-mode; an empty list
+   still uses 800x600 and leaves OptRes unchanged.
+4. Apply config, including resolution, display_mode, display_identity and
+   refresh_rate. The automatically created legacy config still chooses
+   borderless mode; no default/template behavior is changed.
+5. Run the final CLI pass, which wins over config. Publish compatibility values
+   before creating the game-sized DIB and entering gameplay.
+
+`ApplyConfigResolution` sets OptRes to the exact primary-list match or -1, and
+leaves CurRes alone. `ApplyCommandLineResolution` sets both ordinals only when
+an exact match exists; otherwise both prior ordinals survive. Both update
+dimensions. The parsers, accepted legacy `/vmodeN` flags and unmatched-resolution
+difference are unchanged. ResolutionList's Windows ordering shim remains solely
+for profile/Menu compatibility. There is no replacement binary profile record.
+
+Window mode has one enum instead of two independently authoritative flags.
+Config `display_mode=2` still maps to exclusive on SOFT; existing CLI borderless
+behavior is retained separately. Alt+Enter maps borderless -> exclusive,
+exclusive -> windowed, windowed -> exclusive. It keeps monitor/refresh intent.
+On a valid backend client-size adjustment, the configuration and compatibility
+globals both follow the actual dimensions, so later Alt+Enter and restart
+applications keep using the same actual-size behavior as before. Invalid client
+sizes do not replace dimensions. Loading artwork/window sizing never writes
+the gameplay configuration. Desktop restore order and backend calls are unchanged.
+
+### Requirement-to-implementation coverage
+
+| Requirement | Production seam and regression coverage |
+| --- | --- |
+| Owned version/domain identity and native uniqueness | Platform identity values, Windows discovery and `DisplayIdentityDetails::Associate`; portable mapping plus injected Windows enumeration tests. |
+| Opt-in config, CLI override, malformed isolation | MonitorPreference parsers and production config/CLI call sites; persistence parser/precedence tests and full-game launch traces. |
+| Missing/duplicate/reordered/moved/reconnected targets | `SelectMonitor`; synthetic identity/rectangle/recovery cases, retained preference assertions, primary-refresh-leak mutation regression. |
+| Preserve modern and unknown config lines | Asset-free build of the actual Menu SaveConfig body; two rewrites preserve identity, rational refresh, comments and unknown version/key. |
+| Dimensions/mode/monitor/refresh consolidated | Configuration and its production startup/application callers; profile/config/CLI composition tests. |
+| Legacy ordinal and SOFT adapter semantics | ApplyLegacyProfileResolution, ApplyConfigResolution, ApplyCommandLineResolution, ApplyConfigWindowMode and projection tests. |
+| Alt+Enter, actual client size, loading/restoration | ToggleWindowMode/ApplyClientSize tests; virtual-X11 full-game scenarios and existing 20-cycle allocation/restoration regression. |
+| Save/trophy/keybinding ABI | Unchanged serializers and golden .sav/.sab/layout tests; copied runtime profiles retain 1,660/7,176-byte sizes and all 68 keybinding bytes. |
+| Game above Platform | Existing executable source-boundary check remains in every CTest build. |
+
+The checkpoint records exact SHA/CI evidence and limitations. Physical Windows
+and Hyprland/Xwayland exclusive acceptance remain outstanding. The existing
+SDL dummy-driver zero-length memcpy UBSan failure and independent real-X11
+initialization/teardown leak remain unsuppressed dependency limitations.

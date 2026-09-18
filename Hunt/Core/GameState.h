@@ -18,7 +18,7 @@
 #include "Memory.h"
 #include "Platform/Files.h"
 #include "Platform/Platform.h"
-#include "Game/MonitorPreference.h"
+#include "Game/DisplayConfiguration.h"
 #include "Core/Constants.h"
 #include "Core/MathTypes.h"
 #include "Core/AudioTypes.h"
@@ -375,10 +375,9 @@ GLOBAL   LPDIRECTDRAWSURFACE lpddsPrimary;
 #endif
 
 GLOBAL   std::int32_t DirectActive, FULLSCREEN, BORDERLESS, RestartMode;
-// Modern config only; never part of the legacy profile/OptRes representation.
-GLOBAL   Platform::RefreshRate PreferredRefresh;
-// Modern preference; retained across Alt+Enter, never serialized in profiles.
-GLOBAL   GameDisplay::MonitorPreference PreferredMonitor;
+// Engine authority; legacy FULLSCREEN/BORDERLESS and WinW/WinH below are
+// projections for unchanged renderer/SOFT/native consumers, never preferences.
+GLOBAL   GameDisplay::Configuration DisplayConfiguration;
 
 GLOBAL   std::int32_t LoDetailSky;
 
