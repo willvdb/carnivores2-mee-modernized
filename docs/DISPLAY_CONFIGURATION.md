@@ -74,9 +74,10 @@ profile fixtures and serialized-layout tests remain intact.
 Phase 4a did not add refresh or monitor discovery/selection. Phase 4b below adds
 discovery only. Windowed/exclusive/borderless modes, precedence, fullscreen transitions,
 client-size synchronization, pointer warping, backend behavior, UI and renderer
-behavior are unchanged. CI and Wine do not replace the still-pending physical
-native-Windows acceptance gate for Phase 3b; this seam adds no window/backend
-behavior requiring a separate physical-Windows gameplay gate.
+behavior are unchanged. CI and Wine did not replace physical Windows
+acceptance; that Phase 3b gate subsequently completed successfully on
+2026-09-18. This seam adds no window/backend behavior requiring a separate
+physical-Windows gameplay gate.
 
 ## Phase 4b: richer raw display discovery
 
@@ -265,6 +266,7 @@ Phase 4c must explicitly decide how to consume this catalog: monitor selection,
 refresh matching/preference and any fallback rules. Monitor/refresh persistence,
 config/UI changes, window movement, hotplug handling and DPI policy remain
 deferred. No highest-refresh or desktop-refresh preference is implied here.
-Native physical Windows acceptance of Phase 3b remains pending separately.
-Direct Wayland is still not certified interactively; this discovery milestone
-does not expand Linux/Wayland gameplay or multi-monitor switching acceptance.
+Native physical Windows acceptance of Phase 3b completed successfully on
+2026-09-18. Direct Wayland is still not certified interactively; this discovery
+milestone does not expand Linux/Wayland gameplay or multi-monitor switching
+acceptance.

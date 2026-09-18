@@ -17,8 +17,9 @@ used `static_cast<SDL_Scancode>(-1)`, which itself invokes undefined enum behavi
 under UBSan. It now tests an out-of-array index within the enum's representable
 range. That commit was made and pushed on `port/sdl3-windows-gl` first; 3c was
 rebased onto it. No SDL Windows implementation bug was found or hidden in 3c.
-Neither branch has been merged. **Native interactive Windows acceptance still
-holds Phase 3b, and therefore the stacked merge.**
+The stack was subsequently accepted and integrated into `main`. Native
+interactive Windows acceptance completed successfully on 2026-09-18, closing
+the Phase 3b gate that had held this stacked merge.
 
 ## Build and launch
 
@@ -214,10 +215,10 @@ Local screenshots, logs, save comparisons and debugger probes are retained under
 They include proprietary-content screenshots and local profile copies and must
 not be added to the source repository. Build/test logs are in the same directory.
 
-## Remaining limits and merge gates
+## Remaining validation limits
 
-- Phase 3b still needs the owner's native interactive Windows acceptance. Do not
-  merge around that gate or mistake the test-only base fix for acceptance.
+- The owner completed native interactive Windows acceptance successfully on
+  2026-09-18; the former Phase 3b merge gate is closed.
 - Linux interactive acceptance here is an automated smoke hunt on one AMD system
   with one mod. Longer hunts, kills/trophy collection, all mod combinations,
   Intel/NVIDIA drivers, other desktops and physical exclusive mode switches need
@@ -247,5 +248,5 @@ not be added to the source repository. Build/test logs are in the same directory
   inventing a gameplay fix. This milestone's runtime coverage is normal hunting.
 
 No known 3c-specific blocker remains for the tested single-player X11 route.
-The Windows acceptance hold and the narrower scope of Linux runtime coverage
-must remain visible during review.
+The former Windows acceptance hold is closed; the narrower scope of Linux
+runtime coverage remains visible for future validation.

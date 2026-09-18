@@ -7,9 +7,9 @@
 > **Versioning:** upstream MEE v1.11 is the base; modernization releases are numbered separately
 > **Modernization:** OpenGL 3.3, OpenAL audio, memory arena, full codebase restructuring
 
-Native Linux x86_64 OpenGL bring-up is available on the stacked port branch;
-see [Linux build instructions and validation limits](docs/LINUX.md). The SDL3
-Windows base still awaits native interactive acceptance.
+Native Linux x86_64 OpenGL support and the SDL3 Windows backend are integrated
+on `main`; see [Linux build instructions and validation limits](docs/LINUX.md).
+Native Windows interactive acceptance completed successfully on 2026-09-18.
 
 ## Release Numbering
 

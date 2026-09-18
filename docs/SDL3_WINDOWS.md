@@ -1,10 +1,13 @@
 # Phase 3b: SDL3 Windows/OpenGL backend
 
 Baseline: `b63fa50069d6820762ec84326617fe5be21b107d` (Phase 3a).
-Implementation validated at `f88e030`. This is a Windows backend milestone,
-not a Linux game executable. Native Windows gameplay approval remains pending;
-the owner chose native Windows CI plus local Wine/Gamescope validation for this
-branch. Do not treat those runs as certification of native Windows playability.
+The accepted Phase 3b branch tip is
+`77c5a59f6b244ec96c4148b2f7f2abfc8dfdb75c`. This is a Windows backend
+milestone, not a Linux game executable. Native Windows interactive acceptance
+completed successfully on 2026-09-18 on a physical Windows installation. The
+owner exercised normal gameplay, Alt-Tab and multiple window/display sizes
+without observing regressions. Native CI and Wine/Gamescope remain supporting
+evidence rather than substitutes for that physical acceptance.
 
 The stacked Phase 3c changes and native Linux validation are documented in
 [LINUX.md](LINUX.md). This document retains the Phase 3b scope/acceptance record.
@@ -257,10 +260,12 @@ the existing F11 harness samples 120 intervals per run:
 
 These are bounded plausibility checks, not performance or audio-quality
 benchmarks. Windowed/borderless/exclusive 800x600 and 1024x768 windowed/Alt+Enter
-all pass. Native Windows gameplay, physical multi-monitor/high-DPI and fallback
-GL/exclusive-mode hardware, held-modifier focus transitions, subjective audio
-and long sessions remain unverified. **Native Windows playtesting and acceptance
-of the documented window/focus/cursor differences should gate merge.**
+all pass. Physical native-Windows acceptance subsequently passed on 2026-09-18:
+the owner ran the game interactively, exercised Alt-Tab and multiple
+window/display sizes, and observed no regressions. Exhaustive physical
+multi-monitor/high-DPI combinations, fallback GL/exclusive-mode hardware,
+non-US keyboard layouts, subjective audio quality and long sessions remain
+broader validation opportunities rather than merge gates.
 
 ## SDL API references
 
