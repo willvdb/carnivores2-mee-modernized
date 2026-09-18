@@ -24,6 +24,10 @@ else()
     set(carnivores_saved_release_ipo "${CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE}")
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE OFF)
     FetchContent_MakeAvailable(SDL3)
+    # Apply on every configure so already-populated build trees receive the fix
+    # too. Only the checksum-pinned source (or its patched form) is accepted.
+    include("${CMAKE_CURRENT_LIST_DIR}/patches/SDL3X11ModeLeak.cmake")
+    carnivores_patch_sdl3_x11_mode_leak("${sdl3_SOURCE_DIR}")
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE "${carnivores_saved_release_ipo}")
     unset(carnivores_saved_release_ipo)
 endif()
