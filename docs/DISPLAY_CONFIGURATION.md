@@ -246,6 +246,21 @@ That environment variable belongs solely to the test executable, not game
 configuration. Normal CI tests use SDL's dummy video driver; Windows retains
 its additional real-driver ordinal comparison.
 
+Standalone GCC 16.2.1 and Clang 22.1.8 builds of the portable catalog/policy
+tests also pass **26/26** each with C++17, `-Wall -Wextra -Werror`, ASan/UBSan
+and leak detection. Local build/test logs are in
+`/tmp/carnivores-display-catalog/` (not versioned).
+
+The additional **sanitized real-X11** probe passes its two assertions suites,
+but exits 1: system SDL 3.4.16/X11 teardown produces a LeakSanitizer report
+(100,032 bytes / 1,824 allocations). A minimal executable containing only
+`SDL_Init(SDL_INIT_VIDEO)`/`SDL_Quit` also reports a leak (50,016 bytes / 912
+allocations), without any engine or catalog code. This is a separate system
+dependency investigation, not a confirmed lower-phase engine defect or a
+catalog fix. Its precise dependency ownership remains unresolved. No leak
+suppression or dependency change is included here; the full 273-case dummy
+video sanitizer run is clean.
+
 Phase 4c must explicitly decide how to consume this catalog: monitor selection,
 refresh matching/preference and any fallback rules. Monitor/refresh persistence,
 config/UI changes, window movement, hotplug handling and DPI policy remain
