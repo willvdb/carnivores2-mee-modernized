@@ -5,6 +5,7 @@
 #include "Hunt.h"
 #include "Platform/System.h"
 #include "Game/ResolutionSelection.h"
+#include "Game/RefreshPreference.h"
 #ifdef _WIN32
 #include "Network/NetworkManager.h"
 #endif
@@ -44,6 +45,14 @@ void ProcessCommandLine()
   for (const auto& argument : Platform::Arguments())
   {
     const char* s = argument.c_str();
+    const auto refreshArgument = GameDisplay::ApplyRefreshArgument(s, PreferredRefresh);
+    if (refreshArgument != GameDisplay::RefreshArgument::Unrelated) {
+      if (refreshArgument == GameDisplay::RefreshArgument::Invalid) {
+        PrintLog("Command line: refresh: ");
+        PrintLog(GameDisplay::RefreshSyntax);
+      }
+      continue;
+    }
 #ifndef _WIN32
     if (equals_nocase(s,"-multiplayer") || equals_nocase(s,"-host") || starts_with_nocase(s,"server="))
       DoHalt2("Multiplayer is not available in the Linux build.");

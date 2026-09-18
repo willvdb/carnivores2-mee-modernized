@@ -146,6 +146,10 @@ nightvision_key 78
 # Display Mode video option.
 display_mode 2
 
+# Exclusive-fullscreen refresh rate.
+# 0=automatic; integer Hz or exact fraction such as 60000/1001.
+refresh_rate 0
+
 # GPU features bitmask (default: all optimizations enabled)
 # Set to 0 to disable all GPU optimizations.
 gpufeatures 4294967295

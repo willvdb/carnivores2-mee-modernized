@@ -12,6 +12,7 @@
 #include <fstream>
 #include "Core/ConfigText.h"
 #include "Game/DisplayModes.h"
+#include "Game/RefreshPreference.h"
 #include "Game/ResolutionSelection.h"
 
 #ifdef _gl
@@ -805,6 +806,10 @@ static void CreateDefaultConfig()
     "# Display Mode video option.\r\n"
     "display_mode 2\r\n"
     "\r\n"
+    "# Exclusive-fullscreen refresh rate.\r\n"
+    "# 0=automatic; integer Hz or exact fraction such as 60000/1001.\r\n"
+    "refresh_rate 0\r\n"
+    "\r\n"
     "# GPU features bitmask (default: all optimizations enabled)\r\n"
     "# Set to 0 to disable all GPU optimizations.\r\n"
     "gpufeatures %u\r\n"
@@ -877,9 +882,15 @@ static void LoadConfig()
 
     char key[64];
     char keyval[64] = "";
-    int tokens = sscanf(line, "%63s %63s", key, keyval);
+    int keyEnd = 0;
+    int tokens = sscanf(line, "%63s%n %63s", key, &keyEnd, keyval);
     if (tokens >= 1) {
-      if (tokens < 2) {
+      if (LegacyText::Compare(key, "refresh_rate") == 0) {
+        if (!GameDisplay::ParseConfigRefresh(line + keyEnd, PreferredRefresh)) {
+          PrintLog("Config: refresh_rate: ");
+          PrintLog(GameDisplay::RefreshSyntax);
+        }
+      } else if (tokens < 2) {
         char msg[96];
         snprintf(msg, sizeof(msg), "Config: '%s' missing value, ignoring.\n", key);
         PrintLog(msg);

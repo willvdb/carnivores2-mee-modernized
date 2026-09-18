@@ -312,7 +312,7 @@ void SetVideoMode(int W, int H)
 
   const auto mode = FULLSCREEN ? Platform::WindowMode::Exclusive :
                     BORDERLESS ? Platform::WindowMode::Borderless : Platform::WindowMode::Windowed;
-  Platform::ConfigureGameWindow(mode, {W, H}, {VideoCX, VideoCY});
+  Platform::ConfigureGameWindow(mode, {W, H}, {VideoCX, VideoCY}, PreferredRefresh);
 
   // Sync WinW/WinH and all derived values to the ACTUAL client area the OS
   // gave us. AdjustWindowRect predicts the frame chrome, but the real chrome

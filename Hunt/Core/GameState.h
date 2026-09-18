@@ -374,6 +374,8 @@ GLOBAL   LPDIRECTDRAWSURFACE lpddsPrimary;
 #endif
 
 GLOBAL   std::int32_t DirectActive, FULLSCREEN, BORDERLESS, RestartMode;
+// Modern config only; never part of the legacy profile/OptRes representation.
+GLOBAL   Platform::RefreshRate PreferredRefresh;
 
 GLOBAL   std::int32_t LoDetailSky;
 
