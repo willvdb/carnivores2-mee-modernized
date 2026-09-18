@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <cstddef>
+#include <optional>
 #include <vector>
 
 // Single game window, main application thread. No engine globals or native
@@ -9,11 +11,57 @@ namespace Platform {
 
 struct Size { std::int32_t width, height; };
 struct Point { std::int32_t x, y; };
-struct DisplayMode { Size size; std::uint32_t bitsPerPixel; };
+// Hz as reported by the backend, without reduction/rounding. 0/0 is unknown.
+struct RefreshRate {
+    std::uint32_t numerator = 0;
+    std::uint32_t denominator = 0;
+};
+constexpr RefreshRate MakeRefreshRate(std::uint32_t numerator, std::uint32_t denominator)
+{
+    return numerator && denominator ? RefreshRate{numerator, denominator} : RefreshRate{};
+}
+struct DisplayMode {
+    Size size{};
+    std::uint32_t bitsPerPixel = 0; // Zero when unavailable.
+    RefreshRate refresh{};
+};
 struct DisplayInfo {
     Size desktop;
     std::vector<DisplayMode> modes; // Backend order, unfiltered, duplicates allowed.
 };
+
+struct DisplayBounds { Point origin; Size size; }; // Backend coordinates, signed.
+struct Display {
+    std::optional<DisplayBounds> bounds;
+    std::optional<DisplayMode> desktopMode;
+    std::optional<DisplayMode> currentMode;
+    std::vector<DisplayMode> modes; // Raw backend order, all refresh/depth variants.
+};
+// An index into this snapshot's displays vector, NOT a persistent identity or
+// a promise of stable ordering between queries. Never serialize it.
+using DisplayIndex = std::size_t;
+struct DisplayCatalog {
+    std::vector<Display> displays;
+    std::optional<DisplayIndex> primaryDisplay;
+};
+
+inline DisplayInfo ProjectDisplayInfo(const Display& display, Size fallbackDesktop = {})
+{
+    const auto desktop = display.desktopMode ? display.desktopMode->size :
+        (display.bounds ? display.bounds->size : fallbackDesktop);
+    return {desktop, display.modes};
+}
+inline DisplayInfo ProjectPrimaryDisplayInfo(const DisplayCatalog& catalog, Size fallbackDesktop = {})
+{
+    if (!catalog.primaryDisplay || *catalog.primaryDisplay >= catalog.displays.size())
+        return {fallbackDesktop, {}}; // Do not silently choose a secondary display.
+    return ProjectDisplayInfo(catalog.displays[*catalog.primaryDisplay], fallbackDesktop);
+}
+
+// Main-thread, owned value snapshots. Missing metadata stays disengaged.
+DisplayCatalog QueryDisplayCatalog();
+// Compatibility primary/default query, including existing backend fallbacks
+// and Windows SDL ordinal ordering. No monitor/refresh selection policy here.
 DisplayInfo QueryDisplayInfo();
 
 // Counter units are backend-defined; divide differences by CounterFrequency().
