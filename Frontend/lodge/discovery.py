@@ -7,7 +7,7 @@ import re
 
 from .store import FrontendError, new_id, now
 
-MUTABLE_SUFFIXES = {'.sav', '.sab', '.log', '.tmp', '.bak', '.cfg'}
+MUTABLE_SUFFIXES = {'.sav', '.sab', '.log', '.tmp', '.bak'}
 MUTABLE_DIRS = {'saves', 'logs', 'screenshots', 'cache'}
 DIALECTS = {'unknown', 'c2-classic', 'iceage-triassic', 'mee-older', 'mee-newer'}
 
@@ -60,9 +60,7 @@ def walk_files(root):
                 yield path
 
 
-def fingerprint(root):
-    content = resolved_path(root, 'HUNTDAT')
-    entries = []
+def content_inventory(content):
     # Omitting aliases would make revision equality falsely ignore live content.
     for parent, dirs, files in os.walk(content, followlinks=False):
         seen = set()
@@ -73,16 +71,29 @@ def fingerprint(root):
             if name.casefold() in seen:
                 raise FrontendError(f'case-colliding content names: {path.relative_to(content)}')
             seen.add(name.casefold())
+    result = []
     for path in walk_files(content):
         relative = path.relative_to(content)
         if path.suffix.lower() in MUTABLE_SUFFIXES or any(p.casefold() in MUTABLE_DIRS for p in relative.parts[:-1]):
             continue
-        before = path.stat()
+        stat = path.stat()
+        result.append((relative.as_posix(), stat.st_size, stat.st_mtime_ns, stat.st_ino))
+    return sorted(result)
+
+
+def fingerprint(root):
+    content = resolved_path(root, 'HUNTDAT')
+    before = content_inventory(content)
+    entries = []
+    for relative, size, modified, inode in before:
+        path = content / relative
         digest = hash_file(path)
         after = path.stat()
-        if (before.st_size, before.st_mtime_ns, before.st_ino) != (after.st_size, after.st_mtime_ns, after.st_ino):
+        if (size, modified, inode) != (after.st_size, after.st_mtime_ns, after.st_ino):
             raise FrontendError(f"content changed while hashing: {relative}")
-        entries.append([relative.as_posix(), after.st_size, digest])
+        entries.append([relative, size, digest])
+    if before != content_inventory(content):
+        raise FrontendError('content inventory changed while hashing; close content updaters')
     payload = json.dumps(sorted(entries), ensure_ascii=True, separators=(',', ':')).encode()
     return {'algorithm': 'huntdat-sha256-v1', 'sha256': hashlib.sha256(payload).hexdigest(),
             'file_count': len(entries), 'byte_count': sum(e[1] for e in entries)}
@@ -110,7 +121,7 @@ def recognize(root):
             for path in directory.iterdir():
                 if path.is_file() and path.suffix.lower() == '.map':
                     rsc = resolve_reference(root, (path.relative_to(root).with_suffix('.rsc')).as_posix())
-                    if rsc['status'] == 'found':
+                    if rsc['status'] == 'found' and (root / rsc['path']).is_file():
                         if not path.stem.casefold().startswith('trophy'):
                             pairs.append(path.name)
     result['map_pairs'] = sorted(pairs)

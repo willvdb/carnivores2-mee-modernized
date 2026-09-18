@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from lodge.discovery import (discover, fingerprint, inspect_instance, move_candidates,
                              recognize, refresh_instance, register, relocate, resolve_reference)
@@ -40,8 +41,9 @@ class DiscoveryTests(unittest.TestCase):
     def test_fingerprint_ignores_mutable_and_detects_content(self):
         instance = register(self.data, self.root)
         old = fingerprint(self.root)
-        for name in ('trophy00.sav', 'trace.log', 'config.cfg'):
+        for name in ('trophy00.sav', 'trace.log'):
             (self.root / 'HUNTDAT' / name).write_bytes(b'mutable')
+        (self.root / 'config.cfg').write_text('root runtime settings')
         self.assertEqual(old, fingerprint(self.root))
         (self.root / 'HUNTDAT/_RES.TXT').write_text('weapons {}\ncharacters {}\n// changed content')
         self.assertTrue(inspect_instance(instance)['revision_changed'])
@@ -89,6 +91,15 @@ class DiscoveryTests(unittest.TestCase):
             self.skipTest('symlinks unavailable')
         with self.assertRaises(FrontendError):
             fingerprint(self.root)
+
+    def test_fingerprint_detects_new_files_during_hashing(self):
+        from lodge.discovery import hash_file
+        def mutate(path):
+            (self.root / 'HUNTDAT/new.cfg').write_text('gameplay content')
+            return hash_file(path)
+        with patch('lodge.discovery.hash_file', side_effect=mutate):
+            with self.assertRaises(FrontendError):
+                fingerprint(self.root)
 
 
 if __name__ == '__main__':
