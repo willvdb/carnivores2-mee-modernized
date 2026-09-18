@@ -1,9 +1,11 @@
 #include "../Hunt/Platform/Platform.h"
 #include "../Hunt/Platform/PlatformWin32.h"
 #include "../Hunt/Platform/PlatformWin32Display.h"
+#include "../Hunt/Game/DisplaySelection.h"
 #include "../Hunt/Debug/Log.h"
 #include <gtest/gtest.h>
 #include <cstring>
+#include <utility>
 
 void LogWrite(LogLevel, const char*, int, const char*, ...) {}
 
@@ -14,17 +16,49 @@ TEST(Win32TargetMapping, FullRectangleMatchesAndOwnsDeviceNameAfterEnumeration)
     {
         std::vector<Platform::Win32Details::NativeDisplay> displays{
             {{{100, 50}, {1080, 1920}}, "primary"}, {target.bounds, "secondary"}};
-        mapped = Platform::Win32Details::MapDisplayTarget(displays, target);
+        const auto mapping = Platform::Win32Details::MapDisplayTarget(displays, target);
+        EXPECT_FALSE(mapping.ambiguousBounds);
+        mapped = mapping.display;
         for (const auto wrong : {Platform::DisplayBounds{{-1081, -200}, {1080, 1920}},
                                 Platform::DisplayBounds{{-1080, -201}, {1080, 1920}},
                                 Platform::DisplayBounds{{-1080, -200}, {1079, 1920}},
-                                Platform::DisplayBounds{{-1080, -200}, {1080, 1919}}})
-            EXPECT_FALSE(Platform::Win32Details::MapDisplayTarget(displays, {wrong}));
+                                Platform::DisplayBounds{{-1080, -200}, {1080, 1919}}}) {
+            const auto missing = Platform::Win32Details::MapDisplayTarget(displays, {wrong});
+            EXPECT_FALSE(missing.display);
+            EXPECT_FALSE(missing.ambiguousBounds);
+        }
     }
     ASSERT_TRUE(mapped);
     EXPECT_EQ(mapped->device, "secondary");
     EXPECT_TRUE(Platform::EqualDisplayBounds(mapped->bounds, target.bounds));
-    EXPECT_FALSE(Platform::Win32Details::MapDisplayTarget({}, target));
+    const auto missing = Platform::Win32Details::MapDisplayTarget({}, target);
+    EXPECT_FALSE(missing.display);
+    EXPECT_FALSE(missing.ambiguousBounds);
+}
+
+TEST(Win32TargetMapping, TargetBecomingDuplicatedReturnsNoDevice)
+{
+    Platform::Display primary, secondary;
+    primary.bounds = {{100, 50}, {2560, 1440}};
+    secondary.bounds = {{-1920, -200}, {1920, 1080}};
+    primary.modes = secondary.modes = {{{800, 600}, 32, {120, 1}}};
+    const auto selected = GameDisplay::SelectDisplay({{secondary, primary}, 1}, 0, {800, 600}, {120, 1});
+    ASSERT_TRUE(selected.target);
+    ASSERT_TRUE(selected.exclusiveMode);
+    std::vector<Platform::Win32Details::NativeDisplay> displays{
+        {*secondary.bounds, "secondary-one"}, {*primary.bounds, "primary"}};
+    const auto unique = Platform::Win32Details::MapDisplayTarget(displays, *selected.target);
+    ASSERT_TRUE(unique.display);
+    EXPECT_EQ(unique.display->device, "secondary-one");
+    EXPECT_FALSE(unique.ambiguousBounds);
+    // The same portable target must now be rejected, in either native order.
+    displays.push_back({*secondary.bounds, "secondary-two"});
+    for (int i = 0; i < 2; ++i) {
+        const auto ambiguous = Platform::Win32Details::MapDisplayTarget(displays, *selected.target);
+        EXPECT_FALSE(ambiguous.display);
+        EXPECT_TRUE(ambiguous.ambiguousBounds);
+        std::swap(displays.front(), displays.back());
+    }
 }
 
 TEST(Win32TargetRestore, RecordsOnlySuccessfulChangesAndRestoresOwnedDevice)

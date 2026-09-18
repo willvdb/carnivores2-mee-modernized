@@ -11,9 +11,14 @@ WindowDisplay MapWindowDisplay(const std::vector<NativeDisplay>& displays, SDL_D
                                std::optional<DisplayTarget> target, std::optional<DisplayMode> mode)
 {
     if (!target) return {primary, std::nullopt, mode};
-    for (const auto& display : displays)
-        if (EqualDisplayBounds(display.bounds, target->bounds))
-            return {display.id, target, mode};
+    const NativeDisplay* match = nullptr;
+    for (const auto& display : displays) {
+        if (EqualDisplayBounds(display.bounds, target->bounds)) {
+            if (match) return {primary, std::nullopt, std::nullopt, true};
+            match = &display;
+        }
+    }
+    if (match) return {match->id, target, mode};
     return {primary, std::nullopt, std::nullopt};
 }
 
@@ -352,13 +357,14 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
         mapped = SDLDetails::MapWindowDisplay(nativeDisplays, SDL_GetPrimaryDisplay(), target, exclusiveMode);
         exclusiveMode = mapped.exclusiveMode;
         if (!mapped.target)
-            LOG_WARN("SDL display target (%d,%d %dx%d) disappeared; using primary display and automatic refresh",
+            LOG_WARN("SDL display target (%d,%d %dx%d) %s; using primary display and automatic refresh",
                      target->bounds.origin.x, target->bounds.origin.y,
-                     target->bounds.size.width, target->bounds.size.height);
+                     target->bounds.size.width, target->bounds.size.height,
+                     mapped.ambiguousBounds ? "matches multiple displays" : "disappeared");
     }
     Check(SDL_SetWindowFullscreen(gameWindow, false), "SDL leave fullscreen");
     std::optional<SDL_Rect> targetBounds;
-    // A lost explicit target also needs to finish leaving the old display
+    // A lost or ambiguous target also needs to finish leaving the old display
     // before primary fallback. The normal no-override path is unchanged.
     if (target) Check(SDL_SyncWindow(gameWindow), "SDL leave targeted fullscreen sync");
     if (mapped.target) {

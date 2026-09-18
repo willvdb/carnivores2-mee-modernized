@@ -326,8 +326,9 @@ void SetVideoMode(int W, int H)
     exclusiveMode = selected.exclusiveMode;
     if (RequestedDisplayIndex) {
       if (selected.fallback != GameDisplay::DisplayFallback::None)
-        LOG_WARN("Runtime display %u: %s; using primary/default display",
-                 *RequestedDisplayIndex, GameDisplay::DisplayFallbackReason(selected.fallback));
+        LOG_WARN("Runtime display %u: %s; using primary/default display%s",
+                 *RequestedDisplayIndex, GameDisplay::DisplayFallbackReason(selected.fallback),
+                 selected.fallback == GameDisplay::DisplayFallback::AmbiguousBounds ? " and automatic refresh" : "");
       if (selected.index) {
         LOG_INFO("Runtime display %u resolved to %s catalog index %zu",
                  *RequestedDisplayIndex, selected.index == catalog.primaryDisplay ? "primary" : "secondary",
@@ -338,7 +339,7 @@ void SetVideoMode(int W, int H)
                    bounds->size.width, bounds->size.height);
       } else LOG_WARN("Runtime display: catalog has no usable primary entry; using backend default fallback");
     }
-    if (wantsRefresh && !exclusiveMode)
+    if (wantsRefresh && !exclusiveMode && selected.fallback != GameDisplay::DisplayFallback::AmbiguousBounds)
       LOG_WARN("Exclusive %dx%d refresh %u/%u unavailable on selected display; using automatic refresh",
                W, H, PreferredRefresh.numerator, PreferredRefresh.denominator);
   }

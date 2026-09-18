@@ -14,6 +14,13 @@ Platform::DisplayCatalog Catalog()
     primary.modes = {{{800, 600}, 32, {144, 1}}};
     return {{secondary, primary}, 1};
 }
+
+Platform::DisplayCatalog DuplicateSecondaries()
+{
+    auto catalog = Catalog();
+    catalog.displays.push_back(catalog.displays[0]);
+    return catalog; // Primary at index 1 has different bounds and supports 144 Hz.
+}
 }
 
 TEST(DisplayParser, StrictUnsignedDecimalIncludingZeroAndUint32Maximum)
@@ -158,4 +165,70 @@ TEST(DisplaySelection, LowColorAndPrimaryOnlyRefreshNeverLeakOntoTarget)
     EXPECT_FALSE(GameDisplay::SelectDisplay(catalog, 0, {1024, 768}, {120, 1}).exclusiveMode);
     EXPECT_FALSE(GameDisplay::SelectDisplay(catalog, 0, {800, 600}, {}).exclusiveMode);
     EXPECT_TRUE(GameDisplay::SelectDisplay(catalog, 0, {800, 600}, {120000, 2002}).exclusiveMode);
+}
+
+TEST(DisplaySelection, EitherDuplicateSecondaryFallsBackToPrimaryWithAutomaticRefresh)
+{
+    for (const auto requested : {0u, 2u}) {
+        SCOPED_TRACE(requested);
+        const auto selected = GameDisplay::SelectDisplay(DuplicateSecondaries(), requested, {800, 600}, {144, 1});
+        EXPECT_EQ(selected.index, 1u);
+        EXPECT_FALSE(selected.target);
+        EXPECT_FALSE(selected.exclusiveMode); // Even though primary supports 144 Hz.
+        EXPECT_EQ(selected.fallback, GameDisplay::DisplayFallback::AmbiguousBounds);
+    }
+}
+
+TEST(DisplaySelection, DuplicateBoundsWithoutValidPrimaryUseBackendDefault)
+{
+    auto catalog = DuplicateSecondaries();
+    for (const auto primary : {std::optional<Platform::DisplayIndex>{},
+                              std::optional<Platform::DisplayIndex>{99}}) {
+        catalog.primaryDisplay = primary;
+        for (const auto requested : {0u, 2u}) {
+            const auto selected = GameDisplay::SelectDisplay(catalog, requested, {800, 600}, {144, 1});
+            EXPECT_FALSE(selected.index);
+            EXPECT_FALSE(selected.target);
+            EXPECT_FALSE(selected.exclusiveMode);
+            EXPECT_EQ(selected.fallback, GameDisplay::DisplayFallback::AmbiguousBounds);
+        }
+    }
+}
+
+TEST(DisplaySelection, DuplicatePrimaryBoundsOnlyRejectExplicitTargetRequests)
+{
+    auto catalog = DuplicateSecondaries();
+    catalog.displays.push_back(catalog.displays[1]);
+    const auto explicitPrimary = GameDisplay::SelectDisplay(catalog, 1, {800, 600}, {144, 1});
+    EXPECT_EQ(explicitPrimary.index, 1u);
+    EXPECT_FALSE(explicitPrimary.target);
+    EXPECT_FALSE(explicitPrimary.exclusiveMode);
+    EXPECT_EQ(explicitPrimary.fallback, GameDisplay::DisplayFallback::AmbiguousBounds);
+    for (const auto refresh : {Platform::RefreshRate{}, Platform::RefreshRate{144, 1}}) {
+        const auto normal = GameDisplay::SelectDisplay(catalog, std::nullopt, {800, 600}, refresh);
+        EXPECT_EQ(normal.index, 1u);
+        EXPECT_FALSE(normal.target);
+        EXPECT_EQ(normal.fallback, GameDisplay::DisplayFallback::None);
+        EXPECT_EQ(normal.exclusiveMode.has_value(), Platform::HasRefresh(refresh));
+    }
+}
+
+TEST(DisplaySelection, FullRectangleDistinguishesTargetsAndRetainedRequestCanRecover)
+{
+    const std::optional<std::uint32_t> requested = 0;
+    auto catalog = DuplicateSecondaries();
+    EXPECT_FALSE(GameDisplay::SelectDisplay(catalog, requested, {800, 600}, {120, 1}).target);
+    const auto bounds = *catalog.displays[0].bounds;
+    for (const auto distinct : {Platform::DisplayBounds{{bounds.origin.x + 1, bounds.origin.y}, bounds.size},
+                               Platform::DisplayBounds{{bounds.origin.x, bounds.origin.y + 1}, bounds.size},
+                               Platform::DisplayBounds{bounds.origin, {bounds.size.width + 1, bounds.size.height}},
+                               Platform::DisplayBounds{bounds.origin, {bounds.size.width, bounds.size.height + 1}}}) {
+        catalog.displays[2].bounds = distinct;
+        const auto selected = GameDisplay::SelectDisplay(catalog, requested, {800, 600}, {120, 1});
+        EXPECT_EQ(selected.index, requested);
+        EXPECT_EQ(selected.fallback, GameDisplay::DisplayFallback::None);
+        ASSERT_TRUE(selected.target);
+        EXPECT_TRUE(Platform::EqualDisplayBounds(selected.target->bounds, bounds));
+        EXPECT_TRUE(selected.exclusiveMode);
+    }
 }

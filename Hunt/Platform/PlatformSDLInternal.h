@@ -8,8 +8,9 @@ struct WindowDisplay {
     SDL_DisplayID id;
     std::optional<DisplayTarget> target;
     std::optional<DisplayMode> exclusiveMode;
+    bool ambiguousBounds = false;
 };
-// Mechanism only: full-rectangle remapping, no catalog index or eligibility.
+// Mechanism only: exactly one full-rectangle match, no catalog index or eligibility.
 WindowDisplay MapWindowDisplay(const std::vector<NativeDisplay>& displays, SDL_DisplayID primary,
                                std::optional<DisplayTarget> target, std::optional<DisplayMode> mode);
 DisplayMode CopyDisplayMode(const SDL_DisplayMode& mode);

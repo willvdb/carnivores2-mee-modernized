@@ -7,13 +7,21 @@
 // Native backend implementation details. No device names enter Platform.h.
 namespace Platform::Win32Details {
 struct NativeDisplay { DisplayBounds bounds; std::string device; };
+struct DisplayMapping {
+    std::optional<NativeDisplay> display;
+    bool ambiguousBounds = false;
+};
 
-inline std::optional<NativeDisplay> MapDisplayTarget(const std::vector<NativeDisplay>& displays,
-                                                    DisplayTarget target)
+inline DisplayMapping MapDisplayTarget(const std::vector<NativeDisplay>& displays, DisplayTarget target)
 {
-    for (const auto& display : displays)
-        if (EqualDisplayBounds(display.bounds, target.bounds)) return display;
-    return std::nullopt;
+    const NativeDisplay* match = nullptr;
+    for (const auto& display : displays) {
+        if (EqualDisplayBounds(display.bounds, target.bounds)) {
+            if (match) return {std::nullopt, true};
+            match = &display;
+        }
+    }
+    return {match ? std::optional<NativeDisplay>{*match} : std::nullopt};
 }
 
 // Remember only a device actually changed by this backend. The callback seam

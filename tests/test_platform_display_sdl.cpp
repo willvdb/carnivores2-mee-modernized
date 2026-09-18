@@ -1,9 +1,11 @@
 #include "../Hunt/Platform/PlatformSDLInternal.h"
 #include "../Hunt/Game/DisplayModes.h"
 #include "../Hunt/Game/RefreshSelection.h"
+#include "../Hunt/Game/DisplaySelection.h"
 #include <gtest/gtest.h>
 #include <cstdlib>
 #include <memory>
+#include <utility>
 
 namespace {
 void ExpectMode(const Platform::DisplayMode& actual, const SDL_DisplayMode& native)
@@ -112,6 +114,7 @@ TEST(SDLTargetMapping, MatchesFullNegativeRectangleRatherThanDimensionsOrEnumera
     ASSERT_TRUE(mapped.target);
     EXPECT_TRUE(Platform::EqualDisplayBounds(mapped.target->bounds, target.bounds));
     EXPECT_TRUE(mapped.exclusiveMode);
+    EXPECT_FALSE(mapped.ambiguousBounds);
     for (const auto wrong : {Platform::DisplayBounds{{-1920, -201}, {1920, 1080}},
                             Platform::DisplayBounds{{-1921, -200}, {1920, 1080}},
                             Platform::DisplayBounds{{-1920, -200}, {1919, 1080}},
@@ -120,6 +123,7 @@ TEST(SDLTargetMapping, MatchesFullNegativeRectangleRatherThanDimensionsOrEnumera
         EXPECT_EQ(fallback.id, 42u);
         EXPECT_FALSE(fallback.target);
         EXPECT_FALSE(fallback.exclusiveMode);
+        EXPECT_FALSE(fallback.ambiguousBounds);
     }
 }
 
@@ -132,12 +136,58 @@ TEST(SDLTargetMapping, DisappearedTargetUsesPrimaryAndDiscardsRefresh)
     EXPECT_EQ(mapped.id, 42u);
     EXPECT_FALSE(mapped.target);
     EXPECT_FALSE(mapped.exclusiveMode);
+    EXPECT_FALSE(mapped.ambiguousBounds);
     const auto automatic = Platform::SDLDetails::MapWindowDisplay({}, 42, std::nullopt, std::nullopt);
     EXPECT_EQ(automatic.id, 42u);
     EXPECT_FALSE(automatic.exclusiveMode);
     const auto primaryRefresh = Platform::SDLDetails::MapWindowDisplay({}, 42, std::nullopt, mode);
     EXPECT_EQ(primaryRefresh.id, 42u);
     EXPECT_TRUE(primaryRefresh.exclusiveMode);
+}
+
+TEST(SDLTargetMapping, TargetBecomingDuplicatedUsesPrimaryAndDiscardsTargetAndRefresh)
+{
+    Platform::Display primary, secondary;
+    primary.bounds = {{100, 50}, {2560, 1440}};
+    secondary.bounds = {{-1920, -200}, {1920, 1080}};
+    primary.modes = secondary.modes = {{{800, 600}, 16, {120, 1}}};
+    const auto selected = GameDisplay::SelectDisplay({{secondary, primary}, 1}, 0, {800, 600}, {120, 1});
+    ASSERT_TRUE(selected.target);
+    ASSERT_TRUE(selected.exclusiveMode);
+    std::vector<Platform::SDLDetails::NativeDisplay> displays{
+        {99, *secondary.bounds}, {42, *primary.bounds}};
+    const auto unique = Platform::SDLDetails::MapWindowDisplay(displays, 42, selected.target, selected.exclusiveMode);
+    EXPECT_EQ(unique.id, 99u);
+    EXPECT_TRUE(unique.target);
+    EXPECT_TRUE(unique.exclusiveMode);
+    EXPECT_FALSE(unique.ambiguousBounds);
+    // Native topology changes after the engine snapshot. Never choose 99 or 88.
+    displays.push_back({88, *secondary.bounds});
+    for (int i = 0; i < 2; ++i) {
+        const auto mapped = Platform::SDLDetails::MapWindowDisplay(displays, 42, selected.target, selected.exclusiveMode);
+        EXPECT_EQ(mapped.id, 42u);
+        EXPECT_FALSE(mapped.target);
+        EXPECT_FALSE(mapped.exclusiveMode);
+        EXPECT_TRUE(mapped.ambiguousBounds);
+        std::swap(displays.front(), displays.back());
+    }
+}
+
+TEST(SDLTargetMapping, NoTargetPreservesPrimaryModeEvenWithDuplicateBounds)
+{
+    const Platform::DisplayBounds bounds{{-1920, -200}, {1920, 1080}};
+    const Platform::DisplayMode mode{{800, 600}, 16, {120, 1}};
+    const std::vector<Platform::SDLDetails::NativeDisplay> displays{{99, bounds}, {42, bounds}, {88, bounds}};
+    const auto mapped = Platform::SDLDetails::MapWindowDisplay(displays, 42, std::nullopt, mode);
+    EXPECT_EQ(mapped.id, 42u);
+    EXPECT_FALSE(mapped.target);
+    ASSERT_TRUE(mapped.exclusiveMode);
+    EXPECT_FALSE(mapped.ambiguousBounds);
+    EXPECT_TRUE(Platform::EqualRefresh(mapped.exclusiveMode->refresh, mode.refresh));
+    const auto automatic = Platform::SDLDetails::MapWindowDisplay(displays, 42, std::nullopt, std::nullopt);
+    EXPECT_EQ(automatic.id, 42u);
+    EXPECT_FALSE(automatic.target);
+    EXPECT_FALSE(automatic.exclusiveMode);
 }
 
 TEST(SDLTargetMapping, ExactModeNeverMapsToAnotherDisplayEvenIfItsFieldsMatch)

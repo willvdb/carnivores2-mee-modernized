@@ -292,11 +292,13 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
 {
   std::optional<Win32Details::NativeDisplay> mapped;
   if (target) {
-    mapped = Win32Details::MapDisplayTarget(NativeDisplays(), *target);
+    const auto mapping = Win32Details::MapDisplayTarget(NativeDisplays(), *target);
+    mapped = mapping.display;
     if (!mapped) {
-      LOG_WARN("Win32 display target (%d,%d %dx%d) disappeared; using primary display and automatic refresh",
+      LOG_WARN("Win32 display target (%d,%d %dx%d) %s; using primary display and automatic refresh",
                target->bounds.origin.x, target->bounds.origin.y,
-               target->bounds.size.width, target->bounds.size.height);
+               target->bounds.size.width, target->bounds.size.height,
+               mapping.ambiguousBounds ? "matches multiple displays" : "disappeared");
       exclusiveMode.reset();
     }
   }
