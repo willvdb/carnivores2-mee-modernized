@@ -972,6 +972,8 @@ OS reinstall, changed connector/dock/GPU, or a replacement physical panel.
 Both Windows backends associate those native registrations to the owned catalog
 only when the full rectangle occurs exactly once in **each** enumeration.
 Missing, duplicated, truncated, clone, or failed native metadata stays absent.
+Failure to read any native monitor rectangle aborts identity association for
+the entire snapshot: incomplete bounds cannot establish uniqueness.
 SDL dummy/offscreen drivers never borrow real Windows monitor identities even
 when rectangles happen to match. No identity is invented from bounds.
 

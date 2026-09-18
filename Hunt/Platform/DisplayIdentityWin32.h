@@ -31,16 +31,26 @@ std::optional<DisplayIdentity> ReadMonitorIdentity(const wchar_t* source, Enumer
     }
     return result;
 }
-inline BOOL CALLBACK CollectMonitorIdentity(HMONITOR monitor, HDC, LPRECT, LPARAM parameter)
+template<class ReadInfo, class Enumerate>
+std::optional<DisplayIdentityDetails::NativeIdentity> ReadMonitorIdentityEntry(
+    HMONITOR monitor, ReadInfo readInfo, Enumerate enumerate)
 {
     MONITORINFOEXW info{};
     info.cbSize = sizeof(info);
-    if (GetMonitorInfoW(monitor, reinterpret_cast<MONITORINFO*>(&info))) {
-        auto& entries = *reinterpret_cast<std::vector<DisplayIdentityDetails::NativeIdentity>*>(parameter);
-        entries.push_back({{{info.rcMonitor.left, info.rcMonitor.top},
-            {info.rcMonitor.right - info.rcMonitor.left, info.rcMonitor.bottom - info.rcMonitor.top}},
-            ReadMonitorIdentity(info.szDevice, EnumDisplayDevicesW)});
-    }
+    if (!readInfo(monitor, reinterpret_cast<MONITORINFO*>(&info))) return std::nullopt;
+    return DisplayIdentityDetails::NativeIdentity{
+        {{info.rcMonitor.left, info.rcMonitor.top},
+         {info.rcMonitor.right - info.rcMonitor.left, info.rcMonitor.bottom - info.rcMonitor.top}},
+        ReadMonitorIdentity(info.szDevice, enumerate)};
+}
+inline BOOL CALLBACK CollectMonitorIdentity(HMONITOR monitor, HDC, LPRECT, LPARAM parameter)
+{
+    auto entry = ReadMonitorIdentityEntry(monitor, GetMonitorInfoW, EnumDisplayDevicesW);
+    // Unknown bounds could conceal a duplicate rectangle. Abort the snapshot,
+    // rather than declaring a remaining entry uniquely mapped from partial data.
+    if (!entry) return FALSE;
+    auto& entries = *reinterpret_cast<std::vector<DisplayIdentityDetails::NativeIdentity>*>(parameter);
+    entries.push_back(std::move(*entry));
     return TRUE;
 }
 inline void DiscoverMonitorIdentities(DisplayCatalog& catalog)

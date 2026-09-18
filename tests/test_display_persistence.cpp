@@ -240,4 +240,37 @@ TEST(WindowsDisplayIdentity, CloneMissingAndTruncatedRegistrationRemainUnavailab
         EXPECT_FALSE(Platform::Win32Details::ReadMonitorIdentity(L"source", enumerate));
     }
 }
+TEST(WindowsDisplayIdentity, MissingBoundsCannotProducePartialIdentityEntry)
+{
+    bool enumerated = false;
+    const auto failedInfo = [](HMONITOR, MONITORINFO*) -> BOOL { return FALSE; };
+    const auto enumerate = [&](const wchar_t*, DWORD, DISPLAY_DEVICEW*, DWORD) -> BOOL {
+        enumerated = true;
+        return FALSE;
+    };
+    EXPECT_FALSE(Platform::Win32Details::ReadMonitorIdentityEntry(nullptr, failedInfo, enumerate));
+    EXPECT_FALSE(enumerated);
+}
+TEST(WindowsDisplayIdentity, BoundsAndRegistrationAreCopiedTogether)
+{
+    const auto info = [](HMONITOR, MONITORINFO* output) -> BOOL {
+        EXPECT_EQ(output->cbSize, sizeof(MONITORINFOEXW));
+        auto* extended = reinterpret_cast<MONITORINFOEXW*>(output);
+        extended->rcMonitor = {-1280, -50, 0, 974};
+        wcscpy_s(extended->szDevice, L"source");
+        return TRUE;
+    };
+    const auto enumerate = [](const wchar_t* source, DWORD index, DISPLAY_DEVICEW* device, DWORD) -> BOOL {
+        EXPECT_STREQ(source, L"source");
+        if (index) return FALSE;
+        device->StateFlags = DISPLAY_DEVICE_ACTIVE;
+        wcscpy_s(device->DeviceID, L"Ab");
+        return TRUE;
+    };
+    const auto entry = Platform::Win32Details::ReadMonitorIdentityEntry(nullptr, info, enumerate);
+    ASSERT_TRUE(entry);
+    EXPECT_TRUE(Platform::EqualDisplayBounds(entry->bounds, {{-1280, -50}, {1280, 1024}}));
+    ASSERT_TRUE(entry->identity);
+    EXPECT_TRUE(Platform::EqualDisplayIdentity(*entry->identity, Id()));
+}
 #endif
