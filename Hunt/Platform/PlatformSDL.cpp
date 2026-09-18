@@ -358,8 +358,10 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
     }
     Check(SDL_SetWindowFullscreen(gameWindow, false), "SDL leave fullscreen");
     std::optional<SDL_Rect> targetBounds;
+    // A lost explicit target also needs to finish leaving the old display
+    // before primary fallback. The normal no-override path is unchanged.
+    if (target) Check(SDL_SyncWindow(gameWindow), "SDL leave targeted fullscreen sync");
     if (mapped.target) {
-        Check(SDL_SyncWindow(gameWindow), "SDL leave targeted fullscreen sync");
         SDL_Rect bounds{};
         if (SDL_GetDisplayBounds(mapped.id, &bounds)) {
             targetBounds = bounds;
@@ -370,6 +372,7 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
             exclusiveMode.reset();
         }
     }
+    if (target && !mapped.target) targetBounds = DesktopBounds();
     Check(SDL_SetWindowBordered(gameWindow, mode == WindowMode::Windowed), "SDL_SetWindowBordered");
     Check(SDL_SetWindowResizable(gameWindow, mode == WindowMode::Windowed), "SDL_SetWindowResizable");
     if (mode == WindowMode::Exclusive) {
@@ -377,6 +380,10 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
         // a desktop-sized popup when the exact mode cannot be applied.
         SDL_DisplayMode closest{};
         const auto display = target ? mapped.id : SDL_GetPrimaryDisplay();
+        const auto applyAutomatic = [&](SDL_DisplayID id) {
+            return SDLDetails::FindAutomaticDisplayMode(id, size, closest) &&
+                SDL_SetWindowFullscreenMode(gameWindow, &closest) && SDL_SetWindowFullscreen(gameWindow, true);
+        };
         if (targetBounds) {
             // SDL 3.2.28: position while windowed, then set the native mode (its
             // displayID is authoritative), then enter fullscreen. Synchronize
@@ -412,16 +419,23 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
             }
         }
         if (!explicitMode) {
-            applied = SDLDetails::FindAutomaticDisplayMode(display, size, closest) &&
-                SDL_SetWindowFullscreenMode(gameWindow, &closest) && SDL_SetWindowFullscreen(gameWindow, true);
+            applied = applyAutomatic(display);
+        }
+        if (!applied && mapped.target) {
+            SDL_Rect currentBounds{};
+            if (!SDL_GetDisplayBounds(display, &currentBounds)) {
+                LOG_WARN("SDL display target disappeared during exclusive application; using primary display and automatic refresh");
+                Check(SDL_SetWindowFullscreen(gameWindow, false), "SDL leave disappeared target");
+                Check(SDL_SyncWindow(gameWindow), "SDL disappeared target sync");
+                targetBounds = DesktopBounds();
+                CenterWindow(size, targetBounds);
+                Check(SDL_SyncWindow(gameWindow), "SDL primary fallback move sync");
+                // One automatic primary attempt, never reuse the missing
+                // target's rate or recursively select another secondary.
+                applied = applyAutomatic(SDL_GetPrimaryDisplay());
+            }
         }
         if (!applied) {
-            SDL_Rect currentBounds{};
-            if (mapped.target && !SDL_GetDisplayBounds(display, &currentBounds)) {
-                LOG_WARN("SDL display target disappeared during exclusive application; using primary display and automatic refresh");
-                ConfigureGameWindow(mode, size, videoCenter);
-                return;
-            }
             LOG_WARN("SDL exclusive %dx%d unavailable; using desktop popup: %s", size.width, size.height, SDL_GetError());
             SDL_SetWindowFullscreen(gameWindow, false);
             const auto bounds = targetBounds ? *targetBounds : DesktopBounds();
