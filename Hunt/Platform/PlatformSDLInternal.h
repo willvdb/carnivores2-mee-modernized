@@ -3,10 +3,19 @@
 #include <SDL3/SDL.h>
 
 namespace Platform::SDLDetails {
+struct NativeDisplay { SDL_DisplayID id; DisplayBounds bounds; };
+struct WindowDisplay {
+    SDL_DisplayID id;
+    std::optional<DisplayTarget> target;
+    std::optional<DisplayMode> exclusiveMode;
+};
+// Mechanism only: full-rectangle remapping, no catalog index or eligibility.
+WindowDisplay MapWindowDisplay(const std::vector<NativeDisplay>& displays, SDL_DisplayID primary,
+                               std::optional<DisplayTarget> target, std::optional<DisplayMode> mode);
 DisplayMode CopyDisplayMode(const SDL_DisplayMode& mode);
 // Borrowed result: consume before freeing the SDL fullscreen-mode allocation.
 const SDL_DisplayMode* FindNativeDisplayMode(SDL_DisplayMode* const* modes, int count,
-                                           const DisplayMode& requested);
+                                           const DisplayMode& requested, SDL_DisplayID display);
 }
 
 // Private backend bridge for genuinely deferred Windows compatibility.

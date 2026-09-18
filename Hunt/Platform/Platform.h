@@ -158,8 +158,12 @@ enum class WindowMode { Exclusive, Borderless, Windowed };
 // Optional caller-selected exclusive mode; absence retains the legacy path.
 // Its dimensions must match size. SDL maps its size/depth/rate to a native mode;
 // Win32 expresses its rate with DEVMODE and retains the 32/16-bpp attempt order.
+// Optional target is an owned runtime rectangle, already selected by the caller.
+// A lost target discards exclusiveMode and uses primary/automatic fallback.
+// Absence preserves the existing primary placement and mode mechanisms.
 void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
-                         std::optional<DisplayMode> exclusiveMode = std::nullopt);
+                         std::optional<DisplayMode> exclusiveMode = std::nullopt,
+                         std::optional<DisplayTarget> target = std::nullopt);
 Size ClientSize();
 void ShowLoadingWindow(Size size);
 void RestoreDesktopMode();

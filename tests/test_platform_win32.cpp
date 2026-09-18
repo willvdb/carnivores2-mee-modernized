@@ -1,10 +1,86 @@
 #include "../Hunt/Platform/Platform.h"
 #include "../Hunt/Platform/PlatformWin32.h"
+#include "../Hunt/Platform/PlatformWin32Display.h"
 #include "../Hunt/Debug/Log.h"
 #include <gtest/gtest.h>
 #include <cstring>
 
 void LogWrite(LogLevel, const char*, int, const char*, ...) {}
+
+TEST(Win32TargetMapping, FullRectangleMatchesAndOwnsDeviceNameAfterEnumeration)
+{
+    const Platform::DisplayTarget target{{{-1080, -200}, {1080, 1920}}};
+    std::optional<Platform::Win32Details::NativeDisplay> mapped;
+    {
+        std::vector<Platform::Win32Details::NativeDisplay> displays{
+            {{{100, 50}, {1080, 1920}}, "primary"}, {target.bounds, "secondary"}};
+        mapped = Platform::Win32Details::MapDisplayTarget(displays, target);
+        for (const auto wrong : {Platform::DisplayBounds{{-1081, -200}, {1080, 1920}},
+                                Platform::DisplayBounds{{-1080, -201}, {1080, 1920}},
+                                Platform::DisplayBounds{{-1080, -200}, {1079, 1920}},
+                                Platform::DisplayBounds{{-1080, -200}, {1080, 1919}}})
+            EXPECT_FALSE(Platform::Win32Details::MapDisplayTarget(displays, {wrong}));
+    }
+    ASSERT_TRUE(mapped);
+    EXPECT_EQ(mapped->device, "secondary");
+    EXPECT_TRUE(Platform::EqualDisplayBounds(mapped->bounds, target.bounds));
+    EXPECT_FALSE(Platform::Win32Details::MapDisplayTarget({}, target));
+}
+
+TEST(Win32TargetRestore, RecordsOnlySuccessfulChangesAndRestoresOwnedDevice)
+{
+    Platform::Win32Details::DisplayModeChange state;
+    DEVMODEA mode{};
+    auto apply = [](const char* device, DEVMODEA* native, DWORD flags) -> LONG {
+        EXPECT_STREQ(device, "secondary");
+        EXPECT_NE(native, nullptr);
+        EXPECT_EQ(flags, DWORD{CDS_FULLSCREEN});
+        return DISP_CHANGE_SUCCESSFUL;
+    };
+    {
+        std::string device = "secondary";
+        EXPECT_EQ(state.Apply(device.c_str(), mode, apply), DISP_CHANGE_SUCCESSFUL);
+    }
+    ASSERT_TRUE(state.device);
+    EXPECT_EQ(*state.device, "secondary");
+    EXPECT_EQ(state.Restore([](const char* device, DEVMODEA* native, DWORD flags) -> LONG {
+        EXPECT_STREQ(device, "secondary");
+        EXPECT_EQ(native, nullptr);
+        EXPECT_EQ(flags, 0u);
+        return DISP_CHANGE_FAILED;
+    }), DISP_CHANGE_FAILED);
+    EXPECT_TRUE(state.device); // Keep a failed restore for a shutdown retry.
+    EXPECT_EQ(state.Restore([](const char* device, DEVMODEA* native, DWORD flags) -> LONG {
+        EXPECT_STREQ(device, "secondary");
+        EXPECT_EQ(native, nullptr);
+        EXPECT_EQ(flags, 0u);
+        return DISP_CHANGE_SUCCESSFUL;
+    }), DISP_CHANGE_SUCCESSFUL);
+    EXPECT_FALSE(state.device);
+    EXPECT_EQ(state.Apply("secondary", mode, [](const char*, DEVMODEA*, DWORD) -> LONG {
+        return DISP_CHANGE_BADMODE;
+    }), DISP_CHANGE_BADMODE);
+    EXPECT_FALSE(state.device);
+}
+
+TEST(Win32TargetRestore, NoExplicitTargetRetainsDefaultDeviceChangeAndRestore)
+{
+    Platform::Win32Details::DisplayModeChange state;
+    DEVMODEA mode{};
+    EXPECT_EQ(state.Apply(nullptr, mode, [](const char* device, DEVMODEA* native, DWORD flags) -> LONG {
+        EXPECT_EQ(device, nullptr);
+        EXPECT_NE(native, nullptr);
+        EXPECT_EQ(flags, DWORD{CDS_FULLSCREEN});
+        return DISP_CHANGE_SUCCESSFUL;
+    }), DISP_CHANGE_SUCCESSFUL);
+    EXPECT_FALSE(state.device);
+    EXPECT_EQ(state.Restore([](const char* device, DEVMODEA* native, DWORD flags) -> LONG {
+        EXPECT_EQ(device, nullptr);
+        EXPECT_EQ(native, nullptr);
+        EXPECT_EQ(flags, 0u);
+        return DISP_CHANGE_SUCCESSFUL;
+    }), DISP_CHANGE_SUCCESSFUL);
+}
 
 TEST(PlatformWin32, PollsEveryLegacyKeyboardByteWithoutTranslation)
 {
