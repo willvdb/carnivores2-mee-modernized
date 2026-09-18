@@ -363,7 +363,8 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(FETCHCONTENT_QUIET OFF)
     FetchContent_MakeAvailable(googletest)
 
-    add_executable(Carnivores2PlatformTests tests/test_platform_policies.cpp tests/test_display_catalog.cpp)
+    add_executable(Carnivores2PlatformTests tests/test_platform_policies.cpp tests/test_display_catalog.cpp
+        tests/test_refresh_policy.cpp)
     target_link_libraries(Carnivores2PlatformTests PRIVATE gtest_main)
     if(WIN32)
         target_sources(Carnivores2PlatformTests PRIVATE tests/test_platform_win32.cpp Hunt/Platform/PlatformWin32.cpp)
