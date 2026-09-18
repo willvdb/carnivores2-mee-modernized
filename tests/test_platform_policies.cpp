@@ -2,9 +2,13 @@
 // and Clang without Windows headers or a game executable.
 #include "../Hunt/Platform/Platform.h"
 #include "../Hunt/Game/DisplayModes.h"
+#include "../Hunt/Game/ResolutionSelection.h"
 #include "../Hunt/Game/FrameTiming.h"
 #ifdef _WINDOWS_
 #error Portable platform headers must not include windows.h
+#endif
+#ifdef SDL_h_
+#error Portable platform headers must not include SDL.h
 #endif
 #include <gtest/gtest.h>
 
@@ -105,6 +109,131 @@ TEST(PlatformDisplay, DoesNotInventValidationForUnusualDesktopDimensions)
     ASSERT_EQ(result.count, 1);
     EXPECT_EQ(result.modes[0].width, 0);
     EXPECT_EQ(result.modes[0].height, 0);
+}
+
+TEST(ResolutionSelection, ExactLookupUsesBothDimensionsAndFirstOccurrence)
+{
+    const Platform::Size modes[] = {{800, 480}, {640, 600}, {800, 600}, {800, 600}};
+    EXPECT_EQ(GameDisplay::FindResolution(modes, 4, {800, 600}), 2);
+    EXPECT_EQ(GameDisplay::FindResolution(modes, 4, {800, 480}), 0);
+    EXPECT_EQ(GameDisplay::FindResolution(modes, 4, {640, 480}), -1);
+    EXPECT_EQ(GameDisplay::FindResolution(modes, 4, {1920, 1080}), -1);
+    EXPECT_EQ(GameDisplay::FindResolution(modes, 2, {800, 600}), -1);
+    EXPECT_EQ(GameDisplay::FindResolution(nullptr, 0, {800, 600}), -1);
+    EXPECT_EQ(GameDisplay::FindResolution(nullptr, -1, {800, 600}), -1);
+}
+
+TEST(ResolutionSelection, ValidLegacyOrdinalSelectsThatEntryWithoutNormalization)
+{
+    const Platform::Size modes[] = {{1024, 768}, {800, 600}, {640, 480}, {800, 600}};
+    for (int ordinal = 0; ordinal < 4; ++ordinal) {
+        const auto result = GameDisplay::ResolveLegacyResolution(modes, 4, ordinal);
+        EXPECT_EQ(result.ordinal, ordinal);
+        EXPECT_EQ(result.size.width, modes[ordinal].width);
+        EXPECT_EQ(result.size.height, modes[ordinal].height);
+    }
+}
+
+TEST(ResolutionSelection, NegativeLegacyOrdinalFallsBackToFirst800x600)
+{
+    const Platform::Size modes[] = {{800, 480}, {640, 600}, {800, 600}, {800, 600}};
+    for (const auto ordinal : {-1, INT32_MIN}) {
+        const auto result = GameDisplay::ResolveLegacyResolution(modes, 4, ordinal);
+        EXPECT_EQ(result.ordinal, 2);
+        EXPECT_EQ(result.size.width, 800);
+        EXPECT_EQ(result.size.height, 600);
+    }
+}
+
+TEST(ResolutionSelection, LegacyOrdinalAtOrPastCountFallsBackToFirst800x600)
+{
+    const Platform::Size modes[] = {{1024, 768}, {800, 600}, {800, 600}};
+    for (const auto ordinal : {3, 4, INT32_MAX}) {
+        const auto result = GameDisplay::ResolveLegacyResolution(modes, 3, ordinal);
+        EXPECT_EQ(result.ordinal, 1);
+        EXPECT_EQ(result.size.width, 800);
+        EXPECT_EQ(result.size.height, 600);
+    }
+}
+
+TEST(ResolutionSelection, InvalidLegacyOrdinalUsesIndexZeroWithout800x600)
+{
+    const Platform::Size modes[] = {{640, 480}, {1024, 768}, {1920, 1080}};
+    for (const auto ordinal : {-1, 3}) {
+        const auto result = GameDisplay::ResolveLegacyResolution(modes, 3, ordinal);
+        EXPECT_EQ(result.ordinal, 0);
+        EXPECT_EQ(result.size.width, 640);
+        EXPECT_EQ(result.size.height, 480);
+    }
+}
+
+TEST(ResolutionSelection, EmptyLegacyListUses800x600AndLeavesOrdinalUntouched)
+{
+    for (const auto count : {0, -1}) {
+        for (const auto ordinal : {-1, 0, 17}) {
+            const auto result = GameDisplay::ResolveLegacyResolution(nullptr, count, ordinal);
+            EXPECT_EQ(result.ordinal, ordinal);
+            EXPECT_EQ(result.size.width, 800);
+            EXPECT_EQ(result.size.height, 600);
+        }
+    }
+}
+
+TEST(ResolutionSelection, ConfigStyleUnmatchedDimensionsYieldMinusOne)
+{
+    const Platform::Size modes[] = {{800, 600}, {1024, 768}};
+    const Platform::Size request{1234, 567};
+    const auto ordinal = GameDisplay::FindResolution(modes, 2, request);
+    EXPECT_EQ(ordinal, -1); // config.cfg assigns this even when there is no match.
+    EXPECT_EQ(request.width, 1234);
+    EXPECT_EQ(request.height, 567);
+}
+
+TEST(ResolutionSelection, CommandLineStyleOnlySynchronizesOrdinalsOnMatch)
+{
+    const Platform::Size modes[] = {{800, 600}, {1024, 768}};
+    // Characterize the caller's conditional assignment, including an ordinal
+    // of -1 left by config and an unavailable list during the early CLI pass.
+    for (const auto count : {0, 2}) {
+        for (const auto previous : {-1, 0, 7}) {
+            int current = 1;
+            std::int32_t ordinal = previous;
+            const auto index = GameDisplay::FindResolution(modes, count, {1234, 567});
+            if (index >= 0) current = ordinal = index;
+            EXPECT_EQ(current, 1);
+            EXPECT_EQ(ordinal, previous);
+        }
+    }
+    int current = 0;
+    std::int32_t ordinal = -1;
+    const auto index = GameDisplay::FindResolution(modes, 2, {1024, 768});
+    if (index >= 0) current = ordinal = index;
+    EXPECT_EQ(current, 1);
+    EXPECT_EQ(ordinal, 1);
+}
+
+TEST(ResolutionSelection, ProfileThenConfigThenCommandLineDimensionPrecedence)
+{
+    // Policy composition only: the engine retains its existing parsing and
+    // startup order. No game, profile I/O, or window backend is needed here.
+    const Platform::Size modes[] = {{800, 600}, {1024, 768}, {1920, 1080}};
+    auto selected = GameDisplay::ResolveLegacyResolution(modes, 3, 1);
+    EXPECT_EQ(selected.size.width, 1024);
+    EXPECT_EQ(selected.size.height, 768);
+    EXPECT_EQ(selected.ordinal, 1);
+
+    selected.size = {1920, 1080}; // config dimension override
+    selected.ordinal = GameDisplay::FindResolution(modes, 3, selected.size);
+    EXPECT_EQ(selected.size.width, 1920);
+    EXPECT_EQ(selected.size.height, 1080);
+    EXPECT_EQ(selected.ordinal, 2);
+
+    selected.size = {1234, 567}; // unmatched command-line override
+    const auto index = GameDisplay::FindResolution(modes, 3, selected.size);
+    if (index >= 0) selected.ordinal = index;
+    EXPECT_EQ(selected.size.width, 1234);
+    EXPECT_EQ(selected.size.height, 567);
+    EXPECT_EQ(selected.ordinal, 2);
 }
 
 TEST(PlatformTiming, PreservesMenuIndicesAndIntegerTargetIntervals)
