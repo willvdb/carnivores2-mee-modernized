@@ -49,6 +49,14 @@ struct DisplayInfo {
 };
 
 struct DisplayBounds { Point origin; Size size; }; // Backend coordinates, signed.
+// Owned runtime remapping key, never a persistent monitor identity. Backends
+// must match the entire rectangle in the current native topology.
+struct DisplayTarget { DisplayBounds bounds; };
+constexpr bool EqualDisplayBounds(DisplayBounds a, DisplayBounds b)
+{
+    return a.origin.x == b.origin.x && a.origin.y == b.origin.y &&
+        a.size.width == b.size.width && a.size.height == b.size.height;
+}
 struct Display {
     std::optional<DisplayBounds> bounds;
     std::optional<DisplayMode> desktopMode;
