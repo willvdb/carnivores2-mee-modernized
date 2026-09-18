@@ -3,7 +3,21 @@
 #include "PlatformSDLInternal.h"
 #include "../Debug/Log.h"
 #include <algorithm>
+#include <memory>
 #include <optional>
+
+namespace Platform::SDLDetails {
+DisplayMode CopyDisplayMode(const SDL_DisplayMode& mode)
+{
+    // SDL 3.2 finalizes the rational fields even for float-only video drivers.
+    // Copy those fields, not its rounded refresh_rate convenience value.
+    const auto refresh = mode.refresh_rate_numerator > 0 && mode.refresh_rate_denominator > 0
+        ? MakeRefreshRate(static_cast<std::uint32_t>(mode.refresh_rate_numerator),
+                          static_cast<std::uint32_t>(mode.refresh_rate_denominator))
+        : RefreshRate{};
+    return {{mode.w, mode.h}, static_cast<std::uint32_t>(SDL_BITSPERPIXEL(mode.format)), refresh};
+}
+}
 
 namespace {
 SDL_Window* gameWindow = nullptr;
@@ -13,6 +27,27 @@ Platform::SDLInput::Keyboard keyboard;
 bool quitRequested = false;
 bool altGrLayout = false;
 std::optional<Platform::Event> pendingKey;
+
+Platform::Display ReadDisplay(SDL_DisplayID id)
+{
+    Platform::Display display;
+    SDL_Rect bounds{};
+    if (SDL_GetDisplayBounds(id, &bounds))
+        display.bounds = {{bounds.x, bounds.y}, {bounds.w, bounds.h}};
+    if (const auto* desktop = SDL_GetDesktopDisplayMode(id))
+        display.desktopMode = Platform::SDLDetails::CopyDisplayMode(*desktop);
+    if (const auto* current = SDL_GetCurrentDisplayMode(id))
+        display.currentMode = Platform::SDLDetails::CopyDisplayMode(*current);
+    int count = 0;
+    // SDL owns desktop/current pointers. Fullscreen modes are one allocation,
+    // including the pointer array: copy everything before releasing it once.
+    const std::unique_ptr<SDL_DisplayMode*, decltype(&SDL_free)> modes(
+        SDL_GetFullscreenDisplayModes(id, &count), SDL_free);
+    if (modes)
+        for (int i = 0; i < count; ++i)
+            display.modes.push_back(Platform::SDLDetails::CopyDisplayMode(*modes.get()[i]));
+    return display;
+}
 
 bool HasAltGrLayout()
 {
@@ -124,21 +159,28 @@ void ShowAndFocusGameWindow()
 }
 void SetProcessActive(bool active) { SDLCompatibility::SetProcessActive(active); }
 
+DisplayCatalog QueryDisplayCatalog()
+{
+    DisplayCatalog catalog;
+    const auto primary = SDL_GetPrimaryDisplay();
+    int count = 0;
+    const std::unique_ptr<SDL_DisplayID, decltype(&SDL_free)> displays(SDL_GetDisplays(&count), SDL_free);
+    if (displays) {
+        for (int i = 0; i < count; ++i) {
+            const auto id = displays.get()[i];
+            if (id == primary) catalog.primaryDisplay = catalog.displays.size();
+            catalog.displays.push_back(ReadDisplay(id));
+        }
+    }
+    return catalog;
+}
+
 DisplayInfo QueryDisplayInfo()
 {
-    DisplayInfo info{};
-    const auto display = SDL_GetPrimaryDisplay();
-    if (const auto* desktop = SDL_GetDesktopDisplayMode(display))
-        info.desktop = {desktop->w, desktop->h};
-    else {
-        const auto bounds = DesktopBounds();
-        info.desktop = {bounds.w, bounds.h};
-    }
-    int count = 0;
-    auto** modes = SDL_GetFullscreenDisplayModes(display, &count);
-    for (int i = 0; i < count; ++i)
-        info.modes.push_back({{modes[i]->w, modes[i]->h}, static_cast<std::uint32_t>(SDL_BITSPERPIXEL(modes[i]->format))});
-    SDL_free(modes);
+    // Share discovery with the catalog, but query only the authoritative primary
+    // display as before (also preserving the old failure fallback).
+    auto info = ProjectDisplayInfo(ReadDisplay(SDL_GetPrimaryDisplay()), {800, 600});
+    // Only the legacy projection gets the Windows driver-order ordinal shim.
     SDLCompatibility::OrderDisplayModes(info);
     return info;
 }

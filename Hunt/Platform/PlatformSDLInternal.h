@@ -2,6 +2,10 @@
 #include "Platform.h"
 #include <SDL3/SDL.h>
 
+namespace Platform::SDLDetails {
+DisplayMode CopyDisplayMode(const SDL_DisplayMode& mode);
+}
+
 // Private backend bridge for genuinely deferred Windows compatibility.
 namespace Platform::SDLCompatibility {
 void SetProcessActive(bool active);

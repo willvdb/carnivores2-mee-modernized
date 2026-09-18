@@ -1,6 +1,7 @@
 #include "Platform.h"
 #include "PlatformWin32.h"
 #include <mmsystem.h>
+#include <utility>
 
 #ifndef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
 #define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 ((DPI_AWARENESS_CONTEXT)-4)
@@ -11,6 +12,49 @@ HWND gameWindow = nullptr;
 HINSTANCE gameInstance = nullptr;
 WNDPROC gameProcedure = nullptr;
 HCURSOR arrowCursor = nullptr;
+
+Platform::DisplayMode CopyDisplayMode(const DEVMODEA& mode)
+{
+    // DEVMODE exposes integer Hz; 0 and 1 both mean the hardware default.
+    const auto refresh = mode.dmDisplayFrequency > 1
+        ? Platform::MakeRefreshRate(mode.dmDisplayFrequency, 1) : Platform::RefreshRate{};
+    return {{static_cast<std::int32_t>(mode.dmPelsWidth),
+             static_cast<std::int32_t>(mode.dmPelsHeight)}, mode.dmBitsPerPel, refresh};
+}
+
+Platform::Display ReadDisplay(const char* device)
+{
+    Platform::Display display;
+    DEVMODEA current{};
+    current.dmSize = sizeof(current);
+    if (EnumDisplaySettingsA(device, ENUM_CURRENT_SETTINGS, &current)) {
+        display.currentMode = CopyDisplayMode(current);
+        // The reference historically calls the current settings "desktop".
+        // Unlike SDL, this stateless query does not retain a pre-exclusive mode.
+        display.desktopMode = display.currentMode;
+    }
+    DEVMODEA mode{};
+    mode.dmSize = sizeof(mode);
+    for (int i = 0; EnumDisplaySettingsA(device, i, &mode); ++i)
+        display.modes.push_back(CopyDisplayMode(mode));
+    return display;
+}
+
+BOOL CALLBACK CollectDisplay(HMONITOR monitor, HDC, LPRECT, LPARAM data)
+{
+    MONITORINFOEXA info{};
+    info.cbSize = sizeof(info);
+    if (!GetMonitorInfoA(monitor, reinterpret_cast<MONITORINFO*>(&info))) return TRUE;
+    auto& catalog = *reinterpret_cast<Platform::DisplayCatalog*>(data);
+    const bool primary = (info.dwFlags & MONITORINFOF_PRIMARY) != 0;
+    // Keep the reference's default-device query for the primary display.
+    auto display = ReadDisplay(primary ? nullptr : info.szDevice);
+    display.bounds = {{info.rcMonitor.left, info.rcMonitor.top},
+        {info.rcMonitor.right - info.rcMonitor.left, info.rcMonitor.bottom - info.rcMonitor.top}};
+    if (primary) catalog.primaryDisplay = catalog.displays.size();
+    catalog.displays.push_back(std::move(display));
+    return TRUE;
+}
 }
 
 namespace Platform::Win32 {
@@ -65,25 +109,19 @@ bool CreateGameWindow()
   return true;
 }
 
+DisplayCatalog QueryDisplayCatalog()
+{
+    DisplayCatalog catalog;
+    EnumDisplayMonitors(nullptr, nullptr, CollectDisplay, reinterpret_cast<LPARAM>(&catalog));
+    return catalog;
+}
+
 DisplayInfo QueryDisplayInfo()
 {
-    DisplayInfo info;
-    info.desktop = {GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)};
-    DEVMODE current = {};
-    current.dmSize = sizeof(current);
-    if (EnumDisplaySettings(nullptr, ENUM_CURRENT_SETTINGS, &current)) {
-        info.desktop = {static_cast<std::int32_t>(current.dmPelsWidth),
-                        static_cast<std::int32_t>(current.dmPelsHeight)};
-    }
-
-    DEVMODE mode = {};
-    mode.dmSize = sizeof(mode);
-    for (int i = 0; EnumDisplaySettings(nullptr, i, &mode); ++i) {
-        info.modes.push_back({{static_cast<std::int32_t>(mode.dmPelsWidth),
-                               static_cast<std::int32_t>(mode.dmPelsHeight)},
-                              mode.dmBitsPerPel});
-    }
-    return info;
+    // Preserve the default-device enumeration and system-metrics fallback even
+    // if monitor enumeration is unavailable. No monitor-placement policy.
+    return ProjectDisplayInfo(ReadDisplay(nullptr),
+        {GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)});
 }
 
 Tick CounterFrequency()
