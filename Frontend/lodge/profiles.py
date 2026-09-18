@@ -10,17 +10,24 @@ from .discovery import diagnostic, get_instance, inspect_instance, walk_files
 from .store import FrontendError, atomic_write, new_id, now
 
 STATE_NAME = re.compile(r'^trophy(\d+)\.(sav|sab)$', re.IGNORECASE)
+COMPANION_NAME = re.compile(r'^(trophy\d+)\.(.+)$', re.IGNORECASE)
 MAX_STATE_BYTES = 16 * 1024 * 1024
 
 
 def inventory(root):
     root = Path(root)
     groups = {}
+    companions = {}
     if not root.is_dir():
         return []
     for path in walk_files(root):
         match = STATE_NAME.fullmatch(path.name)
         if not match:
+            candidate = COMPANION_NAME.fullmatch(path.name)
+            if candidate:
+                relative = path.relative_to(root)
+                key = (relative.parent / candidate[1].casefold()).as_posix()
+                companions.setdefault(key, []).append({'path': relative.as_posix(), 'size': path.stat().st_size})
             continue
         relative = path.relative_to(root)
         key = (relative.parent / path.stem.casefold()).as_posix()
@@ -28,6 +35,9 @@ def inventory(root):
                                       'ownership': 'unclaimed', 'diagnostics': []})
         item['files'].append({'path': relative.as_posix(), 'kind': match[2].lower(), 'size': path.stat().st_size})
     for item in groups.values():
+        item['unclassified_companions'] = companions.get(item['key'], [])
+        if item['unclassified_companions']:
+            item['diagnostics'].append(diagnostic('unclassified-companion', 'Other files share the slot basename; relationship is unknown. Managed import requires a companion policy.'))
         kinds = [f['kind'] for f in item['files']]
         if kinds.count('sav') > 1 or kinds.count('sab') > 1:
             item['diagnostics'].append(diagnostic('ambiguous-state-files', 'Case-colliding state members; no file chosen.'))
@@ -67,6 +77,8 @@ def stable_read(root, state):
     again = next((s for s in inventory(root) if s['key'] == state['key']), None)
     if again is None or {f['path'] for f in again['files']} != set(first):
         raise FrontendError('state membership changed during snapshot')
+    if again['unclassified_companions'] != state['unclassified_companions']:
+        raise FrontendError('unclassified companion inventory changed during snapshot')
     second = read_set(root, again)
     if first != second:
         raise FrontendError('native state changed during snapshot; close legacy writers')
@@ -127,6 +139,8 @@ def associate(store, data, hunter_id, instance_id, state_key, origin, ownership=
     state = next((s for s in inventory(instance['path']) if s['key'] == state_key), None)
     if not state or not any(f['kind'] == 'sav' for f in state['files']):
         raise FrontendError('selected state has no save; orphan rooms are never adopted as profiles')
+    if ownership == 'managed' and state['unclassified_companions']:
+        raise FrontendError('unclassified companion files require review before managed import; reference-only inspection remains available')
     inspection = inspect_set(instance['path'], state, probe, instance['dialect_hint'])
     if any(d['code'] == 'registration-mismatch' for d in inspection['diagnostics']):
         raise FrontendError('registration mismatch requires explicit future reconciliation; source unchanged')
@@ -136,6 +150,7 @@ def associate(store, data, hunter_id, instance_id, state_key, origin, ownership=
                    'ownership': ownership, 'authority': 'native-files' if ownership == 'referenced' else 'independent-snapshot',
                    'writable': False, 'revision': instance['revision'], 'created_at': now(),
                    'files': [{k: v for k, v in f.items() if k != 'decoded'} for f in inspection['files']],
+                   'unclassified_companions': state['unclassified_companions'],
                    'diagnostics': inspection['diagnostics']}
     if ownership == 'managed':
         blobs = stable_read(instance['path'], state)

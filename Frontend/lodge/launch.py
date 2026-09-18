@@ -50,7 +50,7 @@ def prepare(store, data, association_id, area_id, licenses=(), weapons=(), equip
         diagnostics.append(diagnostic('unclaimed-personal-progression', 'Packaged or unknown source is not certified personal progression.'))
     if not decoded.get('codec_roundtrip_exact'):
         diagnostics.append(diagnostic('save-format-unresolved', 'No supported codec observation for the associated save.'))
-    if any(d['code'] in ('registration-mismatch', 'slot-outside-menu', 'noncanonical-slot-name', 'non-root-state', 'unreadable-layout') for d in state.get('diagnostics', [])):
+    if any(d['code'] in ('registration-mismatch', 'slot-outside-menu', 'noncanonical-slot-name', 'non-root-state', 'unreadable-layout', 'unclassified-companion') for d in state.get('diagnostics', [])):
         diagnostics.append(diagnostic('native-state-ineligible', 'Native slot or state layout requires reconciliation.'))
     if catalog['dialect']['effective'] not in ('mee-newer', 'c2-classic'):
         diagnostics.append(diagnostic('dialect-launch-unresolved', 'This dialect has no candidate modern launch adapter.'))

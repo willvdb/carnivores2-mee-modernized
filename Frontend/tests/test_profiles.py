@@ -127,6 +127,19 @@ class ProfileTests(unittest.TestCase):
             with self.store.transaction() as data:
                 data['associations'][result['id']]['files'][0]['path'] = '../trophy00.sav'
 
+    def test_unknown_companion_is_reported_without_guessing_copy_policy(self):
+        candidate = self.root / 'trophy00.extra'
+        candidate.write_bytes(b'opaque companion candidate')
+        state = inventory(self.root)[0]
+        self.assertEqual(state['unclassified_companions'][0]['path'], candidate.name)
+        with self.assertRaises(FrontendError):
+            with self.store.transaction() as data:
+                associate(self.store, data, self.hunter, self.instance, 'trophy00', 'unknown', 'managed')
+        with self.store.transaction() as data:
+            result = associate(self.store, data, self.hunter, self.instance, 'trophy00', 'unknown', 'referenced')
+        self.assertIn('unclassified-companion', [d['code'] for d in result['diagnostics']])
+        self.assertEqual(candidate.read_bytes(), b'opaque companion candidate')
+
     def test_case_collision_no_guess(self):
         (self.root / 'TROPHY00.SAV').write_bytes(save_bytes(3))
         if len(list(self.root.glob('*.[sS][aA][vV]'))) < 2:
