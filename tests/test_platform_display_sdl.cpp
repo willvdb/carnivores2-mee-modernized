@@ -155,6 +155,38 @@ TEST(SDLTargetMapping, ExactModeNeverMapsToAnotherDisplayEvenIfItsFieldsMatch)
     EXPECT_EQ(Platform::SDLDetails::FindNativeDisplayMode(modes, 2, selected, 123), nullptr);
 }
 
+namespace {
+SDL_DisplayMode automaticResult{};
+bool automaticAvailable = true;
+bool SDLCALL QueryAutomatic(SDL_DisplayID display, int w, int h, float rate, bool density, SDL_DisplayMode* result)
+{
+    EXPECT_EQ(display, 99u);
+    EXPECT_EQ(w, 800);
+    EXPECT_EQ(h, 600);
+    EXPECT_EQ(rate, 0.0f);
+    EXPECT_FALSE(density);
+    *result = automaticResult;
+    return automaticAvailable;
+}
+}
+
+TEST(SDLTargetMapping, AutomaticUsesZeroRefreshOnTargetAndRejectsCloseOrForeignModes)
+{
+    SDL_DisplayMode result{};
+    automaticResult = {};
+    automaticResult.displayID = 99; automaticResult.w = 800; automaticResult.h = 600;
+    automaticAvailable = true;
+    EXPECT_TRUE(Platform::SDLDetails::FindAutomaticDisplayMode(99, {800, 600}, result, QueryAutomatic));
+    automaticResult.w = 1024;
+    EXPECT_FALSE(Platform::SDLDetails::FindAutomaticDisplayMode(99, {800, 600}, result, QueryAutomatic));
+    automaticResult.w = 800; automaticResult.h = 768;
+    EXPECT_FALSE(Platform::SDLDetails::FindAutomaticDisplayMode(99, {800, 600}, result, QueryAutomatic));
+    automaticResult.h = 600; automaticResult.displayID = 42;
+    EXPECT_FALSE(Platform::SDLDetails::FindAutomaticDisplayMode(99, {800, 600}, result, QueryAutomatic));
+    automaticResult.displayID = 99; automaticAvailable = false;
+    EXPECT_FALSE(Platform::SDLDetails::FindAutomaticDisplayMode(99, {800, 600}, result, QueryAutomatic));
+}
+
 class SDLDisplayCatalog : public ::testing::Test {
 protected:
     void SetUp() override {

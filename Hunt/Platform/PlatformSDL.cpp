@@ -17,6 +17,12 @@ WindowDisplay MapWindowDisplay(const std::vector<NativeDisplay>& displays, SDL_D
     return {primary, std::nullopt, std::nullopt};
 }
 
+bool FindAutomaticDisplayMode(SDL_DisplayID display, Size size, SDL_DisplayMode& result, ClosestModeQuery query)
+{
+    return query(display, size.width, size.height, 0, false, &result) &&
+        result.displayID == display && result.w == size.width && result.h == size.height;
+}
+
 DisplayMode CopyDisplayMode(const SDL_DisplayMode& mode)
 {
     // SDL 3.2 finalizes the rational fields even for float-only video drivers.
@@ -406,8 +412,7 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
             }
         }
         if (!explicitMode) {
-            applied = SDL_GetClosestFullscreenDisplayMode(display, size.width, size.height, 0, false, &closest) &&
-                closest.w == size.width && closest.h == size.height &&
+            applied = SDLDetails::FindAutomaticDisplayMode(display, size, closest) &&
                 SDL_SetWindowFullscreenMode(gameWindow, &closest) && SDL_SetWindowFullscreen(gameWindow, true);
         }
         if (!applied) {
