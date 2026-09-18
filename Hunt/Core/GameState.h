@@ -376,6 +376,8 @@ GLOBAL   LPDIRECTDRAWSURFACE lpddsPrimary;
 GLOBAL   std::int32_t DirectActive, FULLSCREEN, BORDERLESS, RestartMode;
 // Modern config only; never part of the legacy profile/OptRes representation.
 GLOBAL   Platform::RefreshRate PreferredRefresh;
+// CLI only, retained across Alt+Enter. Never written to config or profiles.
+GLOBAL   std::optional<std::uint32_t> RequestedDisplayIndex;
 
 GLOBAL   std::int32_t LoDetailSky;
 

@@ -6,6 +6,7 @@
 #include "Platform/System.h"
 #include "Game/ResolutionSelection.h"
 #include "Game/RefreshPreference.h"
+#include "Game/DisplayPreference.h"
 #ifdef _WIN32
 #include "Network/NetworkManager.h"
 #endif
@@ -45,6 +46,14 @@ void ProcessCommandLine()
   for (const auto& argument : Platform::Arguments())
   {
     const char* s = argument.c_str();
+    const auto displayArgument = GameDisplay::ApplyDisplayArgument(s, RequestedDisplayIndex);
+    if (displayArgument != GameDisplay::DisplayArgument::Unrelated) {
+      if (displayArgument == GameDisplay::DisplayArgument::Invalid) {
+        snprintf(logt, sizeof(logt), "Command line: invalid display argument '%.24s': expected uint32 digits; using primary display.\n", s);
+        PrintLog(logt);
+      }
+      continue; // Also consume malformed values before legacy substring parsing.
+    }
     const auto refreshArgument = GameDisplay::ApplyRefreshArgument(s, PreferredRefresh);
     if (refreshArgument != GameDisplay::RefreshArgument::Unrelated) {
       if (refreshArgument == GameDisplay::RefreshArgument::Invalid) {
