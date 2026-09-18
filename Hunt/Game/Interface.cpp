@@ -316,28 +316,28 @@ void SetVideoMode(int W, int H)
   std::optional<Platform::DisplayMode> exclusiveMode;
   std::optional<Platform::DisplayTarget> target;
   const bool wantsRefresh = mode == Platform::WindowMode::Exclusive && Platform::HasRefresh(PreferredRefresh);
-  if ((RequestedDisplayIndex || wantsRefresh) && Platform::HasGameWindow()) {
+  const bool wantsMonitor = PreferredMonitor.kind != GameDisplay::MonitorPreferenceKind::Primary;
+  if ((wantsMonitor || wantsRefresh) && Platform::HasGameWindow()) {
     // One snapshot for presentation AND refresh selection. ResolutionList and
     // OptRes keep their primary/default compatibility projection unchanged.
     const auto catalog = Platform::QueryDisplayCatalog();
-    const auto selected = GameDisplay::SelectDisplay(catalog, RequestedDisplayIndex, {W, H},
+    const auto selected = GameDisplay::SelectMonitor(catalog, PreferredMonitor, {W, H},
         wantsRefresh ? PreferredRefresh : Platform::RefreshRate{});
     target = selected.target;
     exclusiveMode = selected.exclusiveMode;
-    if (RequestedDisplayIndex) {
+    if (wantsMonitor) {
       if (selected.fallback != GameDisplay::DisplayFallback::None)
-        LOG_WARN("Runtime display %u: %s; using primary/default display%s",
-                 *RequestedDisplayIndex, GameDisplay::DisplayFallbackReason(selected.fallback),
+        LOG_WARN("Display preference: %s; using primary/default display%s",
+                 GameDisplay::DisplayFallbackReason(selected.fallback),
+                 PreferredMonitor.kind == GameDisplay::MonitorPreferenceKind::Identity ||
                  selected.fallback == GameDisplay::DisplayFallback::AmbiguousBounds ? " and automatic refresh" : "");
       if (selected.index) {
-        LOG_INFO("Runtime display %u resolved to %s catalog index %zu",
-                 *RequestedDisplayIndex, selected.index == catalog.primaryDisplay ? "primary" : "secondary",
-                 *selected.index);
+        LOG_INFO("Display preference resolved to %s catalog index %zu",
+                 selected.index == catalog.primaryDisplay ? "primary" : "secondary", *selected.index);
         const auto& bounds = catalog.displays[*selected.index].bounds;
-        if (bounds)
-          LOG_INFO("Runtime display bounds: (%d,%d) %dx%d", bounds->origin.x, bounds->origin.y,
-                   bounds->size.width, bounds->size.height);
-      } else LOG_WARN("Runtime display: catalog has no usable primary entry; using backend default fallback");
+        if (bounds) LOG_INFO("Runtime display bounds: (%d,%d) %dx%d", bounds->origin.x, bounds->origin.y,
+                             bounds->size.width, bounds->size.height);
+      }
     }
     if (wantsRefresh && !exclusiveMode && selected.fallback != GameDisplay::DisplayFallback::AmbiguousBounds)
       LOG_WARN("Exclusive %dx%d refresh %u/%u unavailable on selected display; using automatic refresh",

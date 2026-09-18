@@ -28,4 +28,5 @@ namespace Platform::SDLCompatibility {
 void SetProcessActive(bool active);
 std::uint8_t LayoutKey(const SDL_KeyboardEvent& event, std::uint8_t fallback);
 void OrderDisplayModes(DisplayInfo& info);
+void DiscoverMonitorIdentities(DisplayCatalog& catalog);
 }

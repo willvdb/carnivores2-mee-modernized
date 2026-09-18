@@ -46,10 +46,10 @@ void ProcessCommandLine()
   for (const auto& argument : Platform::Arguments())
   {
     const char* s = argument.c_str();
-    const auto displayArgument = GameDisplay::ApplyDisplayArgument(s, RequestedDisplayIndex);
+    const auto displayArgument = GameDisplay::ApplyMonitorArgument(s, PreferredMonitor);
     if (displayArgument != GameDisplay::DisplayArgument::Unrelated) {
       if (displayArgument == GameDisplay::DisplayArgument::Invalid) {
-        snprintf(logt, sizeof(logt), "Command line: invalid display argument '%.24s': expected uint32 digits; using primary display.\n", s);
+        snprintf(logt, sizeof(logt), "Command line: invalid display argument '%.24s': expected display index/primary or versioned display-id; using primary display.\n", s);
         PrintLog(logt);
       }
       continue; // Also consume malformed values before legacy substring parsing.

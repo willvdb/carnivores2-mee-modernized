@@ -207,6 +207,7 @@ DisplayCatalog QueryDisplayCatalog()
             catalog.displays.push_back(ReadDisplay(id));
         }
     }
+    SDLCompatibility::DiscoverMonitorIdentities(catalog);
     return catalog;
 }
 

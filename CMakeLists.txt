@@ -363,8 +363,14 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(FETCHCONTENT_QUIET OFF)
     FetchContent_MakeAvailable(googletest)
 
+    include(tests/extract_menu_config.cmake)
+    add_executable(Carnivores2MenuConfigTests tests/test_menu_config_preservation.cpp)
+    target_include_directories(Carnivores2MenuConfigTests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+    target_link_libraries(Carnivores2MenuConfigTests PRIVATE gtest_main)
+    add_test(NAME Carnivores2Tests.MenuConfig COMMAND Carnivores2MenuConfigTests)
+
     add_executable(Carnivores2PlatformTests tests/test_platform_policies.cpp tests/test_display_catalog.cpp
-        tests/test_refresh_policy.cpp tests/test_display_targeting.cpp)
+        tests/test_refresh_policy.cpp tests/test_display_targeting.cpp tests/test_display_persistence.cpp)
     target_link_libraries(Carnivores2PlatformTests PRIVATE gtest_main)
     if(WIN32)
         target_sources(Carnivores2PlatformTests PRIVATE tests/test_platform_win32.cpp Hunt/Platform/PlatformWin32.cpp)

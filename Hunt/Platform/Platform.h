@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <optional>
 #include <vector>
+#include <string>
 
 // Single game window, main application thread. No engine globals or native
 // handles belong to this interface. Backends and native compatibility are separate.
@@ -57,11 +58,23 @@ constexpr bool EqualDisplayBounds(DisplayBounds a, DisplayBounds b)
     return a.origin.x == b.origin.x && a.origin.y == b.origin.y &&
         a.size.width == b.size.width && a.size.height == b.size.height;
 }
+// An owned OS registration identity, not a physical monitor serial number.
+// Version/domain are explicit; value is an opaque lowercase hex encoding.
+struct DisplayIdentity {
+    std::uint32_t version = 1;
+    std::string domain;
+    std::string value;
+};
+inline bool EqualDisplayIdentity(const DisplayIdentity& a, const DisplayIdentity& b)
+{
+    return a.version == b.version && a.domain == b.domain && a.value == b.value;
+}
 struct Display {
     std::optional<DisplayBounds> bounds;
     std::optional<DisplayMode> desktopMode;
     std::optional<DisplayMode> currentMode;
     std::vector<DisplayMode> modes; // Raw backend order, all refresh/depth variants.
+    std::optional<DisplayIdentity> identity; // Missing/ambiguous/unsupported stays absent.
 };
 // An index into this snapshot's displays vector, NOT a persistent identity or
 // a promise of stable ordering between queries. Never serialize it.

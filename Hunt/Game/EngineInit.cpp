@@ -885,7 +885,10 @@ static void LoadConfig()
     int keyEnd = 0;
     int tokens = sscanf(line, "%63s%n %63s", key, &keyEnd, keyval);
     if (tokens >= 1) {
-      if (LegacyText::Compare(key, "refresh_rate") == 0) {
+      if (LegacyText::Compare(key, "display_identity") == 0) {
+        if (!GameDisplay::ParseConfigMonitor(line + keyEnd, PreferredMonitor))
+          PrintLog("Config: invalid display_identity; using primary display.\n");
+      } else if (LegacyText::Compare(key, "refresh_rate") == 0) {
         if (!GameDisplay::ParseConfigRefresh(line + keyEnd, PreferredRefresh)) {
           PrintLog("Config: refresh_rate: ");
           PrintLog(GameDisplay::RefreshSyntax);

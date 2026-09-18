@@ -1,6 +1,7 @@
 #include "Platform.h"
 #include "PlatformWin32.h"
 #include "PlatformWin32Display.h"
+#include "DisplayIdentityWin32.h"
 #include "../Debug/Log.h"
 #include <mmsystem.h>
 #include <utility>
@@ -146,6 +147,7 @@ DisplayCatalog QueryDisplayCatalog()
 {
     DisplayCatalog catalog;
     EnumDisplayMonitors(nullptr, nullptr, CollectDisplay, reinterpret_cast<LPARAM>(&catalog));
+    Win32Details::DiscoverMonitorIdentities(catalog);
     return catalog;
 }
 

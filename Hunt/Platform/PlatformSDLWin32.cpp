@@ -1,5 +1,6 @@
 #include "PlatformWin32.h"
 #include "PlatformSDLInternal.h"
+#include "DisplayIdentityWin32.h"
 #include <algorithm>
 
 namespace Platform::Win32 {
@@ -14,6 +15,11 @@ HWND GameWindow()
 }
 
 namespace Platform::SDLCompatibility {
+void DiscoverMonitorIdentities(DisplayCatalog& catalog)
+{
+    const auto* driver = SDL_GetCurrentVideoDriver();
+    if (driver && SDL_strcmp(driver, "windows") == 0) Win32Details::DiscoverMonitorIdentities(catalog);
+}
 void SetProcessActive(bool active)
 {
     // SDL has thread priority, not the legacy process-wide priority operation.
