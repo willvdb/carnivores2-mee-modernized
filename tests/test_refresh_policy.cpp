@@ -83,6 +83,18 @@ TEST(RefreshPreference, UnrelatedArgumentsDoNotTouchPreference)
     }
 }
 
+TEST(RefreshPreference, MalformedRefreshArgumentsAreConsumedBeforeLegacySubstringOptions)
+{
+    // The caller continues after either Applied or Invalid. A malformed value
+    // must not reach the legacy x=/reg=/prj=/din= substring parsers.
+    for (const char* arg : {"-refresh=x=60", "/refresh=reg=2", "-refresh=prj=AREA2",
+                            "/refresh=din=3", "-refresh=", "/refresh=60.0"}) {
+        Platform::RefreshRate rate{144, 1};
+        EXPECT_EQ(GameDisplay::ApplyRefreshArgument(arg, rate), GameDisplay::RefreshArgument::Invalid);
+        ExpectRate(rate, 0, 0);
+    }
+}
+
 TEST(RefreshComparison, ExactValuesWithoutNormalizationOrFloatingPoint)
 {
     EXPECT_TRUE(GameDisplay::EqualRefresh({60, 1}, {60000, 1000}));
