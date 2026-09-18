@@ -1,7 +1,10 @@
 #include "../Hunt/Platform/Platform.h"
 #include "../Hunt/Platform/PlatformWin32.h"
+#include "../Hunt/Debug/Log.h"
 #include <gtest/gtest.h>
 #include <cstring>
+
+void LogWrite(LogLevel, const char*, int, const char*, ...) {}
 
 TEST(PlatformWin32, PollsEveryLegacyKeyboardByteWithoutTranslation)
 {

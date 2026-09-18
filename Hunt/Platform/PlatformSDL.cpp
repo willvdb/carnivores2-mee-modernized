@@ -2,6 +2,7 @@
 #include "LegacyKeyboardSDL.h"
 #include "PlatformSDLInternal.h"
 #include "../Debug/Log.h"
+#include "../Game/RefreshSelection.h"
 #include <algorithm>
 #include <memory>
 #include <optional>
@@ -16,6 +17,16 @@ DisplayMode CopyDisplayMode(const SDL_DisplayMode& mode)
                           static_cast<std::uint32_t>(mode.refresh_rate_denominator))
         : RefreshRate{};
     return {{mode.w, mode.h}, static_cast<std::uint32_t>(SDL_BITSPERPIXEL(mode.format)), refresh};
+}
+
+const SDL_DisplayMode* FindRefreshMode(SDL_DisplayMode* const* modes, int count,
+                                      Size size, RefreshRate refresh)
+{
+    if (!modes || !GameDisplay::HasRefresh(refresh)) return nullptr;
+    for (int i = 0; i < count; ++i)
+        if (modes[i] && GameDisplay::MatchesRefreshMode(CopyDisplayMode(*modes[i]), size, refresh))
+            return modes[i];
+    return nullptr;
 }
 }
 
@@ -303,7 +314,7 @@ Size ClientSize()
     if (gameWindow) SDL_GetWindowSizeInPixels(gameWindow, &width, &height);
     return {width, height};
 }
-void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter)
+void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter, RefreshRate refresh)
 {
     if (!gameWindow) return;
     Check(SDL_SetWindowFullscreen(gameWindow, false), "SDL leave fullscreen");
@@ -314,9 +325,35 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter)
         // a desktop-sized popup when the exact mode cannot be applied.
         SDL_DisplayMode closest{};
         const auto display = SDL_GetPrimaryDisplay();
-        bool applied = SDL_GetClosestFullscreenDisplayMode(display, size.width, size.height, 0, false, &closest) &&
-            closest.w == size.width && closest.h == size.height &&
-            SDL_SetWindowFullscreenMode(gameWindow, &closest) && SDL_SetWindowFullscreen(gameWindow, true);
+        bool explicitMode = false;
+        bool applied = false;
+        if (GameDisplay::HasRefresh(refresh)) {
+            int count = 0;
+            const std::unique_ptr<SDL_DisplayMode*, decltype(&SDL_free)> modes(
+                SDL_GetFullscreenDisplayModes(display, &count), SDL_free);
+            if (const auto* selected = SDLDetails::FindRefreshMode(modes.get(), count, size, refresh)) {
+                explicitMode = true;
+                // SDL 3.2.28 copies the mode in SetWindowFullscreenMode. Keep
+                // the single enumeration allocation alive through application;
+                // no SDL mode pointer is retained by the engine.
+                applied = SDL_SetWindowFullscreenMode(gameWindow, selected) &&
+                    SDL_SetWindowFullscreen(gameWindow, true);
+                if (applied)
+                    LOG_INFO("SDL exclusive %dx%d refresh %u/%u applied", size.width, size.height,
+                             refresh.numerator, refresh.denominator);
+                else
+                    LOG_WARN("SDL exclusive refresh %u/%u application failed: %s",
+                             refresh.numerator, refresh.denominator, SDL_GetError());
+            } else {
+                LOG_WARN("SDL exclusive %dx%d refresh %u/%u unavailable; using automatic refresh",
+                         size.width, size.height, refresh.numerator, refresh.denominator);
+            }
+        }
+        if (!explicitMode) {
+            applied = SDL_GetClosestFullscreenDisplayMode(display, size.width, size.height, 0, false, &closest) &&
+                closest.w == size.width && closest.h == size.height &&
+                SDL_SetWindowFullscreenMode(gameWindow, &closest) && SDL_SetWindowFullscreen(gameWindow, true);
+        }
         if (!applied) {
             LOG_WARN("SDL exclusive %dx%d unavailable; using desktop popup: %s", size.width, size.height, SDL_GetError());
             SDL_SetWindowFullscreen(gameWindow, false);

@@ -129,7 +129,8 @@ PumpResult PumpOneEvent(int& quitCode, Event* event = nullptr);
 void RequestQuit();
 
 enum class WindowMode { Exclusive, Borderless, Windowed };
-void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter);
+// Refresh applies only to exclusive fullscreen; 0/0 retains the legacy path.
+void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter, RefreshRate refresh = {});
 Size ClientSize();
 void ShowLoadingWindow(Size size);
 void RestoreDesktopMode();

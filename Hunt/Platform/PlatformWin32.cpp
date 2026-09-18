@@ -1,5 +1,7 @@
 #include "Platform.h"
 #include "PlatformWin32.h"
+#include "../Game/RefreshSelection.h"
+#include "../Debug/Log.h"
 #include <mmsystem.h>
 #include <utility>
 
@@ -240,7 +242,7 @@ Size ClientSize()
     return {rect.right - rect.left, rect.bottom - rect.top};
 }
 
-void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter)
+void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter, RefreshRate refresh)
 {
   if (mode == WindowMode::Exclusive) {
     SetWindowLong(gameWindow, GWL_STYLE, WS_VISIBLE | WS_POPUP);
@@ -251,6 +253,34 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter)
     // resolution the monitor cannot display). ChangeDisplaySettings is
     // per-process: the desktop is restored automatically on exit.
     bool modeSet = false;
+    if (GameDisplay::HasRefresh(refresh)) {
+      const auto hz = GameDisplay::IntegerRefreshHz(refresh);
+      // DEVMODE reserves 0 and 1 for the hardware default, not exact Hz.
+      if (hz && *hz > 1) {
+        DEVMODE explicitMode{};
+        explicitMode.dmSize = sizeof(explicitMode);
+        explicitMode.dmPelsWidth = size.width;
+        explicitMode.dmPelsHeight = size.height;
+        explicitMode.dmBitsPerPel = 32;
+        explicitMode.dmDisplayFrequency = *hz;
+        explicitMode.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL | DM_DISPLAYFREQUENCY;
+        if (ChangeDisplaySettings(&explicitMode, CDS_FULLSCREEN) == DISP_CHANGE_SUCCESSFUL)
+          modeSet = true;
+        else {
+          explicitMode.dmBitsPerPel = 16;
+          if (ChangeDisplaySettings(&explicitMode, CDS_FULLSCREEN) == DISP_CHANGE_SUCCESSFUL)
+            modeSet = true;
+        }
+        if (!modeSet)
+          LOG_WARN("Win32 exclusive %dx%d refresh %u Hz rejected; using automatic refresh",
+                   size.width, size.height, *hz);
+      } else {
+        LOG_WARN("Win32 exclusive refresh %u/%u cannot be expressed exactly by DEVMODE; using automatic refresh",
+                 refresh.numerator, refresh.denominator);
+      }
+    }
+
+    if (!modeSet) {
     DEVMODE dm;
     ZeroMemory(&dm, sizeof(dm));
     dm.dmSize = sizeof(dm);
@@ -264,6 +294,7 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter)
       dm.dmBitsPerPel = 16;
       if (ChangeDisplaySettings(&dm, CDS_FULLSCREEN) == DISP_CHANGE_SUCCESSFUL)
         modeSet = true;
+    }
     }
 
     int dispW = GetSystemMetrics(SM_CXSCREEN);

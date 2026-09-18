@@ -55,6 +55,28 @@ TEST(SDLDisplayConversion, InvalidAndUnspecifiedFractionsDoNotBecomeHugeUnsigned
     }
 }
 
+TEST(SDLRefreshSelection, UsesNativeModeIdentityAndExactRationalsInBackendOrder)
+{
+    SDL_DisplayMode low{}, wrongSize{}, integer{}, duplicate{}, fractional{};
+    integer.w = 800; integer.h = 600; integer.format = SDL_PIXELFORMAT_RGB565;
+    integer.refresh_rate = 59.0f; // The convenience float must not drive selection.
+    integer.refresh_rate_numerator = 60000; integer.refresh_rate_denominator = 1000;
+    low = integer; low.format = SDL_PIXELFORMAT_INDEX8;
+    wrongSize = integer; wrongSize.h = 768;
+    duplicate = integer; duplicate.format = SDL_PIXELFORMAT_XRGB8888;
+    duplicate.refresh_rate_numerator = 60; duplicate.refresh_rate_denominator = 1;
+    fractional = duplicate; fractional.refresh_rate_denominator = 1001;
+    fractional.refresh_rate_numerator = 60000;
+    SDL_DisplayMode* modes[] = {&low, &wrongSize, &integer, &duplicate, &fractional};
+    EXPECT_EQ(Platform::SDLDetails::FindRefreshMode(modes, 5, {800, 600}, {60, 1}), &integer);
+    EXPECT_EQ(Platform::SDLDetails::FindRefreshMode(modes, 5, {800, 600}, {120, 2}), &integer);
+    EXPECT_EQ(Platform::SDLDetails::FindRefreshMode(modes, 5, {800, 600}, {60000, 1001}), &fractional);
+    EXPECT_EQ(Platform::SDLDetails::FindRefreshMode(modes, 5, {800, 600}, {5994, 100}), nullptr);
+    EXPECT_EQ(Platform::SDLDetails::FindRefreshMode(modes, 5, {800, 600}, {144, 1}), nullptr);
+    EXPECT_EQ(Platform::SDLDetails::FindRefreshMode(modes, 5, {800, 600}, {}), nullptr);
+    EXPECT_EQ(Platform::SDLDetails::FindRefreshMode(nullptr, 0, {800, 600}, {60, 1}), nullptr);
+}
+
 class SDLDisplayCatalog : public ::testing::Test {
 protected:
     void SetUp() override {

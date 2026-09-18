@@ -4,6 +4,9 @@
 
 namespace Platform::SDLDetails {
 DisplayMode CopyDisplayMode(const SDL_DisplayMode& mode);
+// Borrowed result: consume before freeing the SDL fullscreen-mode allocation.
+const SDL_DisplayMode* FindRefreshMode(SDL_DisplayMode* const* modes, int count,
+                                      Size size, RefreshRate refresh);
 }
 
 // Private backend bridge for genuinely deferred Windows compatibility.
