@@ -1,52 +1,84 @@
-# Phase 4 implementation checkpoint
+# Phase 4 implementation handoff
 
 Worktree: `/home/willvdb/code/games/carnivores2-phase4-persistence`.
-4e branch `port/display-persistence`, completed implementation at
-`527762b31b1d85be04794bc78617647e712b0c4f`, based on
-`a2cfec8ef3590c6c8d56d16c7a69e4c0e5327f5a`.
-4f branch `port/display-configuration`, stacked on 4e; this commit is the implementation milestone.
-No main merge authorized; frontend checkout untouched. Deadline 2026-09-19 22:35 UTC.
+Base main: `a2cfec8ef3590c6c8d56d16c7a69e4c0e5327f5a`.
+No main merge authorized or performed. Frontend checkout untouched.
+Deadline for new work: 2026-09-19 22:35 UTC. Implementation finished early;
+remaining action is exact-tip CI/independent review, then Will's merge decision.
 
-4e implements Windows registered monitor-interface identity (device path, not
-physical serial), conservative native/SDL rectangle association, explicit Linux
-unsupported persistence, manual opt-in config, asset-free discovery, session
-overrides, retained intent and primary/automatic fallback. Source evidence and
-full contract are in docs/DISPLAY_CONFIGURATION.md.
+## Review order and branches
 
-4e validation:
-- Exact-SHA CI all 12 jobs green: https://github.com/willvdb/carnivores2-mee-modernized/actions/runs/35403091566
-  Windows native+SDL x86/x64 Debug/Release, SOFT, Menu; Linux Debug/Release incl X11 regression.
-- Local GCC Debug/Release and Clang game builds and 14 active CTest checks pass
-  (15 total, ordinary opt-in X11 skipped); portable GCC/Clang strict ASan/UBSan/LSan 66/66.
-- MSVC x64/Wine Platform/MenuConfig/boundary pass. Asset-free -list-displays exits
-  0 under dummy and creates only logs, no config/profile.
-- Virtual X11: 20 cycles/display, zero SDL allocations, both modes restored.
+1. `port/display-persistence`: `23070c70911682ba588bb78bd21c076b39c49f85`.
+   Core 4e is `527762b31b1d85be04794bc78617647e712b0c4f`; the final commit rejects
+   incomplete native bounds discovery and adds native/SDL regression coverage.
+2. `port/display-configuration`: implementation `9ba9579d2df971e7f04506f6600d6397d156b9aa`,
+   integrated with the 4e correction at `ebb16d0ad89c1c8702c2bc18004cbd1b3513e2a7`.
+   This final handoff commit changes documentation only. `git rev-parse HEAD`
+   identifies its exact tip; no history was rewritten.
+
+4e is implemented with an explicitly partial platform capability: Windows
+registered monitor device-interface identity, **not physical serial identity**;
+Linux persistence is unsupported rather than guessed from names/coordinates.
+Opt-in manual config, asset-free `-list-displays`, session primary/index/identity
+CLI overrides, immutable saved intent, unique association and primary/automatic
+fallback are implemented/tested. Native discovery now fails closed when any
+monitor rectangle cannot be read. No new UI or automatic preference saving.
+
+4f is implemented: one engine configuration owns dimensions, window mode,
+monitor and rational refresh; narrow legacy projections serve renderer/SOFT.
+Defaults -> legacy adapter -> config -> final CLI precedence, unmatched config
+versus CLI OptRes behavior, {0,0} unspecified pre-profile startup, actual-client
+size and Alt+Enter flow are retained. No legacy formats change.
+Full source evidence, contracts and requirement trace: docs/DISPLAY_CONFIGURATION.md.
+
+## Validation
+
+- Core 4e exact-SHA matrix: all 12 jobs green,
+  https://github.com/willvdb/carnivores2-mee-modernized/actions/runs/35403091566
+- Core 4f exact-SHA matrix: all 12 jobs green,
+  https://github.com/willvdb/carnivores2-mee-modernized/actions/runs/35403898799
+- Corrected 4e exact-SHA matrix:
+  https://github.com/willvdb/carnivores2-mee-modernized/actions/runs/35404193186
+- Integrated correction matrix:
+  https://github.com/willvdb/carnivores2-mee-modernized/actions/runs/35404194632
+  The final handoff reports completion/current exact-tip run; follow-up runs
+  include this documentation checkpoint without changing validated production code.
+- Matrix covers Windows native/SDL GL x86/x64 Debug/Release, SOFT, Menu; Linux
+  Debug/Release, boundary check, golden serialization and virtual-X11 regression.
+- Local GCC Debug/Release and Clang: full game builds and 14 active CTest checks
+  pass (15 total including an ordinary opt-in X11 skip). Core 4f has 329 GoogleTests;
+  correction adds one Linux SDL test and two additional Windows helper tests.
+- Portable strict GCC/Clang C++17 -Wall -Wextra -Werror, ASan/UBSan/LSan: 73/73 each.
+- MSVC x64/Wine: native identity/configuration, Menu writer and boundary pass.
+- Asset-free discovery: dummy exits 0, only logs, no assets/window/config/profile.
+- Actual production Menu SaveConfig body preserves identity, exact refresh,
+  unknown keys/versions and comments through two rewrites, without Menu edits.
 - Mutation removing saved-target failure refresh clearing fails its regression.
-Evidence /tmp/carnivores-phase4e; Debug logs /tmp/phase4-{build,tests}.log.
+- Ten full-game hunts in disposable X11: expected placement/refresh, saved
+  missing/unknown identity -> primary automatic even with supported primary
+  refresh, CLI primary/index overrides, Alt+Enter, oversize borderless,
+  config/CLI unmatched ordinal differences and malformed-option isolation.
+  All normal exits; both desktops restored; .sav/.sab 1660/7176 bytes and all
+  68 keybinding bytes retained in copied profiles. Host state untouched.
+- Two fully instrumented full-game hunts (secondary exact refresh and missing
+  saved target, both Alt+Enter out/back): exit 0 with ASan/UBSan/LSan enabled.
+- Fully instrumented X11 regression: 20 cycles per display, zero outstanding
+  SDL allocations and both desktop modes restored. No leak suppression.
+- Full instrumented CTest: 13 active passes, one known SDL_video.c:1341 dummy
+  null-source zero-length memcpy UBSan failure, one opt-in skip. This is NOT
+  claimed as a wholly green sanitizer suite.
 
-4f implementation in progress: single GameDisplay::Configuration authority,
-startup/profile/config/CLI adapters, narrow legacy projections, preserved
-actual-client-size/Alt+Enter state flow. Characterized {0,0} missing-profile
-startup sentinel retained. No parser syntax or profile format change.
-GCC Debug/Release and full Clang builds/tests pass. New portable configuration
-tests cover source composition, unmatched ordinals, SOFT, actual size and toggle.
-4f validation before push:
-- Strict GCC/Clang portable ASan/UBSan/LSan: 73/73 each.
-- MSVC x64/Wine Platform/MenuConfig/boundary: pass.
-- Ten copied-profile virtual full hunts: normal exits, expected targeting/refresh,
-  saved missing/unknown identity -> primary automatic, CLI index/primary overrides,
-  Alt+Enter, oversize borderless, config/CLI unmatched OptRes difference and
-  malformed-option isolation. Every desktop restored; .sav/.sab sizes 1660/7176
-  and 68 keybinding bytes unchanged. No host display/config/profile changes.
-- Fully instrumented SDL/engine CTest: 13 active passes, known SDL_video.c:1341
-  dummy null-source memcpy UBSan failure, one opt-in X11 skip. No suppression.
-- Fully instrumented virtual X11 mode regression: 20 cycles/display, zero SDL
-  allocations, both desktop modes restored.
-Next: push/inspect exact-SHA hosted matrix and independent review corrections.
-Instrumented full-game hunts can provide additional focused evidence.
-Evidence /tmp/carnivores-phase4f; Debug /tmp/carnivores-phase4f-{build,tests}.log.
+Evidence: `/tmp/carnivores-phase4e/`, `/tmp/carnivores-phase4f/` (validation.json,
+CI JSON/logs, runtime traces/results, sanitizer logs), plus
+`/tmp/carnivores-phase4f-{build,tests}.log`. Test profiles/assets remain outside git.
 
-Known limits: unsupported Linux persistence (not faked from names/EDID/coordinates);
-no physical Windows multi-monitor acceptance; Hyprland/Xwayland exclusive limit;
-independent SDL X11 init/teardown leak and dummy null-source zero-length memcpy
-UBSan issue. Do not suppress these or claim full sanitizer/physical acceptance.
+## Remaining limits / next safe action
+
+No implementation blocker remains within the declared partial-platform contract.
+Inspect exact-tip hosted CI and review both feature branches. Apply any in-scope
+review correction as a new focused commit; do not merge main. Physical Windows
+multi-monitor acceptance remains outstanding. Hyprland/Xwayland exclusive
+secondary targeting is not accepted; direct Wayland is not certified. Linux
+persistent identity is unsupported. Existing SDL X11 initialization/teardown
+leak and dummy UBSan dependency issues remain unsuppressed. Do not label all
+physical/platform acceptance complete or broaden into Phase 5/frontend work.

@@ -1,8 +1,10 @@
 # Display configuration, discovery and selection
 
-The sections below record each milestone's boundary. For current one-session
-monitor targeting, see [Phase 4d](#phase-4d-explicit-runtime-display-targeting).
-Earlier primary-only descriptions describe their respective earlier phases.
+The sections below record each milestone's boundary. Current opt-in persistence
+and consolidated engine state are described in [Phase 4e](#phase-4e-opt-in-registered-display-identity)
+and [Phase 4f](#phase-4f-one-engine-configuration-with-legacy-projections).
+[Phase 4d](#phase-4d-explicit-runtime-display-targeting) defines the retained
+session-targeting contract. Earlier primary-only descriptions are historical.
 
 ## Phase 4a: dimension-first resolution selection
 
@@ -1110,7 +1112,7 @@ difference are unchanged. ResolutionList's Windows ordering shim remains solely
 for profile/Menu compatibility. There is no replacement binary profile record.
 
 Window mode has one enum instead of two independently authoritative flags.
-Config `display_mode=2` still maps to exclusive on SOFT; existing CLI borderless
+Config `display_mode 2` still maps to exclusive on SOFT; existing CLI borderless
 behavior is retained separately. Alt+Enter maps borderless -> exclusive,
 exclusive -> windowed, windowed -> exclusive. It keeps monitor/refresh intent.
 On a valid backend client-size adjustment, the configuration and compatibility
