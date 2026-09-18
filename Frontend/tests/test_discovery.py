@@ -1,0 +1,71 @@
+import tempfile
+import unittest
+from pathlib import Path
+
+from lodge.discovery import (discover, fingerprint, inspect_instance, move_candidates,
+                             recognize, refresh_instance, register, relocate, resolve_reference)
+from lodge.store import FrontendError, empty_manifest
+from support import game
+
+
+class DiscoveryTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = game(self.temp.name)
+        self.data = empty_manifest()
+
+    def test_coherent_and_nested_roots_not_overlays(self):
+        other = game(self.temp.name, 'bundle/deep/- Game')
+        overlay = Path(self.temp.name) / 'pack/weapon/HUNTDAT'
+        overlay.mkdir(parents=True)
+        (overlay / '_RES.TXT').write_text('weapons {}')
+        results = discover(self.temp.name)
+        self.assertEqual({r['path'] for r in results if r['recognized']}, {str(self.root), str(other)})
+        self.assertFalse(recognize(overlay.parent)['recognized'])
+
+    def test_stable_identity_move_clone_and_missing(self):
+        instance = register(self.data, self.root)
+        self.assertEqual(register(self.data, self.root / '.')['id'], instance['id'])
+        with self.assertRaises(FrontendError):
+            relocate(self.data, instance['id'], self.root)
+        moved = self.root.with_name('Moved Ω')
+        self.root.rename(moved)
+        self.assertFalse(inspect_instance(instance)['recognized'])
+        self.assertEqual(move_candidates(self.data, moved), [instance['id']])
+        self.assertEqual(relocate(self.data, instance['id'], moved)['id'], instance['id'])
+        clone = game(self.temp.name, 'Clone')
+        self.assertNotEqual(register(self.data, clone)['id'], instance['id'])
+
+    def test_fingerprint_ignores_mutable_and_detects_content(self):
+        instance = register(self.data, self.root)
+        old = fingerprint(self.root)
+        for name in ('trophy00.sav', 'trace.log', 'config.cfg'):
+            (self.root / 'HUNTDAT' / name).write_bytes(b'mutable')
+        self.assertEqual(old, fingerprint(self.root))
+        (self.root / 'HUNTDAT/_RES.TXT').write_text('changed content')
+        self.assertTrue(inspect_instance(instance)['revision_changed'])
+        self.assertEqual(instance['revision'], old)
+        refresh_instance(instance)
+        self.assertEqual(len(instance['revisions']), 2)
+
+    def test_case_collision_traversal_and_symlink(self):
+        self.assertEqual(resolve_reference(self.root, r'huntdat\areas\area1.map')['status'], 'found')
+        self.assertEqual(resolve_reference(self.root, '../elsewhere')['status'], 'unsafe')
+        self.assertEqual(resolve_reference(self.root, 'C:\\elsewhere')['status'], 'unsafe')
+        (self.root / 'HUNTDAT/areas').mkdir()
+        self.assertEqual(resolve_reference(self.root, 'HUNTDAT/AREAS')['status'], 'ambiguous')
+        try:
+            (self.root / 'escape').symlink_to(Path(self.temp.name), target_is_directory=True)
+        except OSError:
+            self.skipTest('symlinks unavailable')
+        self.assertEqual(resolve_reference(self.root, 'escape')['status'], 'unsafe')
+
+    def test_managed_mode_requires_explicit_root(self):
+        with self.assertRaises(FrontendError):
+            register(self.data, self.root, 'managed')
+        self.assertEqual(register(self.data, self.root, 'managed', managed_root=self.temp.name)['mode'], 'managed')
+
+
+if __name__ == '__main__':
+    unittest.main()
