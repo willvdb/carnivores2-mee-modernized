@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
+import re
 
 from .store import FrontendError, new_id, now
 
@@ -62,6 +63,16 @@ def walk_files(root):
 def fingerprint(root):
     content = resolved_path(root, 'HUNTDAT')
     entries = []
+    # Omitting aliases would make revision equality falsely ignore live content.
+    for parent, dirs, files in os.walk(content, followlinks=False):
+        seen = set()
+        for name in dirs + files:
+            path = Path(parent) / name
+            if path.is_symlink():
+                raise FrontendError(f'content symlink requires explicit policy: {path.relative_to(content)}')
+            if name.casefold() in seen:
+                raise FrontendError(f'case-colliding content names: {path.relative_to(content)}')
+            seen.add(name.casefold())
     for path in walk_files(content):
         relative = path.relative_to(content)
         if path.suffix.lower() in MUTABLE_SUFFIXES or any(p.casefold() in MUTABLE_DIRS for p in relative.parts[:-1]):
@@ -87,7 +98,7 @@ def recognize(root):
         status = resolve_reference(root, reference)
         if status['status'] != 'found':
             result['diagnostics'].append(diagnostic('incomplete-root', 'Required coherent-root evidence unavailable.', **status))
-    result['executables'] = [p.name for p in root.iterdir() if p.is_file() and not p.is_symlink()
+    result['executables'] = [p.name for p in sorted(root.iterdir()) if p.is_file() and not p.is_symlink()
                              and (p.suffix.lower() in ('.exe', '.ren') or p.name.lower() in ('carnivores2', 'carnivores2-gl'))]
     if not result['executables']:
         result['diagnostics'].append(diagnostic('missing-engine-evidence', 'No root engine/launcher candidate; assets or partial overlay only.'))
@@ -100,7 +111,8 @@ def recognize(root):
                 if path.is_file() and path.suffix.lower() == '.map':
                     rsc = resolve_reference(root, (path.relative_to(root).with_suffix('.rsc')).as_posix())
                     if rsc['status'] == 'found':
-                        pairs.append(path.name)
+                        if not path.stem.casefold().startswith('trophy'):
+                            pairs.append(path.name)
     result['map_pairs'] = sorted(pairs)
     if not pairs:
         result['diagnostics'].append(diagnostic('missing-map-pair', 'No paired MAP/RSC content.'))
@@ -109,8 +121,14 @@ def recognize(root):
         status = resolve_reference(root, reference)
         if status['status'] == 'found':
             path = root / status['path']
-            if (not path.is_dir()) if directory else (not path.is_file()):
+            invalid = not path.is_dir() if directory else not path.is_file()
+            if invalid:
                 result['diagnostics'].append(diagnostic('invalid-root-entry', reference))
+            elif not directory:
+                with path.open('rb') as stream:
+                    script = stream.read(8 * 1024 * 1024 + 1)
+                if len(script) > 8 * 1024 * 1024 or not all(re.search(rb'\b' + key + rb'\s*\{', script, re.I) for key in (b'characters', b'weapons')):
+                    result['diagnostics'].append(diagnostic('missing-script-evidence', 'Resource script lacks conventional characters/weapons blocks.'))
     result['recognized'] = not result['diagnostics']
     return result
 
@@ -139,11 +157,13 @@ def register(data, path, mode='registered', dialect='unknown', family=None, rele
     if not evidence['recognized']:
         raise FrontendError('not a coherent installation: ' + json.dumps(evidence['diagnostics']))
     revision = fingerprint(root)
+    engines = [{'path': name, 'sha256': hash_file(root / name), 'semantics': 'unknown'} for name in evidence['executables']]
     identity = new_id()
     instance = {'id': identity, 'path': str(root), 'path_flavor': os.name, 'mode': mode,
                 'family': family, 'release': release, 'dialect_hint': dialect,
                 'identity_evidence': 'user assertion' if family or release or dialect != 'unknown' else 'unresolved',
-                'created_at': now(), 'revision': revision, 'revisions': [revision], 'evidence': evidence}
+                'created_at': now(), 'revision': revision, 'revisions': [revision], 'evidence': evidence,
+                'engine_evidence': engines}
     data['instances'][identity] = instance
     return instance
 
@@ -163,6 +183,10 @@ def inspect_instance(instance):
         observed['revision_changed'] = observed['revision'] != instance['revision']
         if observed['revision_changed']:
             observed['diagnostics'].append(diagnostic('content-revision-changed', 'Interpretations require review; saves are unchanged by inspection.'))
+        observed['engine_evidence'] = [{'path': name, 'sha256': hash_file(Path(instance['path']) / name), 'semantics': 'unknown'} for name in observed['executables']]
+        observed['engine_changed'] = observed['engine_evidence'] != instance.get('engine_evidence', [])
+        if observed['engine_changed']:
+            observed['diagnostics'].append(diagnostic('engine-evidence-changed', 'Engine/launcher bytes changed independently of content revision.'))
     return observed
 
 

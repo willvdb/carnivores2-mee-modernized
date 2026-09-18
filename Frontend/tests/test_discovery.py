@@ -43,7 +43,7 @@ class DiscoveryTests(unittest.TestCase):
         for name in ('trophy00.sav', 'trace.log', 'config.cfg'):
             (self.root / 'HUNTDAT' / name).write_bytes(b'mutable')
         self.assertEqual(old, fingerprint(self.root))
-        (self.root / 'HUNTDAT/_RES.TXT').write_text('changed content')
+        (self.root / 'HUNTDAT/_RES.TXT').write_text('weapons {}\ncharacters {}\n// changed content')
         self.assertTrue(inspect_instance(instance)['revision_changed'])
         self.assertEqual(instance['revision'], old)
         refresh_instance(instance)
@@ -65,6 +65,30 @@ class DiscoveryTests(unittest.TestCase):
         with self.assertRaises(FrontendError):
             register(self.data, self.root, 'managed')
         self.assertEqual(register(self.data, self.root, 'managed', managed_root=self.temp.name)['mode'], 'managed')
+
+    def test_engine_revision_is_separate_from_content(self):
+        instance = register(self.data, self.root)
+        (self.root / 'CARN2.EXE').write_bytes(b'different engine')
+        result = inspect_instance(instance)
+        self.assertFalse(result['revision_changed'])
+        self.assertTrue(result['engine_changed'])
+
+    def test_random_script_or_trophy_only_tree_is_not_coherent(self):
+        (self.root / 'HUNTDAT/_RES.TXT').write_text('not a resource script')
+        self.assertFalse(recognize(self.root)['recognized'])
+        (self.root / 'HUNTDAT/_RES.TXT').write_text('weapons {}\ncharacters {}')
+        for suffix in ('MAP', 'RSC'):
+            (self.root / f'HUNTDAT/AREAS/AREA1.{suffix}').rename(self.root / f'HUNTDAT/AREAS/TROPHY.{suffix}')
+        self.assertFalse(recognize(self.root)['recognized'])
+
+    def test_fingerprint_refuses_content_aliases(self):
+        path = self.root / 'HUNTDAT/AREAS/alias.map'
+        try:
+            path.symlink_to('AREA1.MAP')
+        except OSError:
+            self.skipTest('symlinks unavailable')
+        with self.assertRaises(FrontendError):
+            fingerprint(self.root)
 
 
 if __name__ == '__main__':

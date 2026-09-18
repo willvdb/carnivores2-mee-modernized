@@ -3,7 +3,8 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
+import re
 import socket
 import tempfile
 import uuid
@@ -56,15 +57,29 @@ def validate(data):
         if not isinstance(hunter.get("name"), str) or not hunter["name"].strip():
             raise FrontendError("hunter name is required")
     active = data.get("active_hunter")
-    if active is not None and (active not in data["hunters"] or data["hunters"][active].get("archived_at")):
+    if active is not None and (not isinstance(active, str) or active not in data["hunters"] or data["hunters"][active].get("archived_at")):
         raise FrontendError("active hunter is missing or archived")
     paths = set()
+    def revision_valid(value):
+        return (isinstance(value, dict) and value.get('algorithm') == 'huntdat-sha256-v1'
+                and isinstance(value.get('sha256'), str)
+                and re.fullmatch(r'[0-9a-f]{64}', value['sha256'])
+                and type(value.get('file_count')) is int and value['file_count'] >= 0
+                and type(value.get('byte_count')) is int and value['byte_count'] >= 0)
+
     for instance in data["instances"].values():
         if instance.get("mode") not in ("managed", "registered"):
             raise FrontendError("invalid installation mode")
         path = instance.get("path")
         if not isinstance(path, str) or not path:
             raise FrontendError("invalid installation locator")
+        if instance.get('path_flavor') not in ('posix', 'nt'):
+            raise FrontendError('invalid path flavor')
+        path_type = PurePosixPath if instance['path_flavor'] == 'posix' else PureWindowsPath
+        if not path_type(path).is_absolute():
+            raise FrontendError('installation locator must be absolute')
+        if instance.get('dialect_hint') not in ('unknown', 'c2-classic', 'iceage-triassic', 'mee-older', 'mee-newer'):
+            raise FrontendError('invalid dialect hint')
         key = (instance.get("path_flavor"), path)
         if key in paths:
             raise FrontendError("duplicate installation locator")
@@ -73,14 +88,27 @@ def validate(data):
             raise FrontendError("installation revision history required")
         if instance.get("revision") not in instance["revisions"]:
             raise FrontendError("current revision absent from history")
+        if not all(revision_valid(value) for value in instance['revisions']):
+            raise FrontendError('invalid content revision')
     referenced = set()
     for association in data["associations"].values():
+        if not isinstance(association.get('hunter_id'), str) or not isinstance(association.get('instance_id'), str):
+            raise FrontendError('invalid association reference')
         if association.get("hunter_id") not in data["hunters"] or association.get("instance_id") not in data["instances"]:
             raise FrontendError("dangling state association")
         if association.get("ownership") not in ("referenced", "managed"):
             raise FrontendError("invalid state ownership")
         if not isinstance(association.get("state_key"), str):
             raise FrontendError("invalid native state key")
+        if type(association.get('filename_slot')) is not int or association['filename_slot'] < 0:
+            raise FrontendError('invalid filename slot')
+        if association.get('origin') not in ('personal', 'bundled-example', 'unknown'):
+            raise FrontendError('invalid origin declaration')
+        if association.get('writable') is not False:
+            raise FrontendError('schema 1 does not authorize native-state writers')
+        authority = 'native-files' if association['ownership'] == 'referenced' else 'independent-snapshot'
+        if association.get('authority') != authority or not revision_valid(association.get('revision')):
+            raise FrontendError('invalid association authority or revision')
         if not isinstance(association.get("files"), list) or not association["files"]:
             raise FrontendError("state files required")
         for entry in association["files"]:
@@ -90,6 +118,10 @@ def validate(data):
             digest = entry.get("sha256")
             if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
                 raise FrontendError("invalid state digest")
+            if entry.get('kind') not in ('sav', 'sab') or type(entry.get('size')) is not int or entry['size'] < 0:
+                raise FrontendError('invalid native state member')
+        if len({entry['path'].casefold() for entry in association['files']}) != len(association['files']):
+            raise FrontendError('ambiguous association member paths')
         if association["ownership"] == "referenced":
             key = (association["instance_id"], association["state_key"])
             if key in referenced:
@@ -131,6 +163,8 @@ class Store:
         self.path = self.directory / "lodge.json"
 
     def read(self):
+        if not self.path.exists() and self.path.with_suffix('.json.bak').exists():
+            raise FrontendError('manifest missing with backup present; use explicit recovery')
         return read_manifest(self.path) if self.path.exists() else empty_manifest()
 
     @contextmanager

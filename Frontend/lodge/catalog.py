@@ -106,6 +106,7 @@ def project(root, dialect_hint='unknown'):
     root = Path(root).resolve()
     scripts = {}
     diagnostics = [diagnostic('static-projection-only', 'Catalog observations do not certify engine, save, rank or mode semantics.'),
+                   diagnostic('artwork-semantics-unread', 'Presentation assets may contain instructions not recovered by text projection.'),
                    diagnostic('text-encoding-unverified', 'Text uses a reversible Latin-1 byte projection; original code page is unknown.')]
     for name in ('_MENU.TXT', '_RES.TXT'):
         ref = resolve_reference(root, 'HUNTDAT/' + name)
@@ -155,6 +156,9 @@ def project(root, dialect_hint='unknown'):
                          'source': script['source'], 'line': node['line'], 'source_ordinal': source_index,
                          'section_ordinal': section_index, 'attributes': node['attributes'],
                          'nested_observations': node['children'], 'price': None}
+                entry['declared_references'] = [
+                    {'field': key, **resolve_reference(root, attribute(node, key))}
+                    for key in ('file', 'pic', 'thumbnail') if isinstance(attribute(node, key), str)]
                 if group == 'licenses':
                     entry.update(ai=ai, species_resolution='unresolved-license-may-cover-multiple-species')
                     number = ai - 9

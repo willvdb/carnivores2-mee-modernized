@@ -81,7 +81,7 @@ class LaunchTests(unittest.TestCase):
         self.assertEqual(result['hunt_save_round_trip_validated'], 'unknown')
 
     def test_update_invalidates_request(self):
-        (self.root / 'HUNTDAT/_RES.TXT').write_text('changed\n')
+        (self.root / 'HUNTDAT/_RES.TXT').write_text('weapons {}\ncharacters {}\n// changed\n')
         result = prepare(self.store, self.store.read(), self.association, 'areas:0', mode='observer')
         self.assertEqual(result['candidate_argv'], [])
         self.assertIn('revision-review-required', [d['code'] for d in result['diagnostics']])

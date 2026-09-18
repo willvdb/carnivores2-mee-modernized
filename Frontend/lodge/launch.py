@@ -14,6 +14,9 @@ def prepare(store, data, association_id, area_id, licenses=(), weapons=(), equip
     diagnostics = list(observation['diagnostics'])
     capabilities = {'installation_recognized': 'yes' if observation['recognized'] else 'no',
                     'native_profile_associated': 'yes', 'native_save_format_readable': 'unknown',
+                    'content_dialect_recognized': 'unknown', 'console_can_be_generated': 'unknown',
+                    'modern_engine_compatibility': 'unknown', 'launch_tested': 'unknown',
+                    'hunt_save_round_trip_validated': 'unknown', 'trophy_interpretation_validated': 'unknown',
                     'legacy_windows_fallback_available': 'candidate-files-only' if any(p.lower().endswith('.exe') for p in observation.get('executables', [])) else 'unknown'}
     request = {'schema_version': 1, 'id': new_id(), 'created_at': now(), 'kind': 'hunt-launch-dry-run',
                'hunter_id': association['hunter_id'], 'instance_id': instance['id'],

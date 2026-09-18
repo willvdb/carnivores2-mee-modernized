@@ -108,6 +108,25 @@ class ProfileTests(unittest.TestCase):
             with self.assertRaises(FrontendError):
                 stable_read(self.root, state)
 
+    def test_orphan_refused_and_manifest_cannot_claim_writable_state(self):
+        (self.root / 'trophy00.sav').unlink()
+        with self.assertRaises(FrontendError):
+            with self.store.transaction() as data:
+                associate(self.store, data, self.hunter, self.instance, 'trophy00', 'personal')
+        (self.root / 'trophy00.sav').write_bytes(save_bytes())
+        with self.store.transaction() as data:
+            result = associate(self.store, data, self.hunter, self.instance, 'trophy00', 'personal')
+        with self.assertRaises(FrontendError):
+            with self.store.transaction() as data:
+                data['associations'][result['id']]['writable'] = True
+
+    def test_manifest_native_path_traversal_rejected(self):
+        with self.store.transaction() as data:
+            result = associate(self.store, data, self.hunter, self.instance, 'trophy00', 'personal')
+        with self.assertRaises(FrontendError):
+            with self.store.transaction() as data:
+                data['associations'][result['id']]['files'][0]['path'] = '../trophy00.sav'
+
     def test_case_collision_no_guess(self):
         (self.root / 'TROPHY00.SAV').write_bytes(save_bytes(3))
         if len(list(self.root.glob('*.[sS][aA][vV]'))) < 2:

@@ -52,6 +52,26 @@ class StoreTests(unittest.TestCase):
                 with self.store.transaction():
                     pass
 
+    def test_missing_manifest_does_not_ignore_backup(self):
+        with self.store.transaction() as data:
+            hunter(data, 'create', name='A')
+        with self.store.transaction() as data:
+            hunter(data, 'create', name='B')
+        self.store.path.unlink()
+        with self.assertRaises(FrontendError):
+            self.store.read()
+        self.store.restore_backup()
+        self.assertEqual(len(self.store.read()['hunters']), 1)
+
+    def test_malformed_active_reference_fails_cleanly(self):
+        with self.store.transaction() as data:
+            hunter(data, 'create', name='A')
+        data = self.store.read()
+        data['active_hunter'] = []
+        self.store.path.write_text(json.dumps(data))
+        with self.assertRaises(FrontendError):
+            self.store.read()
+
     def test_invalid_transaction_preserves_manifest(self):
         with self.store.transaction() as data:
             hunter(data, "create", name="A")

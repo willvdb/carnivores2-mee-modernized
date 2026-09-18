@@ -81,8 +81,11 @@ def codec_inspect(content, kind, probe=None, dialect='unknown'):
     probe = probe or os.environ.get('C2_PROFILE_PROBE')
     if not probe:
         return {'layout': 'size-candidate-only', 'codec_roundtrip_exact': False, 'diagnostic': 'codec-helper-unavailable'}
-    process = subprocess.run([str(probe), 'save' if kind == 'sav' else 'room'], input=content,
-                             capture_output=True, timeout=15, check=False)
+    try:
+        process = subprocess.run([str(probe), 'save' if kind == 'sav' else 'room'], input=content,
+                                 capture_output=True, timeout=15, check=False)
+    except subprocess.TimeoutExpired as error:
+        raise FrontendError('codec helper timed out') from error
     if process.returncode != 0:
         raise FrontendError(f'codec helper failed ({process.returncode})')
     result = json.loads(process.stdout)
@@ -97,7 +100,7 @@ def inspect_set(root, state, probe=None, dialect='unknown'):
     for entry in state['files']:
         content = blobs[entry['path']]
         decoded = codec_inspect(content, entry['kind'], probe, dialect)
-        result['files'].append({**entry, 'sha256': hashlib.sha256(content).hexdigest(), 'decoded': decoded})
+        result['files'].append({**entry, 'size': len(content), 'sha256': hashlib.sha256(content).hexdigest(), 'decoded': decoded})
         if decoded.get('registration', state['filename_slot']) != state['filename_slot']:
             result['diagnostics'].append(diagnostic('registration-mismatch', 'Filename slot disagrees with embedded registration; no normalization performed.'))
         if not decoded.get('codec_roundtrip_exact'):
