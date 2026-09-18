@@ -249,6 +249,15 @@ protected:
     void TearDown() override { Platform::ShutdownApplication(); }
 };
 
+TEST_F(SDLDisplayCatalog, NonWindowsDriverDoesNotBorrowHostMonitorIdentity)
+{
+    if (SDL_strcmp(SDL_GetCurrentVideoDriver(), "windows") == 0)
+        GTEST_SKIP() << "Actual Windows discovery is covered separately";
+    const auto catalog = Platform::QueryDisplayCatalog();
+    ASSERT_FALSE(catalog.displays.empty());
+    for (const auto& display : catalog.displays) EXPECT_FALSE(display.identity);
+}
+
 TEST_F(SDLDisplayCatalog, SnapshotCopiesAllBackendDisplaysModesAndBounds)
 {
     const auto catalog = Platform::QueryDisplayCatalog();
