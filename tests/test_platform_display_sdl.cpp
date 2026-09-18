@@ -1,5 +1,6 @@
 #include "../Hunt/Platform/PlatformSDLInternal.h"
 #include "../Hunt/Game/DisplayModes.h"
+#include "../Hunt/Game/RefreshSelection.h"
 #include <gtest/gtest.h>
 #include <cstdlib>
 #include <memory>
@@ -55,7 +56,7 @@ TEST(SDLDisplayConversion, InvalidAndUnspecifiedFractionsDoNotBecomeHugeUnsigned
     }
 }
 
-TEST(SDLRefreshSelection, UsesNativeModeIdentityAndExactRationalsInBackendOrder)
+TEST(SDLRefreshMapping, UsesCallerSelectedDepthAndExactRationalsInBackendOrder)
 {
     SDL_DisplayMode low{}, wrongSize{}, integer{}, duplicate{}, fractional{};
     integer.w = 800; integer.h = 600; integer.format = SDL_PIXELFORMAT_RGB565;
@@ -68,13 +69,36 @@ TEST(SDLRefreshSelection, UsesNativeModeIdentityAndExactRationalsInBackendOrder)
     fractional = duplicate; fractional.refresh_rate_denominator = 1001;
     fractional.refresh_rate_numerator = 60000;
     SDL_DisplayMode* modes[] = {&low, &wrongSize, &integer, &duplicate, &fractional};
-    EXPECT_EQ(Platform::SDLDetails::FindRefreshMode(modes, 5, {800, 600}, {60, 1}), &integer);
-    EXPECT_EQ(Platform::SDLDetails::FindRefreshMode(modes, 5, {800, 600}, {120, 2}), &integer);
-    EXPECT_EQ(Platform::SDLDetails::FindRefreshMode(modes, 5, {800, 600}, {60000, 1001}), &fractional);
-    EXPECT_EQ(Platform::SDLDetails::FindRefreshMode(modes, 5, {800, 600}, {5994, 100}), nullptr);
-    EXPECT_EQ(Platform::SDLDetails::FindRefreshMode(modes, 5, {800, 600}, {144, 1}), nullptr);
-    EXPECT_EQ(Platform::SDLDetails::FindRefreshMode(modes, 5, {800, 600}, {}), nullptr);
-    EXPECT_EQ(Platform::SDLDetails::FindRefreshMode(nullptr, 0, {800, 600}, {60, 1}), nullptr);
+    EXPECT_EQ(Platform::SDLDetails::FindNativeDisplayMode(modes, 5, {{800, 600}, 16, {60, 1}}), &integer);
+    EXPECT_EQ(Platform::SDLDetails::FindNativeDisplayMode(modes, 5, {{800, 600}, 16, {120, 2}}), &integer);
+    // XRGB8888 has 24 color bits in SDL's discovery metadata, despite 32-bit storage.
+    EXPECT_EQ(Platform::SDLDetails::FindNativeDisplayMode(modes, 5, {{800, 600}, 24, {60, 1}}), &duplicate);
+    EXPECT_EQ(Platform::SDLDetails::FindNativeDisplayMode(modes, 5, {{800, 600}, 24, {60000, 1001}}), &fractional);
+    EXPECT_EQ(Platform::SDLDetails::FindNativeDisplayMode(modes, 5, {{800, 600}, 24, {5994, 100}}), nullptr);
+    EXPECT_EQ(Platform::SDLDetails::FindNativeDisplayMode(modes, 5, {{800, 600}, 24, {144, 1}}), nullptr);
+    EXPECT_EQ(Platform::SDLDetails::FindNativeDisplayMode(modes, 5, {{800, 600}, 16, {}}), nullptr);
+    EXPECT_EQ(Platform::SDLDetails::FindNativeDisplayMode(nullptr, 0, {{800, 600}, 16, {60, 1}}), nullptr);
+    // Mapping itself does not impose the engine's minimum-color policy.
+    EXPECT_EQ(Platform::SDLDetails::FindNativeDisplayMode(modes, 5, {{800, 600}, 8, {60, 1}}), &low);
+}
+
+TEST(SDLRefreshMapping, EngineSelectedModeDisappearingReturnsNoNativeMatch)
+{
+    SDL_DisplayMode low{}, usable{}, duplicate{};
+    usable.w = 800; usable.h = 600; usable.format = SDL_PIXELFORMAT_RGB565;
+    usable.refresh_rate_numerator = 60000; usable.refresh_rate_denominator = 1000;
+    duplicate = usable;
+    low = usable; low.format = SDL_PIXELFORMAT_INDEX8;
+    Platform::Display primary;
+    primary.modes = {Platform::SDLDetails::CopyDisplayMode(low), Platform::SDLDetails::CopyDisplayMode(usable),
+                     Platform::SDLDetails::CopyDisplayMode(duplicate)};
+    const auto selected = GameDisplay::SelectPrimaryRefreshMode({{primary}, 0}, {800, 600}, {60, 1});
+    ASSERT_TRUE(selected);
+    SDL_DisplayMode* modes[] = {&low, &usable, &duplicate};
+    EXPECT_EQ(Platform::SDLDetails::FindNativeDisplayMode(modes, 3, *selected), &usable);
+    // All selected-depth modes disappear between discovery and application.
+    // Return no match (automatic fallback), never remap to the rejected 8-bpp mode.
+    EXPECT_EQ(Platform::SDLDetails::FindNativeDisplayMode(modes, 1, *selected), nullptr);
 }
 
 class SDLDisplayCatalog : public ::testing::Test {

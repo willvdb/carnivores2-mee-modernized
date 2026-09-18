@@ -371,6 +371,8 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
         target_link_libraries(Carnivores2PlatformTests PRIVATE user32 gdi32 winmm)
     endif()
     add_test(NAME Carnivores2Tests.Platform COMMAND Carnivores2PlatformTests)
+    add_test(NAME Carnivores2Tests.PlatformBoundary COMMAND ${CMAKE_COMMAND}
+        "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}" -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_platform_boundary.cmake")
 
     if(CARNIVORES_PLATFORM STREQUAL "SDL3")
         add_executable(Carnivores2SDLTests tests/test_legacy_keyboard_sdl.cpp

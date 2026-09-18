@@ -1,6 +1,5 @@
 #include "Platform.h"
 #include "PlatformWin32.h"
-#include "../Game/RefreshSelection.h"
 #include "../Debug/Log.h"
 #include <mmsystem.h>
 #include <utility>
@@ -242,7 +241,8 @@ Size ClientSize()
     return {rect.right - rect.left, rect.bottom - rect.top};
 }
 
-void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter, RefreshRate refresh)
+void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
+                         std::optional<DisplayMode> exclusiveMode)
 {
   if (mode == WindowMode::Exclusive) {
     SetWindowLong(gameWindow, GWL_STYLE, WS_VISIBLE | WS_POPUP);
@@ -253,8 +253,10 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter, RefreshR
     // resolution the monitor cannot display). ChangeDisplaySettings is
     // per-process: the desktop is restored automatically on exit.
     bool modeSet = false;
-    if (GameDisplay::HasRefresh(refresh)) {
-      const auto hz = GameDisplay::IntegerRefreshHz(refresh);
+    const auto refresh = exclusiveMode && exclusiveMode->size.width == size.width && exclusiveMode->size.height == size.height
+        ? exclusiveMode->refresh : RefreshRate{};
+    if (HasRefresh(refresh)) {
+      const auto hz = IntegerRefreshHz(refresh);
       // DEVMODE reserves 0 and 1 for the hardware default, not exact Hz.
       if (hz && *hz > 1) {
         DEVMODE explicitMode{};

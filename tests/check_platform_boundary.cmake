@@ -1,0 +1,15 @@
+# Keep engine policy above platform mechanisms, including inactive backends on
+# each CI host. Scan headers too so an indirect private include cannot hide it.
+file(GLOB_RECURSE platform_sources "${SOURCE_ROOT}/Hunt/Platform/*.cpp" "${SOURCE_ROOT}/Hunt/Platform/*.h")
+if(NOT platform_sources)
+    message(FATAL_ERROR "No platform sources found under SOURCE_ROOT=${SOURCE_ROOT}")
+endif()
+foreach(source IN LISTS platform_sources)
+    file(STRINGS "${source}" includes REGEX "^[ \t]*#[ \t]*include")
+    foreach(include IN LISTS includes)
+        string(REPLACE "\\" "/" include "${include}")
+        if(include MATCHES "Game/|RefreshSelection[.]h")
+            message(FATAL_ERROR "Platform must not include game policy: ${source}: ${include}")
+        endif()
+    endforeach()
+endforeach()

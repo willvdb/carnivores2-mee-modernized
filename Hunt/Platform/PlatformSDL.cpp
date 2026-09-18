@@ -2,7 +2,6 @@
 #include "LegacyKeyboardSDL.h"
 #include "PlatformSDLInternal.h"
 #include "../Debug/Log.h"
-#include "../Game/RefreshSelection.h"
 #include <algorithm>
 #include <memory>
 #include <optional>
@@ -19,13 +18,17 @@ DisplayMode CopyDisplayMode(const SDL_DisplayMode& mode)
     return {{mode.w, mode.h}, static_cast<std::uint32_t>(SDL_BITSPERPIXEL(mode.format)), refresh};
 }
 
-const SDL_DisplayMode* FindRefreshMode(SDL_DisplayMode* const* modes, int count,
-                                      Size size, RefreshRate refresh)
+const SDL_DisplayMode* FindNativeDisplayMode(SDL_DisplayMode* const* modes, int count,
+                                           const DisplayMode& requested)
 {
-    if (!modes || !GameDisplay::HasRefresh(refresh)) return nullptr;
-    for (int i = 0; i < count; ++i)
-        if (modes[i] && GameDisplay::MatchesRefreshMode(CopyDisplayMode(*modes[i]), size, refresh))
+    if (!modes || !HasRefresh(requested.refresh)) return nullptr;
+    for (int i = 0; i < count; ++i) {
+        if (!modes[i]) continue;
+        const auto candidate = CopyDisplayMode(*modes[i]);
+        if (candidate.size.width == requested.size.width && candidate.size.height == requested.size.height &&
+            candidate.bitsPerPixel == requested.bitsPerPixel && EqualRefresh(candidate.refresh, requested.refresh))
             return modes[i];
+    }
     return nullptr;
 }
 }
@@ -314,7 +317,8 @@ Size ClientSize()
     if (gameWindow) SDL_GetWindowSizeInPixels(gameWindow, &width, &height);
     return {width, height};
 }
-void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter, RefreshRate refresh)
+void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
+                         std::optional<DisplayMode> exclusiveMode)
 {
     if (!gameWindow) return;
     Check(SDL_SetWindowFullscreen(gameWindow, false), "SDL leave fullscreen");
@@ -327,11 +331,14 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter, RefreshR
         const auto display = SDL_GetPrimaryDisplay();
         bool explicitMode = false;
         bool applied = false;
-        if (GameDisplay::HasRefresh(refresh)) {
+        if (exclusiveMode && HasRefresh(exclusiveMode->refresh)) {
+            const auto refresh = exclusiveMode->refresh;
             int count = 0;
             const std::unique_ptr<SDL_DisplayMode*, decltype(&SDL_free)> modes(
                 SDL_GetFullscreenDisplayModes(display, &count), SDL_free);
-            if (const auto* selected = SDLDetails::FindRefreshMode(modes.get(), count, size, refresh)) {
+            const auto* selected = exclusiveMode->size.width == size.width && exclusiveMode->size.height == size.height
+                ? SDLDetails::FindNativeDisplayMode(modes.get(), count, *exclusiveMode) : nullptr;
+            if (selected) {
                 explicitMode = true;
                 // SDL 3.2.28 copies the mode in SetWindowFullscreenMode. Keep
                 // the single enumeration allocation alive through application;

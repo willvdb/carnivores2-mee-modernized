@@ -20,6 +20,24 @@ constexpr RefreshRate MakeRefreshRate(std::uint32_t numerator, std::uint32_t den
 {
     return numerator && denominator ? RefreshRate{numerator, denominator} : RefreshRate{};
 }
+// Rational value operations only; display eligibility/selection belongs to the caller.
+constexpr bool HasRefresh(RefreshRate rate)
+{
+    return rate.numerator != 0 && rate.denominator != 0;
+}
+constexpr bool EqualRefresh(RefreshRate a, RefreshRate b)
+{
+    // uint32 * uint32 fits in uint64, including unreduced backend fractions.
+    return HasRefresh(a) && HasRefresh(b) &&
+        std::uint64_t{a.numerator} * b.denominator ==
+        std::uint64_t{b.numerator} * a.denominator;
+}
+constexpr std::optional<std::uint32_t> IntegerRefreshHz(RefreshRate rate)
+{
+    if (!HasRefresh(rate) || rate.numerator % rate.denominator != 0)
+        return std::nullopt;
+    return rate.numerator / rate.denominator;
+}
 struct DisplayMode {
     Size size{};
     std::uint32_t bitsPerPixel = 0; // Zero when unavailable.
@@ -129,8 +147,11 @@ PumpResult PumpOneEvent(int& quitCode, Event* event = nullptr);
 void RequestQuit();
 
 enum class WindowMode { Exclusive, Borderless, Windowed };
-// Refresh applies only to exclusive fullscreen; 0/0 retains the legacy path.
-void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter, RefreshRate refresh = {});
+// Optional caller-selected exclusive mode; absence retains the legacy path.
+// Its dimensions must match size. SDL maps its size/depth/rate to a native mode;
+// Win32 expresses its rate with DEVMODE and retains the 32/16-bpp attempt order.
+void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
+                         std::optional<DisplayMode> exclusiveMode = std::nullopt);
 Size ClientSize();
 void ShowLoadingWindow(Size size);
 void RestoreDesktopMode();

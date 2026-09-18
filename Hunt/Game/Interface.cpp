@@ -1,6 +1,7 @@
 #define INITGUID
 #include "Hunt.h"
 #include "Platform/Platform.h"
+#include "Game/RefreshSelection.h"
 #include "Renderer/CPUText.h"
 #ifdef _gl
 #include "Renderer/GLRenderer.h"
@@ -312,7 +313,16 @@ void SetVideoMode(int W, int H)
 
   const auto mode = FULLSCREEN ? Platform::WindowMode::Exclusive :
                     BORDERLESS ? Platform::WindowMode::Borderless : Platform::WindowMode::Windowed;
-  Platform::ConfigureGameWindow(mode, {W, H}, {VideoCX, VideoCY}, PreferredRefresh);
+  std::optional<Platform::DisplayMode> exclusiveMode;
+  if (mode == Platform::WindowMode::Exclusive && Platform::HasRefresh(PreferredRefresh) &&
+      Platform::HasGameWindow()) {
+    exclusiveMode = GameDisplay::SelectPrimaryRefreshMode(
+        Platform::QueryDisplayCatalog(), {W, H}, PreferredRefresh);
+    if (!exclusiveMode)
+      LOG_WARN("Exclusive %dx%d refresh %u/%u unavailable on primary display; using automatic refresh",
+               W, H, PreferredRefresh.numerator, PreferredRefresh.denominator);
+  }
+  Platform::ConfigureGameWindow(mode, {W, H}, {VideoCX, VideoCY}, exclusiveMode);
 
   // Sync WinW/WinH and all derived values to the ACTUAL client area the OS
   // gave us. AdjustWindowRect predicts the frame chrome, but the real chrome

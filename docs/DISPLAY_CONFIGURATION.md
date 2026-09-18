@@ -325,10 +325,12 @@ refresh argument, including an invalid one, never reaches the legacy
 substring-based hunt/session or resolution argument processing.
 
 The preference is the standalone runtime `Platform::RefreshRate
-PreferredRefresh`, initially `0/0`. It is passed to `ConfigureGameWindow` and
-consumed only in the exclusive branch. It is not an `OptRes` replacement and
-is not in any serialized structure. Both first-launch and release-script
-config templates document automatic as the default.
+PreferredRefresh`, initially `0/0`. On explicit exclusive entry, the engine
+selects an eligible primary-display mode and passes that owned value to
+`ConfigureGameWindow`. Automatic/unsupported requests pass no explicit mode.
+The preference is not an `OptRes` replacement and is not in any serialized
+structure. Both first-launch and release-script config templates document
+automatic as the default.
 
 The Windows Menu does not own this key. Its existing `Menu/Resources.cpp`
 `SaveConfig` list of fresh keys excludes `refresh_rate`; the merge writes
@@ -341,9 +343,11 @@ was not a physical Menu UI test.
 
 ### Exact selection policy
 
-[RefreshSelection.h](../Hunt/Game/RefreshSelection.h) has no SDL, Win32,
-renderer or parsing dependency. Known rates have both components positive.
-`EqualRefresh(a,b)` compares `uint64(a.numerator) * b.denominator` with
+[RefreshSelection.h](../Hunt/Game/RefreshSelection.h) owns engine selection
+policy and has no SDL, Win32, renderer or parsing dependency. Rational value
+operations live in the portable `Platform.h` API, below that policy: known
+rates have both components positive, and `Platform::EqualRefresh(a,b)` compares
+`uint64(a.numerator) * b.denominator` with
 `uint64(b.numerator) * a.denominator`. Every product of two uint32 values fits
 in uint64. Unknown/invalid pairs never equal real rates (or each other).
 
@@ -353,11 +357,21 @@ normalized to enable comparison.
 
 `FindRefreshMode` returns the first backend-order mode with exact width,
 exact height, at least 16 bpp and an equal refresh value. Automatic and
-unavailable requests return no selection. Its shared `MatchesRefreshMode`
-predicate also drives the SDL native-mode adapter. There is no sorting,
-nearest-rate search, resolution substitution or highest/lowest/desktop/current
-refresh preference. The primary/default display remains authoritative; no
-monitor identity or index is configured or persisted.
+unavailable requests return no selection. `SetVideoMode` queries the Phase 4b
+catalog only for explicit exclusive entry, and `SelectPrimaryRefreshMode`
+calls `FindRefreshMode` on the primary display's raw modes. A missing/out-of-range
+primary, missing match or low-color-only match logs and uses automatic; neither
+secondary displays nor desktop/current metadata substitute for fullscreen modes.
+Automatic, windowed and borderless paths skip this new catalog query entirely.
+
+The engine passes an optional owned `DisplayMode`, including its selected depth,
+through the portable API. Carrying depth prevents native remapping from selecting
+a low-color variant that the engine rejected. Backends do not import game policy:
+SDL maps these portable fields back to a native mode, while Win32 expresses the
+selected rate with DEVMODE. There is no sorting, nearest-rate search, resolution
+substitution or highest/lowest/desktop/current refresh preference. The
+primary/default display remains authoritative; no monitor identity or index is
+configured or persisted.
 
 ### SDL backend
 
@@ -366,14 +380,17 @@ For automatic refresh, the existing call remains
 followed by the unchanged exact-width/height check and mode application.
 No new enumeration or policy chooses a refresh on this path.
 
-For an explicit preference, the backend enumerates the primary display's raw
-fullscreen modes and applies the first native mode passing the shared exact
-predicate. It passes that original native mode to `SDL_SetWindowFullscreenMode`
-and then enters fullscreen. An unavailable request logs its dimensions and
-rational rate and executes the original automatic exact-WxH path. A supported
-mode whose application fails retains the existing desktop-popup exclusive
-failure behavior. It does not attempt a merely nearby refresh. The preference
-remains configured for the next exclusive entry, including Alt+Enter.
+For a caller-selected mode, the backend enumerates the primary display's native
+fullscreen modes and maps the exact selected dimensions, depth and rational
+rate value, preserving first-match native order. This mapping has no minimum-bpp
+or game eligibility policy. It passes that original native mode to
+`SDL_SetWindowFullscreenMode` and then enters fullscreen. The engine logs
+unsupported preferences before passing automatic. If a selected native mode
+disappears between discovery and application, the backend also logs and executes
+the original automatic exact-WxH path. A found mode whose application fails
+retains the existing desktop-popup exclusive failure behavior. It does not
+attempt a merely nearby refresh. The preference remains configured for the next
+exclusive entry, including Alt+Enter.
 
 The checksum-pinned SDL **3.2.28** contract was checked in both
 [`SDL_video.h`](https://github.com/libsdl-org/SDL/blob/release-3.2.28/include/SDL3/SDL_video.h)
@@ -387,9 +404,12 @@ engine-side sorting. Discovery and legacy `QueryDisplayInfo` are unchanged.
 
 ### Native Win32 reference backend
 
-`IntegerRefreshHz` permits only an exactly divisible positive rational. For
+`Platform::IntegerRefreshHz` permits only an exactly divisible positive rational. For
 example `60000/1000` is exactly 60 Hz; `60000/1001` cannot be expressed and is
-never rounded. The backend logs nonrepresentable requests and uses automatic.
+never rounded. The native catalog exposes integer rates, so fractional
+preferences normally fail the engine eligibility check and use automatic with
+a warning. The backend also retains its exact-conversion guard and warning for
+nonrepresentable values passed directly to the platform API.
 `DEVMODE` also reserves frequency 0 and 1 as hardware-default sentinels, so an
 explicit 1-Hz request uses automatic with a warning rather than claiming exact
 1-Hz support.
@@ -542,3 +562,51 @@ Display targeting is deferred: monitor selection/identity/persistence,
 window-to-current-monitor policy, window movement and hotplug handling are
 not implemented. DPI, direct-Wayland acceptance, VRR, swap interval, frame
 limiting, launcher UI and other excluded work remain outside this milestone.
+
+### Review correction: engine policy above platform mechanisms
+
+Review of `f3919482a8f2aa60b239085df8bd963167e3bf7d` identified an architectural
+issue: the platform backends imported `Game/RefreshSelection.h` and owned the
+call to the engine eligibility predicate. The correction moves eligibility to
+`SetVideoMode` -> `SelectPrimaryRefreshMode` -> `FindRefreshMode`, using the
+owned Phase 4b catalog. Backend-only rational operations now live in `Platform`;
+neither backend imports `Game/...` or calls `GameDisplay` policy.
+
+The optional selected `DisplayMode` carries color depth as well as refresh so
+SDL can map exact native fields without repeating the engine's >=16-bpp rule.
+If that mode disappears, the backend still takes automatic; if application of
+a found mode fails, the existing popup path remains. Native Win32 retains exact
+integer conversion, 32/16-bpp attempts and automatic retry. Unsupported-request
+logging now normally occurs in the engine. The original preference is retained
+for later exclusive entry. Parsing, config/CLI precedence and serialization are
+unchanged. The automatic blocks and nonexclusive backend branches were also
+compared against the reviewed tip and remain unchanged.
+
+Regression validation for this correction:
+
+- GCC Debug/Release with pinned SDL and Clang/GCC-sanitized builds with system
+  SDL each pass **286 GoogleTest cases in 12 executables**, plus the new source
+  boundary check: **13/13 CTest checks**. GCC/Clang standalone portable tests
+  pass **37/37** each with `-Wall -Wextra -Werror` and ASan/UBSan/LSan.
+- The boundary check scans every platform `.cpp` and header, including inactive
+  backends, for game-policy includes. A negative probe with the original include
+  fails as intended. New tests exercise primary-only catalog selection, missing
+  primary/metadata, owned selected values, caller-selected native depth, and a
+  mode disappearing before native remapping. SDL remapping deliberately has no
+  minimum-color policy; only the engine imposes that requirement.
+- Both x64 Windows GL variants build with local MSVC under Wine. Native Win32
+  policy tests pass **40/40** plus the boundary check. SDL tests pass **26/27**;
+  the existing French keyboard-layout test fails under this Wine prefix. An
+  untouched earlier SDL Release test binary also fails that same test (**20/21**),
+  including the same A/Q and AltGr expectations. No input change or suppression
+  is included; hosted Windows CI remains the Windows regression authority.
+- The same nine native Linux/X11 runtime scenarios pass, followed by two clean
+  sanitized supported/unsupported-refresh hunts. Debugger probes confirm **zero
+  catalog queries** for automatic, windowed and borderless paths, and no explicit
+  mode reaches the backend for unsupported refresh. Alt+Enter reselects supported
+  modes on exclusive entry, and every process exits normally.
+
+Correction logs and runtime evidence are in `/tmp/carnivores-refresh-layering/`.
+Physical-Windows refresh acceptance remains separate from Wine and hosted CI;
+the checks listed above still apply. The prior standalone SDL/X11 teardown
+leak record is unchanged and no suppression has been introduced.

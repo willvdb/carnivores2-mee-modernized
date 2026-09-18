@@ -19,7 +19,7 @@ TEST(RefreshParser, AutomaticAndPositiveDecimalFractionsPreserveRepresentation)
     for (const char* text : {"60", "120", "144", "60000/1001", "120000/1001",
                              "60000/1000", "4294967295/4294967295"}) {
         ASSERT_TRUE(GameDisplay::ParseRefreshRate(text, rate)) << text;
-        EXPECT_TRUE(GameDisplay::HasRefresh(rate));
+        EXPECT_TRUE(Platform::HasRefresh(rate));
     }
     ASSERT_TRUE(GameDisplay::ParseRefreshRate("60", rate));
     ExpectRate(rate, 60, 1);
@@ -97,16 +97,16 @@ TEST(RefreshPreference, MalformedRefreshArgumentsAreConsumedBeforeLegacySubstrin
 
 TEST(RefreshComparison, ExactValuesWithoutNormalizationOrFloatingPoint)
 {
-    EXPECT_TRUE(GameDisplay::EqualRefresh({60, 1}, {60000, 1000}));
-    EXPECT_TRUE(GameDisplay::EqualRefresh({60, 1}, {120000, 2000}));
-    EXPECT_TRUE(GameDisplay::EqualRefresh({120, 2}, {60, 1}));
-    EXPECT_FALSE(GameDisplay::EqualRefresh({60000, 1001}, {60, 1}));
-    EXPECT_FALSE(GameDisplay::EqualRefresh({}, {60, 1}));
-    EXPECT_FALSE(GameDisplay::EqualRefresh({60, 0}, {60, 1}));
-    EXPECT_FALSE(GameDisplay::EqualRefresh({}, {}));
+    EXPECT_TRUE(Platform::EqualRefresh({60, 1}, {60000, 1000}));
+    EXPECT_TRUE(Platform::EqualRefresh({60, 1}, {120000, 2000}));
+    EXPECT_TRUE(Platform::EqualRefresh({120, 2}, {60, 1}));
+    EXPECT_FALSE(Platform::EqualRefresh({60000, 1001}, {60, 1}));
+    EXPECT_FALSE(Platform::EqualRefresh({}, {60, 1}));
+    EXPECT_FALSE(Platform::EqualRefresh({60, 0}, {60, 1}));
+    EXPECT_FALSE(Platform::EqualRefresh({}, {}));
     constexpr auto max = (std::numeric_limits<std::uint32_t>::max)();
-    EXPECT_TRUE(GameDisplay::EqualRefresh({max, max}, {max - 1, max - 1}));
-    EXPECT_FALSE(GameDisplay::EqualRefresh({max, max - 1}, {max - 1, max - 2}));
+    EXPECT_TRUE(Platform::EqualRefresh({max, max}, {max - 1, max - 1}));
+    EXPECT_FALSE(Platform::EqualRefresh({max, max - 1}, {max - 1, max - 2}));
 }
 
 TEST(RefreshPolicy, FirstExactDimensionsDepthAndRateInBackendOrder)
@@ -128,14 +128,51 @@ TEST(RefreshPolicy, FirstExactDimensionsDepthAndRateInBackendOrder)
 
 TEST(RefreshPolicy, IntegerHzConversionNeverRoundsFractionalRates)
 {
-    EXPECT_EQ(GameDisplay::IntegerRefreshHz({60, 1}), 60u);
-    EXPECT_EQ(GameDisplay::IntegerRefreshHz({60000, 1000}), 60u);
-    EXPECT_EQ(GameDisplay::IntegerRefreshHz({120, 2}), 60u);
-    EXPECT_EQ(GameDisplay::IntegerRefreshHz({1, 1}), 1u);
-    EXPECT_EQ(GameDisplay::IntegerRefreshHz({4294967295u, 1}), 4294967295u);
-    EXPECT_FALSE(GameDisplay::IntegerRefreshHz({60000, 1001}));
-    EXPECT_FALSE(GameDisplay::IntegerRefreshHz({1, 2}));
-    EXPECT_FALSE(GameDisplay::IntegerRefreshHz({0, 1}));
-    EXPECT_FALSE(GameDisplay::IntegerRefreshHz({60, 0}));
-    EXPECT_FALSE(GameDisplay::IntegerRefreshHz({}));
+    EXPECT_EQ(Platform::IntegerRefreshHz({60, 1}), 60u);
+    EXPECT_EQ(Platform::IntegerRefreshHz({60000, 1000}), 60u);
+    EXPECT_EQ(Platform::IntegerRefreshHz({120, 2}), 60u);
+    EXPECT_EQ(Platform::IntegerRefreshHz({1, 1}), 1u);
+    EXPECT_EQ(Platform::IntegerRefreshHz({4294967295u, 1}), 4294967295u);
+    EXPECT_FALSE(Platform::IntegerRefreshHz({60000, 1001}));
+    EXPECT_FALSE(Platform::IntegerRefreshHz({1, 2}));
+    EXPECT_FALSE(Platform::IntegerRefreshHz({0, 1}));
+    EXPECT_FALSE(Platform::IntegerRefreshHz({60, 0}));
+    EXPECT_FALSE(Platform::IntegerRefreshHz({}));
+}
+
+TEST(RefreshPolicy, PrimaryCatalogSelectionRetainsFirstUsableDepthAndRawRate)
+{
+    Platform::Display secondary, primary;
+    secondary.modes = {{{800, 600}, 32, {144, 1}}};
+    primary.modes = {{{800, 600}, 8, {60, 1}}, {{800, 600}, 16, {60000, 1000}},
+                     {{800, 600}, 32, {60, 1}}, {{800, 600}, 32, {60000, 1001}}};
+    Platform::DisplayCatalog catalog{{secondary, primary}, 1};
+    const auto selected = GameDisplay::SelectPrimaryRefreshMode(catalog, {800, 600}, {120, 2});
+    ASSERT_TRUE(selected);
+    EXPECT_EQ(selected->bitsPerPixel, 16u);
+    EXPECT_EQ(selected->size.width, 800);
+    EXPECT_EQ(selected->size.height, 600);
+    ExpectRate(selected->refresh, 60000, 1000);
+    const auto fractional = GameDisplay::SelectPrimaryRefreshMode(catalog, {800, 600}, {60000, 1001});
+    ASSERT_TRUE(fractional);
+    ExpectRate(fractional->refresh, 60000, 1001);
+    catalog.displays.clear();
+    ExpectRate(selected->refresh, 60000, 1000); // Owned value, not a catalog pointer.
+}
+
+TEST(RefreshPolicy, PrimaryCatalogNeverSubstitutesOtherDisplaysOrMetadata)
+{
+    Platform::Display secondary, primary;
+    secondary.modes = {{{800, 600}, 32, {144, 1}}};
+    primary.modes = {{{800, 600}, 32, {60, 1}}};
+    primary.desktopMode = primary.currentMode = secondary.modes[0];
+    Platform::DisplayCatalog catalog{{secondary, primary}, 1};
+    EXPECT_FALSE(GameDisplay::SelectPrimaryRefreshMode(catalog, {800, 600}, {144, 1}));
+    EXPECT_FALSE(GameDisplay::SelectPrimaryRefreshMode(catalog, {1024, 768}, {60, 1}));
+    EXPECT_FALSE(GameDisplay::SelectPrimaryRefreshMode(catalog, {800, 600}, {}));
+    catalog.primaryDisplay.reset();
+    EXPECT_FALSE(GameDisplay::SelectPrimaryRefreshMode(catalog, {800, 600}, {60, 1}));
+    catalog.primaryDisplay = 2;
+    EXPECT_FALSE(GameDisplay::SelectPrimaryRefreshMode(catalog, {800, 600}, {60, 1}));
+    EXPECT_FALSE(GameDisplay::SelectPrimaryRefreshMode({}, {800, 600}, {60, 1}));
 }
