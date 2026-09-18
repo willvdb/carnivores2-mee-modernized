@@ -43,3 +43,46 @@ TEST(PlatformWin32, PumpsOneMessageAndPreservesQuitCode)
     EXPECT_EQ(Platform::PumpOneEvent(code), Platform::PumpResult::Quit);
     EXPECT_EQ(code, 0);
 }
+
+TEST(PlatformWin32, CatalogPrimaryRetainsReferenceDimensionsDepthOrderAndIntegerRefresh)
+{
+    ASSERT_TRUE(Platform::InitializeApplication());
+    const auto catalog = Platform::QueryDisplayCatalog();
+    ASSERT_FALSE(catalog.displays.empty());
+    ASSERT_TRUE(catalog.primaryDisplay.has_value());
+    ASSERT_LT(*catalog.primaryDisplay, catalog.displays.size());
+    const auto& primary = catalog.displays[*catalog.primaryDisplay];
+    ASSERT_TRUE(primary.bounds.has_value());
+    ASSERT_TRUE(primary.currentMode.has_value());
+    ASSERT_TRUE(primary.desktopMode.has_value());
+    DEVMODE native{};
+    native.dmSize = sizeof(native);
+    ASSERT_TRUE(EnumDisplaySettings(nullptr, ENUM_CURRENT_SETTINGS, &native));
+    const auto expectMode = [](const Platform::DisplayMode& actual, const DEVMODE& mode) {
+        EXPECT_EQ(actual.size.width, mode.dmPelsWidth);
+        EXPECT_EQ(actual.size.height, mode.dmPelsHeight);
+        EXPECT_EQ(actual.bitsPerPixel, mode.dmBitsPerPel);
+        EXPECT_EQ(actual.refresh.numerator, mode.dmDisplayFrequency > 1 ? mode.dmDisplayFrequency : 0);
+        EXPECT_EQ(actual.refresh.denominator, mode.dmDisplayFrequency > 1 ? 1u : 0u);
+    };
+    expectMode(*primary.currentMode, native);
+    expectMode(*primary.desktopMode, native);
+    const auto legacy = Platform::QueryDisplayInfo();
+    const auto projected = Platform::ProjectPrimaryDisplayInfo(catalog);
+    EXPECT_EQ(legacy.desktop.width, projected.desktop.width);
+    EXPECT_EQ(legacy.desktop.height, projected.desktop.height);
+    ASSERT_EQ(legacy.modes.size(), projected.modes.size());
+    std::size_t count = 0;
+    for (int i = 0; EnumDisplaySettings(nullptr, i, &native); ++i) {
+        ASSERT_LT(count, primary.modes.size());
+        expectMode(primary.modes[count], native);
+        expectMode(legacy.modes[count], native);
+        ++count;
+    }
+    EXPECT_EQ(count, primary.modes.size());
+    for (const auto& display : catalog.displays) {
+        ASSERT_TRUE(display.bounds.has_value());
+        EXPECT_GT(display.bounds->size.width, 0);
+        EXPECT_GT(display.bounds->size.height, 0);
+    }
+}

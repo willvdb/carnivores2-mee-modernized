@@ -373,6 +373,7 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
 
     if(CARNIVORES_PLATFORM STREQUAL "SDL3")
         add_executable(Carnivores2SDLTests tests/test_legacy_keyboard_sdl.cpp
+            tests/test_platform_display_sdl.cpp
             tests/test_platform_sdl.cpp $<$<BOOL:${WIN32}>:tests/test_platform_sdl_win32.cpp>
             $<$<NOT:$<BOOL:${WIN32}>>:tests/test_platform_sdl_linux.cpp>
             Hunt/Platform/LegacyKeyboardSDL.cpp
