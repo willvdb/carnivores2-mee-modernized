@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <optional>
 #include <vector>
+#include <string>
 
 // Single game window, main application thread. No engine globals or native
 // handles belong to this interface. Backends and native compatibility are separate.
@@ -51,17 +52,36 @@ struct DisplayInfo {
 struct DisplayBounds { Point origin; Size size; }; // Backend coordinates, signed.
 // Owned runtime remapping key, never a persistent monitor identity. Backends
 // must match the entire rectangle in the current native topology.
-struct DisplayTarget { DisplayBounds bounds; };
 constexpr bool EqualDisplayBounds(DisplayBounds a, DisplayBounds b)
 {
     return a.origin.x == b.origin.x && a.origin.y == b.origin.y &&
         a.size.width == b.size.width && a.size.height == b.size.height;
 }
+// An owned domain-specific identity: Windows OS registration or validated Linux
+// serial metadata. Each domain documents its own stability/uniqueness limits.
+// Version/domain are explicit; value is an opaque lowercase hex encoding.
+struct DisplayIdentity {
+    std::uint32_t version = 1;
+    std::string domain;
+    std::string value;
+};
+inline bool EqualDisplayIdentity(const DisplayIdentity& a, const DisplayIdentity& b)
+{
+    return a.version == b.version && a.domain == b.domain && a.value == b.value;
+}
+struct DisplayTarget {
+    DisplayBounds bounds;
+    // Optional identity precondition for Linux application-time remapping. Native
+    // handles stay private; disappearance/replacement must discard its rate too.
+    std::optional<DisplayIdentity> identity = std::nullopt;
+};
 struct Display {
     std::optional<DisplayBounds> bounds;
     std::optional<DisplayMode> desktopMode;
     std::optional<DisplayMode> currentMode;
     std::vector<DisplayMode> modes; // Raw backend order, all refresh/depth variants.
+    std::optional<DisplayIdentity> identity = std::nullopt; // Missing/ambiguous/unsupported stays absent.
+    std::string identityStatus; // Owned discovery capability/rejection reason, when known.
 };
 // An index into this snapshot's displays vector, NOT a persistent identity or
 // a promise of stable ordering between queries. Never serialize it.
@@ -117,18 +137,22 @@ struct KeyEvent {
     bool system = false;
     bool shift = false;
 };
-enum class EventType { None, KeyDown, FocusChanged };
+enum class EventType { None, KeyDown, FocusChanged, DisplayChanged, WindowChanged };
 struct Event {
     EventType type = EventType::None;
     KeyEvent key;
     bool focused = false;
+    bool occupiedDisplayRemoved = false; // Runtime output loss, never a saved identity.
 };
 
-// Capture is confinement + visibility, not relative input or OS button capture.
-// Engine decides whether/when to recenter and supplies its video center.
+// Capture controls confinement + visibility. Wayland uses relative input because
+// its cursor warps are advisory. Other backends retain legacy recentering.
 void SetMouseCapture(bool capture);
 void WarpPointerInClient(Point position);
 Point PointerInClient();
+struct MouseDelta { float x = 0, y = 0; };
+// Consume one frame of mouse-look motion, preserving fractional relative input.
+MouseDelta ReadMouseLookDelta(Point center);
 
 void EnableDpiAwareness();
 bool InitializeApplication();
@@ -164,7 +188,16 @@ enum class WindowMode { Exclusive, Borderless, Windowed };
 void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
                          std::optional<DisplayMode> exclusiveMode = std::nullopt,
                          std::optional<DisplayTarget> target = std::nullopt);
+// ClientSize is drawable pixels, not window-coordinate units. The renderer and
+// CPU buffer use these pixels. Pointer APIs use this same pixel space.
 Size ClientSize();
+struct WindowState {
+    Size logical{}; // SDL window-coordinate units (also used by SDL mouse events).
+    Size pixels{};  // Actual drawable pixels; do not multiply by display scale.
+    bool minimized = false;
+    bool reachable = false; // Some live output intersects the window; Wayland decides placement.
+};
+WindowState QueryWindowState();
 void ShowLoadingWindow(Size size);
 void RestoreDesktopMode();
 void LoadArrowCursor();

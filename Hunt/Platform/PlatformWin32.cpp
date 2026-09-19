@@ -1,6 +1,7 @@
 #include "Platform.h"
 #include "PlatformWin32.h"
 #include "PlatformWin32Display.h"
+#include "DisplayIdentityWin32.h"
 #include "../Debug/Log.h"
 #include <mmsystem.h>
 #include <utility>
@@ -146,6 +147,7 @@ DisplayCatalog QueryDisplayCatalog()
 {
     DisplayCatalog catalog;
     EnumDisplayMonitors(nullptr, nullptr, CollectDisplay, reinterpret_cast<LPARAM>(&catalog));
+    Win32Details::DiscoverMonitorIdentities(catalog);
     return catalog;
 }
 
@@ -213,6 +215,12 @@ Point PointerInClient()
     GetCursorPos(&point);
     ScreenToClient(gameWindow, &point);
     return {point.x, point.y};
+}
+
+MouseDelta ReadMouseLookDelta(Point center)
+{
+    const auto point = PointerInClient();
+    return {static_cast<float>(point.x - center.x), static_cast<float>(point.y - center.y)};
 }
 
 bool HasGameWindow() { return gameWindow != nullptr; }
@@ -285,6 +293,12 @@ Size ClientSize()
     RECT rect;
     GetClientRect(gameWindow, &rect);
     return {rect.right - rect.left, rect.bottom - rect.top};
+}
+
+WindowState QueryWindowState()
+{
+    const auto size = ClientSize();
+    return {size, size, IsIconic(gameWindow) != FALSE, gameWindow != nullptr};
 }
 
 void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,

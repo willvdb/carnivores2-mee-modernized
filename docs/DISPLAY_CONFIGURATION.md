@@ -1,8 +1,14 @@
 # Display configuration, discovery and selection
 
-The sections below record each milestone's boundary. For current one-session
-monitor targeting, see [Phase 4d](#phase-4d-explicit-runtime-display-targeting).
-Earlier primary-only descriptions describe their respective earlier phases.
+Current live Linux recovery and dimension semantics: [Phase 4i](LINUX_DISPLAY_RECOVERY.md). Earlier deferred descriptions below are historical.
+
+Current Linux opt-in serial identity support is documented in [Phase 4h](LINUX_DISPLAY_IDENTITY.md). Earlier unsupported-identity descriptions below are historical.
+
+The sections below record each milestone's boundary. Current opt-in persistence
+and consolidated engine state are described in [Phase 4e](#phase-4e-opt-in-registered-display-identity)
+and [Phase 4f](#phase-4f-one-engine-configuration-with-legacy-projections).
+[Phase 4d](#phase-4d-explicit-runtime-display-targeting) defines the retained
+session-targeting contract. Earlier primary-only descriptions are historical.
 
 ## Phase 4a: dimension-first resolution selection
 
@@ -939,3 +945,208 @@ direct-Wayland policy, always-full-monitor borderless, VRR, vsync, frame limitin
 and the other excluded subsystems remain deferred. Runtime evidence stays under
 `/tmp/carnivores-display-targeting/` and `/tmp/carnivores-display-targeting-followup/`;
 no proprietary assets or copied profiles are committed.
+
+## Phase 4e: opt-in registered display identity
+
+The owned `Platform::DisplayIdentity` contains a schema version, identity domain,
+and opaque value. It describes an **OS device registration**, not a physical
+monitor serial number. It never contains an HMONITOR, SDL ID, runtime index,
+position, display label, or mode. Platform discovers facts;
+`Game/MonitorPreference.h` parses preferences and `SelectMonitor` decides policy.
+Backend placement still uses the Phase 4d exactly-one full-rectangle mapping.
+
+### Evidence and supported capability
+
+The checksum-pinned [SDL 3.2.28 public display API](https://github.com/libsdl-org/SDL/blob/release-3.2.28/include/SDL3/SDL_video.h)
+has HDR and KMSDRM orientation properties, but **no public HMONITOR, wl_output,
+EDID, or persistent display identifier**. Newer online SDL documentation lists
+properties not present in this pin; the implementation does not depend on them.
+Its [Windows implementation](https://github.com/libsdl-org/SDL/blob/release-3.2.28/src/video/windows/SDL_windowsmodes.c)
+stores HMONITOR/device names privately and obtains friendly display labels.
+
+Windows native and SDL's actual `windows` driver support domain
+`win-monitor-interface`, version 1. Native discovery calls
+[EnumDisplayDevicesW with EDD_GET_DEVICE_INTERFACE_NAME](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumdisplaydevicesw),
+which returns the registered GUID_DEVINTERFACE_MONITOR interface in DeviceID.
+Only exactly one active monitor child with a nonempty, bounded path is accepted.
+The lowercase Windows path is encoded as four lowercase hexadecimal digits per
+UTF-16 code unit; the path remains opaque and is never disassembled. Windows
+[registers interfaces across reboots](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-ioregisterdeviceinterface).
+That guarantee concerns the registration, not survival of driver reinstall,
+OS reinstall, changed connector/dock/GPU, or a replacement physical panel.
+
+Both Windows backends associate those native registrations to the owned catalog
+only when the full rectangle occurs exactly once in **each** enumeration.
+Missing, duplicated, truncated, clone, or failed native metadata stays absent.
+Failure to read any native monitor rectangle aborts identity association for
+the entire snapshot: incomplete bounds cannot establish uniqueness.
+SDL dummy/offscreen drivers never borrow real Windows monitor identities even
+when rectangles happen to match. No identity is invented from bounds.
+
+Linux persistence is explicitly **unsupported in this implementation**; Linux
+retains session `-display=N`. The pinned [X11 implementation](https://github.com/libsdl-org/SDL/blob/release-3.2.28/src/video/x11/SDL_x11modes.c)
+keeps its RandR output/connector private and constructs labels using EDID. A
+label is not a unique serial. Native RandR output IDs are server resources;
+EDID may omit serials or be duplicated, and mapping DRM sysfs to SDL/Xwayland
+outputs is not a portable identity contract. Wayland's
+[wl_output.name contract](https://wayland.freedesktop.org/docs/html/apa.html#protocol-spec-wl_output-event-name)
+explicitly does not promise persistence across sessions. No new private SDL ABI,
+compositor extension, DRM access, EDID parser, or physical-panel identity claim
+is introduced. This is completed partial-platform persistence, not universal
+monitor identity support.
+
+### Discovery, consent and precedence
+
+Run the game executable with `-list-displays` (or `/list-displays`). It initializes
+the platform and writes current indices, bounds, primary status, and complete
+copyable `display_identity` lines to stdout and `render.log`, then exits **before**
+creating a game window, loading assets/config/profiles, or saving settings. On
+Windows GUI launches, use `render.log`. No monitor mode is changed. Displays
+without an identifier say persistence is unavailable; use their session index.
+
+To opt in, copy the desired complete line into the existing `config.cfg`:
+
+```text
+# Example shape only: use the complete token printed on your own machine.
+display_identity v1:win-monitor-interface:00610062
+```
+
+The example's opaque value is synthetic and will not select a real monitor.
+No configuration writer automatically records the last selected monitor.
+Absent key and `display_identity primary` retain the primary/default behavior.
+The legacy Menu does not own this key: its existing writer preserves these
+lines, unknown keys/versions and comments verbatim through repeated rewrites.
+The new asset-free test compiles that actual production writer body with small
+state/path doubles, without modifying Menu or frontend sources.
+
+The order is defaults/profile -> config -> final CLI pass. Config duplicates
+are last-wins. Values accept outer whitespace and `#` comments, but no extra
+tokens. Identity syntax is `v<positive uint32>:<domain>:<opaque lowercase hex>`;
+domain is 1–48 lowercase letters/digits/hyphens, value is 2–2048 hex digits of
+even length. Unknown versions/domains remain valid saved intent but cannot
+resolve. Empty/malformed/oversized values reset effective preference to primary
+and log the error; config is never rewritten by the engine.
+
+Session overrides (dash/slash, case-insensitive option name) are:
+
+- `-display=N`: existing uint32 session index, never persisted.
+- `-display=primary`: ignore any saved preference for this session.
+- `-display-id=<token>`: use another identifier for this session; never persisted.
+  `-display-id=primary` also clears the effective preference.
+
+The last recognized display option wins, including invalid options clearing an
+earlier request to primary. Malformed values are consumed before legacy
+substring-based session parsing. Explicit primary does not suppress an
+independent refresh preference; use `-refresh=0` to request automatic refresh.
+Existing out-of-range session-index behavior is unchanged (primary refresh
+lookup is permitted); **failed saved-identity resolution always uses automatic**.
+
+### Resolution and fallback contract
+
+| Situation | Result |
+| --- | --- |
+| Same registration, reordered catalog or moved/rearranged monitor | Match identity, use its current unique rectangle and its own modes. |
+| Disconnect/missing registration/changed connector path | Primary/default plus automatic refresh; preserve saved intent. |
+| Registration returns on a later launch or mode application | Resolve again; saved preference recovers. No hotplug subscription added. |
+| Duplicate identifiers, including identical monitors reporting the same value | Reject ambiguity; primary/default plus automatic. Never take first match. |
+| Clones or duplicate rectangles in either discovery layer | Identity unavailable or targeting rejected; primary/default plus automatic. |
+| No serial / identical panel models | No physical-serial claim. Distinct OS registrations may work; ambiguous registrations do not. |
+| Backend changes between native Windows and SDL Windows on same installation | Same identity domain; may resolve if registration and unique mapping remain. |
+| Linux/another OS, unsupported domain/version, dummy backend | Retain config line; primary/default plus automatic. Session index remains available. |
+| Registration changes after docking, GPU/driver/OS changes | No heuristic relocation; rediscover and explicitly update config if desired. |
+| Target disappears during backend mapping | Existing 4d primary/automatic fallback. |
+
+A saved target resolves only on an exact version/domain/value match and exactly
+one catalog entry. Missing bounds also clear selected refresh; a primary-only
+timing can never leak from a failed saved target. The preference itself remains
+unchanged. A valid target uses target-specific refresh selection and keeps 4d
+loading-window, Alt+Enter, owned lifetimes and named-device restoration behavior.
+There is no atomic hotplug transaction: exactly-one current rectangle remapping
+is the existing race boundary, not a promise of persistent identity validation
+inside native fullscreen APIs.
+
+No legacy profile, save, trophy, keybinding, OptRes or Menu binary layout changes.
+The 1,660-byte `.sav`, 7,176-byte `.sab`, signed OptRes and 68 keybinding bytes
+remain covered by existing golden tests. Physical Windows multi-monitor and
+Hyprland/Xwayland exclusive acceptance remain outstanding; CI/synthetic tests
+do not resolve those earlier limits.
+
+## Phase 4f: one engine configuration with legacy projections
+
+`Game/DisplayConfiguration.h` defines `GameDisplay::Configuration`: dimensions,
+`Platform::WindowMode`, monitor preference, and rational refresh. The engine's
+`DisplayConfiguration` object owns these values. Startup adapters and parsing
+write this object; `SetVideoMode` selects presentation/refresh from it and passes
+only owned portable values into Platform. No Platform source imports Game policy.
+
+### Characterized behavior retained
+
+Before consolidation, the only writers of WinW/WinH were profile resolution
+translation, config/CLI dimensions, `SetVideoMode`, and valid actual-client-size
+synchronization. FULLSCREEN/BORDERLESS were written by defaults, config/CLI mode
+selection, and Alt+Enter. These writes now converge through
+`SyncLegacyDisplayState` / `ProjectLegacyPresentation`. Renderer, SOFT, native
+message consumers and buffer geometry still read their familiar globals; those
+globals are compatibility projections, not separate preference authorities.
+Derived VideoCX/VideoCY, pitch, viewport, FOV and DIB allocation stay unchanged.
+
+The startup sequence is preserved:
+
+1. Explicit defaults: unspecified `{0,0}` dimensions, exclusive mode, primary
+   monitor, automatic refresh. `{0,0}` matches the old zero-initialized globals,
+   not an added new request. The missing/invalid-profile path does not call
+   SetupRes; this refactor deliberately does not invent an 800x600 first-run
+   setting. The existing backend fallback and default config behavior remain.
+2. The early CLI pass still supplies legacy session options.
+3. Enumerate the primary-based legacy ResolutionList, load a valid profile, and
+   adapt OptRes through `ApplyLegacyProfileResolution`. This changes dimensions
+   and OptRes only. Invalid ordinals still use 800x600/first-mode; an empty list
+   still uses 800x600 and leaves OptRes unchanged.
+4. Apply config, including resolution, display_mode, display_identity and
+   refresh_rate. The automatically created legacy config still chooses
+   borderless mode; no default/template behavior is changed.
+5. Run the final CLI pass, which wins over config. Publish compatibility values
+   before creating the game-sized DIB and entering gameplay.
+
+`ApplyConfigResolution` sets OptRes to the exact primary-list match or -1, and
+leaves CurRes alone. `ApplyCommandLineResolution` sets both ordinals only when
+an exact match exists; otherwise both prior ordinals survive. Both update
+dimensions. The parsers, accepted legacy `/vmodeN` flags and unmatched-resolution
+difference are unchanged. ResolutionList's Windows ordering shim remains solely
+for profile/Menu compatibility. There is no replacement binary profile record.
+
+Window mode has one enum instead of two independently authoritative flags.
+Config `display_mode 2` still maps to exclusive on SOFT; existing CLI borderless
+behavior is retained separately. Alt+Enter maps borderless -> exclusive,
+exclusive -> windowed, windowed -> exclusive. It keeps monitor/refresh intent.
+On a valid backend client-size adjustment, the configuration and compatibility
+globals both follow the actual dimensions, so later Alt+Enter and restart
+applications keep using the same actual-size behavior as before. Invalid client
+sizes do not replace dimensions. Loading artwork/window sizing never writes
+the gameplay configuration. Desktop restore order and backend calls are unchanged.
+
+### Requirement-to-implementation coverage
+
+| Requirement | Production seam and regression coverage |
+| --- | --- |
+| Owned version/domain identity and native uniqueness | Platform identity values, Windows discovery and `DisplayIdentityDetails::Associate`; portable mapping plus injected Windows enumeration tests. |
+| Opt-in config, CLI override, malformed isolation | MonitorPreference parsers and production config/CLI call sites; persistence parser/precedence tests and full-game launch traces. |
+| Missing/duplicate/reordered/moved/reconnected targets | `SelectMonitor`; synthetic identity/rectangle/recovery cases, retained preference assertions, primary-refresh-leak mutation regression. |
+| Preserve modern and unknown config lines | Asset-free build of the actual Menu SaveConfig body; two rewrites preserve identity, rational refresh, comments and unknown version/key. |
+| Dimensions/mode/monitor/refresh consolidated | Configuration and its production startup/application callers; profile/config/CLI composition tests. |
+| Legacy ordinal and SOFT adapter semantics | ApplyLegacyProfileResolution, ApplyConfigResolution, ApplyCommandLineResolution, ApplyConfigWindowMode and projection tests. |
+| Alt+Enter, actual client size, loading/restoration | ToggleWindowMode/ApplyClientSize tests; virtual-X11 full-game scenarios and existing 20-cycle allocation/restoration regression. |
+| Save/trophy/keybinding ABI | Unchanged serializers and golden .sav/.sab/layout tests; copied runtime profiles retain 1,660/7,176-byte sizes and all 68 keybinding bytes. |
+| Game above Platform | Existing executable source-boundary check remains in every CTest build. |
+
+The checkpoint records exact SHA/CI evidence and limitations. Physical Windows
+and Hyprland/Xwayland exclusive acceptance remain outstanding. The existing
+SDL dummy-driver zero-length memcpy UBSan failure and independent real-X11
+initialization/teardown leak remain unsuppressed dependency limitations.
+
+## Phase 4g: Linux behavior and direct Wayland
+
+[Linux display behavior](LINUX_DISPLAY_BEHAVIOR.md) documents settled-state
+confirmation, output-aware fallback, Wayland relative mouse-look and the tested
+virtual/nested acceptance matrix. Existing selection/persistence/configuration
+contracts above remain; physical/compositor limits are explicitly retained.

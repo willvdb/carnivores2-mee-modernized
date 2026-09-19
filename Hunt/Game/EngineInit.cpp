@@ -74,10 +74,8 @@ void UploadGeometry()
 }
 void SetupRes()
 {
-  const auto selected = GameDisplay::ResolveLegacyResolution(ResolutionList, ResCount, OptRes);
-  OptRes = selected.ordinal;
-  WinW = selected.size.width;
-  WinH = selected.size.height;
+  GameDisplay::ApplyLegacyProfileResolution(DisplayConfiguration, ResolutionList, ResCount, OptRes);
+  SyncLegacyDisplayState();
 }
 void EnumerateResolutions()
 {
@@ -333,8 +331,8 @@ static void CreateDefaultConfig();
 static void LoadConfig();
 void InitEngine()
 {
-  FULLSCREEN   = true;
-  BORDERLESS   = false;
+  DisplayConfiguration = {};
+  SyncLegacyDisplayState();
   DEBUG        = false;
 
   // Explicit zoom defaults: zero-init would collapse CameraW/H (which are
@@ -885,8 +883,11 @@ static void LoadConfig()
     int keyEnd = 0;
     int tokens = sscanf(line, "%63s%n %63s", key, &keyEnd, keyval);
     if (tokens >= 1) {
-      if (LegacyText::Compare(key, "refresh_rate") == 0) {
-        if (!GameDisplay::ParseConfigRefresh(line + keyEnd, PreferredRefresh)) {
+      if (LegacyText::Compare(key, "display_identity") == 0) {
+        if (!GameDisplay::ParseConfigMonitor(line + keyEnd, DisplayConfiguration.monitor))
+          PrintLog("Config: invalid display_identity; using primary display.\n");
+      } else if (LegacyText::Compare(key, "refresh_rate") == 0) {
+        if (!GameDisplay::ParseConfigRefresh(line + keyEnd, DisplayConfiguration.refresh)) {
           PrintLog("Config: refresh_rate: ");
           PrintLog(GameDisplay::RefreshSyntax);
         }
@@ -959,9 +960,8 @@ static void LoadConfig()
           if (w > 0 && h > 0) {
             // Config retains -1 for an unmatched size; CLI intentionally
             // preserves the previous ordinal instead. Dimensions always win.
-            OptRes = GameDisplay::FindResolution(ResolutionList, ResCount, {w, h});
-            WinW = w;
-            WinH = h;
+            GameDisplay::ApplyConfigResolution(DisplayConfiguration, {w, h}, ResolutionList, ResCount, OptRes);
+            SyncLegacyDisplayState();
           } else {
             PrintLog("Config: resolution values must be positive, ignoring.\n");
           }
@@ -974,14 +974,13 @@ static void LoadConfig()
         // Written by the menu's Display Mode video option. Command-line
         // flags (-windowed/-fullscreen/-borderless) override this later
         // in ProcessCommandLine().
-        if (value >= 0 && value <= 2) {
 #ifdef _soft
-          // The software renderer has no borderless presentation; map its
-          // "borderless" pick to exclusive fullscreen (classic behaviour).
-          if (value == 2) value = 1;
+        constexpr bool softwareDisplay = true;
+#else
+        constexpr bool softwareDisplay = false;
 #endif
-          FULLSCREEN = (value == 1);
-          BORDERLESS = (value == 2);
+        if (GameDisplay::ApplyConfigWindowMode(DisplayConfiguration, value, softwareDisplay)) {
+          SyncLegacyDisplayState();
         } else {
           PrintLog("Config: display_mode must be 0 (windowed), 1 (fullscreen) or 2 (borderless), ignoring.\n");
         }

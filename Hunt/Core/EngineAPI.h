@@ -27,7 +27,13 @@ void HLineTDGlass25( void );
 void HLineTBGlass25( void );
 
 
-void SetVideoMode(int, int);
+void SetVideoMode(int W, int H);
+#ifndef _WIN32
+void ObserveDisplayEvent(const Platform::Event& event);
+bool ServiceDisplayChanges();
+void RestoreGameDisplay();
+#endif
+void SyncLegacyDisplayState(); // Publish engine configuration to renderer/SOFT adapters.
 void SetFullScreen();
 void CaptureMouse(std::int32_t);
 void ResetMousePos();

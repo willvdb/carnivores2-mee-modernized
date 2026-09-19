@@ -1,10 +1,11 @@
 #pragma once
 
 #include "RefreshSelection.h"
+#include "MonitorPreference.h"
 
 namespace GameDisplay {
 
-enum class DisplayFallback { None, IndexOutOfRange, MissingBounds, MissingPrimary, AmbiguousBounds };
+enum class DisplayFallback { None, IndexOutOfRange, MissingBounds, MissingPrimary, AmbiguousBounds, MissingIdentity, AmbiguousIdentity, UnsupportedIdentity };
 struct DisplaySelection {
     // Only used against the same snapshot in engine policy/diagnostics.
     std::optional<Platform::DisplayIndex> index;
@@ -44,6 +45,7 @@ inline DisplaySelection SelectDisplay(const Platform::DisplayCatalog& catalog,
             }
         }
     }
+    if (requested && result.fallback != DisplayFallback::None) return result;
     if (!result.index) {
         if (result.fallback == DisplayFallback::None)
             result.fallback = DisplayFallback::MissingPrimary;
@@ -55,6 +57,40 @@ inline DisplaySelection SelectDisplay(const Platform::DisplayCatalog& catalog,
     return result;
 }
 
+// Persistent identity is resolved afresh on every application. Failed identity
+// resolution uses primary/default AND automatic, without changing saved intent.
+inline DisplaySelection SelectMonitor(const Platform::DisplayCatalog& catalog,
+                                      const MonitorPreference& preference,
+                                      Platform::Size size, Platform::RefreshRate refresh = {})
+{
+    if (preference.kind == MonitorPreferenceKind::Primary) return SelectDisplay(catalog, std::nullopt, size, refresh);
+    if (preference.kind == MonitorPreferenceKind::SessionIndex) return SelectDisplay(catalog, preference.index, size, refresh);
+    auto fallback = SelectDisplay(catalog, std::nullopt, size);
+    fallback.fallback = DisplayFallback::MissingIdentity;
+    if (preference.identity.version != 1 || (preference.identity.domain != "win-monitor-interface" &&
+        preference.identity.domain != "linux-x11-edid-serial" &&
+        preference.identity.domain != "linux-wayland-wlr-serial")) {
+        fallback.fallback = DisplayFallback::UnsupportedIdentity;
+        return fallback;
+    }
+    std::optional<std::uint32_t> match;
+    for (std::size_t i = 0; i < catalog.displays.size(); ++i) {
+        const auto& identity = catalog.displays[i].identity;
+        if (identity && Platform::EqualDisplayIdentity(*identity, preference.identity)) {
+            if (match || i > (std::numeric_limits<std::uint32_t>::max)()) {
+                fallback.fallback = DisplayFallback::AmbiguousIdentity;
+                return fallback;
+            }
+            match = static_cast<std::uint32_t>(i);
+        }
+    }
+    if (!match) return fallback;
+    auto selected = SelectDisplay(catalog, match, size, refresh);
+    if (selected.fallback != DisplayFallback::None) selected.exclusiveMode.reset();
+    else if (selected.target) selected.target->identity = preference.identity;
+    return selected;
+}
+
 inline const char* DisplayFallbackReason(DisplayFallback fallback)
 {
     switch (fallback) {
@@ -62,6 +98,9 @@ inline const char* DisplayFallbackReason(DisplayFallback fallback)
     case DisplayFallback::MissingBounds: return "display has no usable bounds";
     case DisplayFallback::MissingPrimary: return "catalog has no primary display";
     case DisplayFallback::AmbiguousBounds: return "display bounds match multiple displays";
+    case DisplayFallback::MissingIdentity: return "saved identity unavailable on this backend/topology";
+    case DisplayFallback::AmbiguousIdentity: return "saved identity matches multiple displays";
+    case DisplayFallback::UnsupportedIdentity: return "unsupported identity version/domain";
     default: return "none";
     }
 }

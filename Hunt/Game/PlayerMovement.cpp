@@ -398,16 +398,17 @@ void ProcessSlide()
 void ProcessPlayerMovement()
 {
 
-  Platform::Point ms = Platform::PointerInClient();
-  if (REVERSEMS) ms.y = -ms.y+VideoCY*2;
+  auto motion = Platform::ReadMouseLookDelta({VideoCX, VideoCY});
+  if (REVERSEMS) motion.y = -motion.y;
   // The per-frame mouse delta naturally scales with frame time because the
-  // cursor is reset to the centre every frame, so ms-VideoCX/Y ~= V*T. The
+  // cursor is reset every frame (or relative motion is consumed on Wayland),
+  // so the delta is approximately V*T. The
   // original `rav += D * K` is therefore already framerate-independent in
   // terms of per-second sensitivity (K*V constant). Do NOT normalize by
   // TimeDt here: in an uncapped game that makes sensitivity scale linearly
   // with framerate (4x faster look at 240 FPS vs 60 FPS).
-  rav += static_cast<float>((ms.x-VideoCX)) * (OptMsSens+64) / 600.f / 192.f;
-  rbv += static_cast<float>((ms.y-VideoCY)) * (OptMsSens+64) / 600.f / 192.f;
+  rav += motion.x * (OptMsSens+64) / 600.f / 192.f;
+  rbv += motion.y * (OptMsSens+64) / 600.f / 192.f;
 //  if (KeyFlags & kfStrafe)
 //    SSpeed+= static_cast<float>(rav) * 10;
 //  else

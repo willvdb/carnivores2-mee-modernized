@@ -113,14 +113,13 @@ TEST(DisplaySelection, ExplicitPrimaryAlsoGetsAnOwnedTarget)
     EXPECT_EQ(selected.target->bounds.origin.x, 100);
 }
 
-TEST(DisplaySelection, InvalidIndexFallsBackToPrimaryAndItsRefreshWithoutTarget)
+TEST(DisplaySelection, InvalidIndexFallsBackToPrimaryAutomaticWithoutTarget)
 {
     const auto selected = GameDisplay::SelectDisplay(Catalog(), 99, {800, 600}, {144, 1});
     EXPECT_EQ(selected.index, 1u);
     EXPECT_FALSE(selected.target);
     EXPECT_EQ(selected.fallback, GameDisplay::DisplayFallback::IndexOutOfRange);
-    ASSERT_TRUE(selected.exclusiveMode);
-    EXPECT_EQ(selected.exclusiveMode->refresh.numerator, 144u);
+    EXPECT_FALSE(selected.exclusiveMode);
 }
 
 TEST(DisplaySelection, MissingAndUnusableBoundsFallBackToPrimary)
@@ -132,7 +131,7 @@ TEST(DisplaySelection, MissingAndUnusableBoundsFallBackToPrimary)
         const auto selected = GameDisplay::SelectDisplay(catalog, 0, {800, 600}, {144, 1});
         EXPECT_EQ(selected.index, 1u);
         EXPECT_FALSE(selected.target);
-        EXPECT_TRUE(selected.exclusiveMode);
+        EXPECT_FALSE(selected.exclusiveMode);
         EXPECT_EQ(selected.fallback, GameDisplay::DisplayFallback::MissingBounds);
     }
 }

@@ -2,6 +2,8 @@
 #include "Hunt.h"
 #include "Platform/Platform.h"
 #include "Game/DisplaySelection.h"
+#include "Game/DisplayRecovery.h"
+#include "Game/MouseCapture.h"
 #include "Renderer/CPUText.h"
 #ifdef _gl
 #include "Renderer/GLRenderer.h"
@@ -166,11 +168,8 @@ void SetFullScreen()
 #endif
   if (!_GameState) return;
 
-  FULLSCREEN = !FULLSCREEN;
-  if (BORDERLESS) {
-    BORDERLESS = false;
-    FULLSCREEN = true;
-  }
+  GameDisplay::ToggleWindowMode(DisplayConfiguration);
+  SyncLegacyDisplayState();
 
   // Leaving exclusive fullscreen restores the desktop display mode.
   // (ChangeDisplaySettings is per-process, so exit also restores it, but
@@ -195,7 +194,11 @@ void SetFullScreen()
   }
 #endif
 
+#ifdef _WIN32
   SetVideoMode(WinW, WinH);
+#else
+  SetVideoMode(DisplayConfiguration.size.width, DisplayConfiguration.size.height);
+#endif
 
 #ifdef _gl
   if (g_GLRenderer)
@@ -297,82 +300,17 @@ void PrintLoad(char *t)
 }
 
 
-void SetVideoMode(int W, int H)
+void SyncLegacyDisplayState()
 {
-  WinW = W;
-  WinH = H;
+  const auto legacy = GameDisplay::ProjectLegacyPresentation(DisplayConfiguration);
+  WinW = legacy.size.width;
+  WinH = legacy.size.height;
+  FULLSCREEN = legacy.fullscreen;
+  BORDERLESS = legacy.borderless;
+}
 
-  // Reallocate the back-buffer DIB to match the new WinW/WinH so the
-  // GDI pitch matches the runtime VideoPitchB. Required for widescreen
-  // support; before this the DIB was always 1024x768 and the renderer
-  // assumed a 2048-byte stride. No-op for the very first call (when
-  // hwndMain is not yet created) — that path uses the old hardcoded
-  // 1024x768 DIB which is fine because the initial render is the
-  // loading screen only.
-  if (Platform::HasGameWindow()) CreateVideoDIB(WinW, WinH);
-
-  const auto mode = FULLSCREEN ? Platform::WindowMode::Exclusive :
-                    BORDERLESS ? Platform::WindowMode::Borderless : Platform::WindowMode::Windowed;
-  std::optional<Platform::DisplayMode> exclusiveMode;
-  std::optional<Platform::DisplayTarget> target;
-  const bool wantsRefresh = mode == Platform::WindowMode::Exclusive && Platform::HasRefresh(PreferredRefresh);
-  if ((RequestedDisplayIndex || wantsRefresh) && Platform::HasGameWindow()) {
-    // One snapshot for presentation AND refresh selection. ResolutionList and
-    // OptRes keep their primary/default compatibility projection unchanged.
-    const auto catalog = Platform::QueryDisplayCatalog();
-    const auto selected = GameDisplay::SelectDisplay(catalog, RequestedDisplayIndex, {W, H},
-        wantsRefresh ? PreferredRefresh : Platform::RefreshRate{});
-    target = selected.target;
-    exclusiveMode = selected.exclusiveMode;
-    if (RequestedDisplayIndex) {
-      if (selected.fallback != GameDisplay::DisplayFallback::None)
-        LOG_WARN("Runtime display %u: %s; using primary/default display%s",
-                 *RequestedDisplayIndex, GameDisplay::DisplayFallbackReason(selected.fallback),
-                 selected.fallback == GameDisplay::DisplayFallback::AmbiguousBounds ? " and automatic refresh" : "");
-      if (selected.index) {
-        LOG_INFO("Runtime display %u resolved to %s catalog index %zu",
-                 *RequestedDisplayIndex, selected.index == catalog.primaryDisplay ? "primary" : "secondary",
-                 *selected.index);
-        const auto& bounds = catalog.displays[*selected.index].bounds;
-        if (bounds)
-          LOG_INFO("Runtime display bounds: (%d,%d) %dx%d", bounds->origin.x, bounds->origin.y,
-                   bounds->size.width, bounds->size.height);
-      } else LOG_WARN("Runtime display: catalog has no usable primary entry; using backend default fallback");
-    }
-    if (wantsRefresh && !exclusiveMode && selected.fallback != GameDisplay::DisplayFallback::AmbiguousBounds)
-      LOG_WARN("Exclusive %dx%d refresh %u/%u unavailable on selected display; using automatic refresh",
-               W, H, PreferredRefresh.numerator, PreferredRefresh.denominator);
-  }
-  Platform::ConfigureGameWindow(mode, {W, H}, {VideoCX, VideoCY}, exclusiveMode, target);
-
-  // Sync WinW/WinH and all derived values to the ACTUAL client area the OS
-  // gave us. AdjustWindowRect predicts the frame chrome, but the real chrome
-  // (title bar height, border width, DPI scale) can differ slightly, and at
-  // resolutions that match or exceed the desktop the window can also be
-  // clamped by Windows. If we kept WinW/WinH at the requested size while the
-  // client area is smaller, the DIB and the OpenGL viewport would be larger
-  // than the visible area and the top/bottom of the HUD would be clipped
-  // (e.g. ammo counter hidden behind the title bar at 2560x1440 windowed on
-  // a 2560x1440 desktop).
-  if (Platform::HasGameWindow()) {
-    const auto client = Platform::ClientSize();
-    int actualW = client.width;
-    int actualH = client.height;
-    if (actualW > 0 && actualH > 0 &&
-        (actualW != WinW || actualH != WinH)) {
-      char logt[128];
-      snprintf(logt, sizeof(logt), "Client area adjusted: requested %dx%d, actual %dx%d\n",
-               WinW, WinH, actualW, actualH);
-      PrintLog(logt);
-      WinW = actualW;
-      WinH = actualH;
-      // DIB was allocated at the old WinW/WinH; reallocate to match the
-      // actual client area so GDI TextOut/DrawPicture don't write past the
-      // visible region.
-      CreateVideoDIB(WinW, WinH);
-    }
-  }
-
+static void UpdateDrawableGeometry()
+{
   VideoPitch  = WinW;        // std::uint16_t index (pixels) for 16-bit video buffer
   VideoPitchB = WinW * 2;    // std::uint8_t index for 16-bit video buffer
 
@@ -392,8 +330,191 @@ void SetVideoMode(int W, int H)
   CameraH = static_cast<float>(VideoCY) * FovScaleFromDegrees(OptFov);
   CameraW = CameraH;
 
-  LoDetailSky =(W>400);
-  Platform::HideArrowCursor();
+  LoDetailSky =(WinW>400);
+#if defined(_gl) && !defined(_WIN32)
+  // All Linux publication paths, including topology fallback, update viewport
+  // together with CPU pitch/centers. No later size comparison can bypass this.
+  if (g_GLRenderer) g_GLRenderer->SetVideoMode(WinW, WinH);
+#endif
 }
 
+#ifndef _WIN32
+static GameDisplay::DisplayRecovery displayRecovery;
+static bool displayConfigured = false;
+
+void ObserveDisplayEvent(const Platform::Event& event)
+{
+  displayRecovery.Observe(event, Platform::Milliseconds());
+}
+
+// No native reconfiguration here: resize/scale events update CPU storage,
+// viewport, readback and camera dimensions together before any frame renders.
+static bool SynchronizeDrawable(const Platform::WindowState& window)
+{
+  if (!GameDisplay::UsableWindow(window)) return false;
+  if (window.pixels.width != WinW || window.pixels.height != WinH) {
+    LOG_INFO("Drawable changed: logical=%dx%d pixels=%dx%d requested=%dx%d",
+             window.logical.width, window.logical.height, window.pixels.width, window.pixels.height,
+             DisplayConfiguration.size.width, DisplayConfiguration.size.height);
+    WinW = window.pixels.width;
+    WinH = window.pixels.height;
+    CreateVideoDIB(WinW, WinH);
+    UpdateDrawableGeometry();
+    ResetMousePos();
+  }
+  return true;
+}
+
+bool ServiceDisplayChanges()
+{
+  if (!displayConfigured) return true; // Loading has its own dimensions.
+  auto window = Platform::QueryWindowState();
+  if (window.minimized) {
+    SuspendMouseCaptureForDisplay();
+    return false;
+  }
+  if (displayRecovery.Ready(Platform::Milliseconds())) {
+    const auto catalog = Platform::QueryDisplayCatalog();
+    if (displayRecovery.Resolve(DisplayConfiguration, catalog, window) && !catalog.displays.empty()) {
+      LOG_INFO("Display topology recovery: reapplying retained request with fresh selection");
+      SuspendMouseCaptureForDisplay();
+      SetVideoMode(DisplayConfiguration.size.width, DisplayConfiguration.size.height);
+      window = Platform::QueryWindowState();
+      // Self-generated mode/layout events must not cause an endless retry if
+      // the window manager rejects recovery. Retry only a distinct topology
+      // or the user's next explicit mode request.
+      displayRecovery.Recovered(Platform::QueryDisplayCatalog());
+    }
+  }
+  if (!GameDisplay::UsableWindow(window)) {
+    if (SuspendMouseCaptureForDisplay()) {
+      LOG_WARN("Drawable suspended: minimized=%d pixels=%dx%d", window.minimized, window.pixels.width, window.pixels.height);
+    }
+    return false;
+  }
+  if (!window.reachable) {
+    SuspendMouseCaptureForDisplay();
+    return false;
+  }
+  const bool usable = SynchronizeDrawable(window);
+  if (usable) ResumeMouseCaptureAfterDisplay(blActive && _GameState && !IsPaused());
+  return usable;
+}
+
+// Focus/context restoration retains the user's current placement and dimensions.
+// Explicit Alt+Enter and topology recovery still apply the requested mode.
+void RestoreGameDisplay()
+{
+  if (!displayConfigured)
+    SetVideoMode(DisplayConfiguration.size.width, DisplayConfiguration.size.height);
+  else
+    SynchronizeDrawable(Platform::QueryWindowState());
+}
+#endif
+
+void SetVideoMode(int W, int H)
+{
+#ifndef _WIN32
+  const Platform::Size priorPixels{WinW, WinH};
+#endif
+  DisplayConfiguration.size = {W, H};
+  SyncLegacyDisplayState();
+
+  // Reallocate the back-buffer DIB to match the new WinW/WinH so the
+  // GDI pitch matches the runtime VideoPitchB. Required for widescreen
+  // support; before this the DIB was always 1024x768 and the renderer
+  // assumed a 2048-byte stride. No-op for the very first call (when
+  // hwndMain is not yet created) — that path uses the old hardcoded
+  // 1024x768 DIB which is fine because the initial render is the
+  // loading screen only.
+#ifdef _WIN32
+  if (Platform::HasGameWindow()) CreateVideoDIB(WinW, WinH);
+#endif
+
+  const auto mode = DisplayConfiguration.mode;
+  std::optional<Platform::DisplayMode> exclusiveMode;
+  std::optional<Platform::DisplayTarget> target;
+  GameDisplay::DisplaySelection appliedSelection;
+  const bool wantsRefresh = mode == Platform::WindowMode::Exclusive && Platform::HasRefresh(DisplayConfiguration.refresh);
+  const bool wantsMonitor = DisplayConfiguration.monitor.kind != GameDisplay::MonitorPreferenceKind::Primary;
+  if ((wantsMonitor || wantsRefresh) && Platform::HasGameWindow()) {
+    // One snapshot for presentation AND refresh selection. ResolutionList and
+    // OptRes keep their primary/default compatibility projection unchanged.
+    const auto catalog = Platform::QueryDisplayCatalog();
+    const auto selected = GameDisplay::SelectMonitor(catalog, DisplayConfiguration.monitor, {W, H},
+        wantsRefresh ? DisplayConfiguration.refresh : Platform::RefreshRate{});
+    appliedSelection = selected;
+    target = selected.target;
+    exclusiveMode = selected.exclusiveMode;
+    if (wantsMonitor) {
+      if (selected.fallback != GameDisplay::DisplayFallback::None)
+        LOG_WARN("Display preference: %s; using primary/default display%s",
+                 GameDisplay::DisplayFallbackReason(selected.fallback),
+                 DisplayConfiguration.monitor.kind == GameDisplay::MonitorPreferenceKind::Identity ||
+                 selected.fallback == GameDisplay::DisplayFallback::AmbiguousBounds ? " and automatic refresh" : "");
+      if (selected.index) {
+        LOG_INFO("Display preference resolved to %s catalog index %zu",
+                 selected.index == catalog.primaryDisplay ? "primary" : "secondary", *selected.index);
+        const auto& bounds = catalog.displays[*selected.index].bounds;
+        if (bounds) LOG_INFO("Runtime display bounds: (%d,%d) %dx%d", bounds->origin.x, bounds->origin.y,
+                             bounds->size.width, bounds->size.height);
+      }
+    }
+    if (wantsRefresh && !exclusiveMode && selected.fallback != GameDisplay::DisplayFallback::AmbiguousBounds)
+      LOG_WARN("Exclusive %dx%d refresh %u/%u unavailable on selected display; using automatic refresh",
+               W, H, DisplayConfiguration.refresh.numerator, DisplayConfiguration.refresh.denominator);
+  }
+  Platform::ConfigureGameWindow(mode, {W, H}, {VideoCX, VideoCY}, exclusiveMode, target);
+
+  // Sync WinW/WinH and all derived values to the ACTUAL client area the OS
+  // gave us. AdjustWindowRect predicts the frame chrome, but the real chrome
+  // (title bar height, border width, DPI scale) can differ slightly, and at
+  // resolutions that match or exceed the desktop the window can also be
+  // clamped by Windows. If we kept WinW/WinH at the requested size while the
+  // client area is smaller, the DIB and the OpenGL viewport would be larger
+  // than the visible area and the top/bottom of the HUD would be clipped
+  // (e.g. ammo counter hidden behind the title bar at 2560x1440 windowed on
+  // a 2560x1440 desktop).
+#ifdef _WIN32
+  if (Platform::HasGameWindow()) {
+    const auto client = Platform::ClientSize();
+    int actualW = client.width;
+    int actualH = client.height;
+    if (actualW > 0 && actualH > 0 &&
+        (actualW != WinW || actualH != WinH)) {
+      char logt[128];
+      snprintf(logt, sizeof(logt), "Client area adjusted: requested %dx%d, actual %dx%d\n",
+               WinW, WinH, actualW, actualH);
+      PrintLog(logt);
+      GameDisplay::ApplyClientSize(DisplayConfiguration, {actualW, actualH});
+      SyncLegacyDisplayState();
+      // DIB was allocated at the old WinW/WinH; reallocate to match the
+      // actual client area so GDI TextOut/DrawPicture don't write past the
+      // visible region.
+      CreateVideoDIB(WinW, WinH);
+    }
+  }
+
+#else
+  if (Platform::HasGameWindow()) {
+    const auto client = Platform::ClientSize();
+    const auto safe = GameDisplay::UsableDrawable(client) ? client :
+        GameDisplay::UsableDrawable(priorPixels) ? priorPixels : Platform::Size{800, 600};
+    WinW = safe.width;
+    WinH = safe.height;
+  }
+#endif
+
+#ifndef _WIN32
+  if (Platform::HasGameWindow() && GameDisplay::UsableDrawable({WinW, WinH})) CreateVideoDIB(WinW, WinH);
+#endif
+  UpdateDrawableGeometry();
+#ifdef _WIN32
+  LoDetailSky = (W > 400);
+#else
+  displayRecovery.Applied(DisplayConfiguration, appliedSelection);
+  displayConfigured = true;
+#endif
+  Platform::HideArrowCursor();
+}
 

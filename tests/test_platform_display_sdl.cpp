@@ -249,6 +249,17 @@ protected:
     void TearDown() override { Platform::ShutdownApplication(); }
 };
 
+TEST_F(SDLDisplayCatalog, NonWindowsDriverDoesNotBorrowHostMonitorIdentity)
+{
+    if (SDL_strcmp(SDL_GetCurrentVideoDriver(), "windows") == 0 ||
+        SDL_strcmp(SDL_GetCurrentVideoDriver(), "x11") == 0 ||
+        SDL_strcmp(SDL_GetCurrentVideoDriver(), "wayland") == 0)
+        GTEST_SKIP() << "Native discovery is covered separately";
+    const auto catalog = Platform::QueryDisplayCatalog();
+    ASSERT_FALSE(catalog.displays.empty());
+    for (const auto& display : catalog.displays) EXPECT_FALSE(display.identity);
+}
+
 TEST_F(SDLDisplayCatalog, SnapshotCopiesAllBackendDisplaysModesAndBounds)
 {
     const auto catalog = Platform::QueryDisplayCatalog();
@@ -305,4 +316,18 @@ TEST_F(SDLDisplayCatalog, PrimaryProjectionRetainsLegacyOrderingAndOwnsItsData)
     Platform::ShutdownApplication();
     // Access every mode after SDL has released its video state (also under ASan).
     ExpectModes(Platform::ProjectPrimaryDisplayInfo(catalog), raw);
+}
+
+TEST(SDLTargetMapping, ReplacedPanelAtSameBoundsCannotInheritSavedIdentityOrRefresh)
+{
+    const Platform::DisplayIdentity expected{1,"linux-x11-edid-serial","1234"};
+    const Platform::DisplayIdentity replacement{1,"linux-x11-edid-serial","abcd"};
+    const Platform::DisplayTarget target{{{-1920,0},{1920,1080}},expected};
+    const Platform::DisplayMode mode{{800,600},32,{120,1}};
+    const auto mapped=Platform::SDLDetails::MapWindowDisplay({{99,target.bounds,expected}},42,target,mode);
+    EXPECT_EQ(mapped.id,99u);EXPECT_TRUE(mapped.exclusiveMode);
+    for(auto identity:{std::optional<Platform::DisplayIdentity>{},std::optional<Platform::DisplayIdentity>{replacement}}) {
+        const auto fallback=Platform::SDLDetails::MapWindowDisplay({{99,target.bounds,identity}},42,target,mode);
+        EXPECT_EQ(fallback.id,42u);EXPECT_FALSE(fallback.target);EXPECT_FALSE(fallback.exclusiveMode);
+    }
 }

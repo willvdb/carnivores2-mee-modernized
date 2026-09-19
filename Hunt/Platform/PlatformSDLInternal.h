@@ -3,13 +3,49 @@
 #include <SDL3/SDL.h>
 
 namespace Platform::SDLDetails {
-struct NativeDisplay { SDL_DisplayID id; DisplayBounds bounds; };
+using MouseStateQuery = SDL_MouseButtonFlags (SDLCALL *)(float*, float*);
+// No absolute-coordinate fallback when Wayland relative capture is unavailable.
+MouseDelta ReadWaylandMouseLook(bool captured, bool focused,
+                               MouseStateQuery query = SDL_GetRelativeMouseState);
+
+// Injectable native operations exercise asynchronous/rejected compositor replies.
+struct FullscreenAPI {
+    decltype(&SDL_SetWindowFullscreenMode) setMode = SDL_SetWindowFullscreenMode;
+    decltype(&SDL_SetWindowFullscreen) setFullscreen = SDL_SetWindowFullscreen;
+    decltype(&SDL_SyncWindow) sync = SDL_SyncWindow;
+    decltype(&SDL_GetWindowFlags) flags = SDL_GetWindowFlags;
+    decltype(&SDL_GetDisplayForWindow) display = SDL_GetDisplayForWindow;
+    decltype(&SDL_GetWindowSizeInPixels) pixels = SDL_GetWindowSizeInPixels;
+    decltype(&SDL_GetCurrentDisplayMode) currentMode = SDL_GetCurrentDisplayMode;
+};
+struct FullscreenResult {
+    bool requested = false, synchronized = false, fullscreen = false, confirmed = false;
+    SDL_DisplayID display = 0;
+    Size pixels{};
+    std::optional<DisplayMode> currentMode;
+};
+// Linux confirmation of SDL-reported state, not proof of physical scanout.
+// Wayland modes are emulated: verify output/render size, never claim a refresh switch.
+FullscreenResult EnterFullscreen(SDL_Window* window, const SDL_DisplayMode& mode, bool emulated,
+                                 const FullscreenAPI& api = {});
+
+using DesktopModeQuery = decltype(&SDL_GetDesktopDisplayMode);
+FullscreenResult EnterDesktopFullscreen(SDL_Window* window, SDL_DisplayID display,
+                                        const FullscreenAPI& api = {},
+                                        DesktopModeQuery query = SDL_GetDesktopDisplayMode);
+
+struct NativeDisplay { SDL_DisplayID id; DisplayBounds bounds; std::optional<DisplayIdentity> identity = std::nullopt; };
 struct WindowDisplay {
     SDL_DisplayID id;
     std::optional<DisplayTarget> target;
     std::optional<DisplayMode> exclusiveMode;
     bool ambiguousBounds = false;
 };
+// Refresh a mapped target's bounds. A disappeared target atomically becomes
+// primary/automatic for this application; no saved game preference is changed.
+std::optional<SDL_Rect> RefreshWindowDisplayBounds(WindowDisplay& display,
+    decltype(&SDL_GetDisplayBounds) bounds = SDL_GetDisplayBounds,
+    decltype(&SDL_GetPrimaryDisplay) primary = SDL_GetPrimaryDisplay);
 // Mechanism only: exactly one full-rectangle match, no catalog index or eligibility.
 WindowDisplay MapWindowDisplay(const std::vector<NativeDisplay>& displays, SDL_DisplayID primary,
                                std::optional<DisplayTarget> target, std::optional<DisplayMode> mode);
@@ -25,7 +61,10 @@ bool FindAutomaticDisplayMode(SDL_DisplayID display, Size size, SDL_DisplayMode&
 
 // Private backend bridge for genuinely deferred Windows compatibility.
 namespace Platform::SDLCompatibility {
+SDL_DisplayID PrimaryDisplay();
+void ShutdownMonitorDiscovery();
 void SetProcessActive(bool active);
 std::uint8_t LayoutKey(const SDL_KeyboardEvent& event, std::uint8_t fallback);
 void OrderDisplayModes(DisplayInfo& info);
+void DiscoverMonitorIdentities(DisplayCatalog& catalog, const SDL_DisplayID* ids, int count);
 }

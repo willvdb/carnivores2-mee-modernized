@@ -8,6 +8,7 @@
 #include <cmath>
 #include <algorithm>
 #include "Platform/Platform.h"
+#include "Platform/System.h"
 #ifdef _WIN32
 #include "Platform/PlatformWin32.h"
 #endif
@@ -1686,6 +1687,30 @@ int RunGame()
   LogInit("carnivor.log");
   CreateLog();
 
+  if (platformReady) {
+    for (const auto& argument : Platform::Arguments()) {
+      if (!GameDisplay::WantsDisplayList(argument.c_str())) continue;
+      const auto catalog = Platform::QueryDisplayCatalog();
+      for (std::size_t i = 0; i < catalog.displays.size(); ++i) {
+        const auto& display = catalog.displays[i];
+        std::string line = "display " + std::to_string(i) + (catalog.primaryDisplay == i ? " primary" : " secondary");
+        if (display.bounds) line += " bounds=" + std::to_string(display.bounds->origin.x) + "," +
+            std::to_string(display.bounds->origin.y) + " " + std::to_string(display.bounds->size.width) +
+            "x" + std::to_string(display.bounds->size.height);
+        line += display.identity ? "\n  display_identity " + GameDisplay::IdentityToken(*display.identity)
+                                 : "\n  persistent identity unavailable (session selection only)";
+        if (!display.identity && !display.identityStatus.empty()) line += ": " + display.identityStatus;
+        line += "\n";
+        PrintLog(line.c_str());
+        std::fputs(line.c_str(), stdout);
+      }
+      if (catalog.displays.empty()) PrintLog("No displays discovered.\n");
+      Platform::ShutdownApplication();
+      CloseLog();
+      LogClose();
+      return 0;
+    }
+  }
   if (!platformReady || !CreateMainWindow()) {
     LOG_ERROR("Platform startup failed: %s", Platform::LastError());
     Platform::ShutdownApplication();
@@ -1807,9 +1832,15 @@ int RunGame()
     const auto event = Platform::PumpOneEvent(quitCode, &input);
     if (input.type == Platform::EventType::FocusChanged) HandleFocusChange(input.focused);
     if (input.type == Platform::EventType::KeyDown) HandleKeyEvent(input.key);
+#ifndef _WIN32
+    ObserveDisplayEvent(input);
+#endif
     if (event == Platform::PumpResult::Quit) break;
     if (event == Platform::PumpResult::Idle)
     {
+#ifndef _WIN32
+      if (!ServiceDisplayChanges()) { Platform::SleepMilliseconds(10); continue; }
+#endif
       if (blActive) { ProcessGame(); LimitFPS(); }
       else Platform::SleepMilliseconds(100);
     }

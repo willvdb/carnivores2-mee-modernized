@@ -35,26 +35,24 @@ void ProcessCommandLine()
     return width > 0 && height > 0;
   };
 
-  int requestedWidth = WinW;
-  int requestedHeight = WinH;
-  std::int32_t requestedFullscreen = FULLSCREEN;
-  std::int32_t requestedBorderless = BORDERLESS;
+  int requestedWidth = DisplayConfiguration.size.width;
+  int requestedHeight = DisplayConfiguration.size.height;
+  auto requestedMode = DisplayConfiguration.mode;
   bool hasRequestedResolution = false;
-  bool hasRequestedFullscreen = false;
-  bool hasRequestedBorderless = false;
+  bool hasRequestedMode = false;
 
   for (const auto& argument : Platform::Arguments())
   {
     const char* s = argument.c_str();
-    const auto displayArgument = GameDisplay::ApplyDisplayArgument(s, RequestedDisplayIndex);
+    const auto displayArgument = GameDisplay::ApplyMonitorArgument(s, DisplayConfiguration.monitor);
     if (displayArgument != GameDisplay::DisplayArgument::Unrelated) {
       if (displayArgument == GameDisplay::DisplayArgument::Invalid) {
-        snprintf(logt, sizeof(logt), "Command line: invalid display argument '%.24s': expected uint32 digits; using primary display.\n", s);
+        snprintf(logt, sizeof(logt), "Command line: invalid display argument '%.24s': expected display index/primary or versioned display-id; using primary display.\n", s);
         PrintLog(logt);
       }
       continue; // Also consume malformed values before legacy substring parsing.
     }
-    const auto refreshArgument = GameDisplay::ApplyRefreshArgument(s, PreferredRefresh);
+    const auto refreshArgument = GameDisplay::ApplyRefreshArgument(s, DisplayConfiguration.refresh);
     if (refreshArgument != GameDisplay::RefreshArgument::Unrelated) {
       if (refreshArgument == GameDisplay::RefreshArgument::Invalid) {
         PrintLog("Command line: refresh: ");
@@ -69,26 +67,20 @@ void ProcessCommandLine()
 
     if (equals_nocase(s, "/nofullscreen") || equals_nocase(s, "-nofullscreen") ||
         equals_nocase(s, "/windowed") || equals_nocase(s, "-windowed")) {
-      requestedFullscreen = false;
-      requestedBorderless = false;
-      hasRequestedFullscreen = true;
-      hasRequestedBorderless = true;
+      requestedMode = Platform::WindowMode::Windowed;
+      hasRequestedMode = true;
       continue;
     }
 
     if (equals_nocase(s, "/fullscreen") || equals_nocase(s, "-fullscreen")) {
-      requestedFullscreen = true;
-      requestedBorderless = false;
-      hasRequestedFullscreen = true;
-      hasRequestedBorderless = true;
+      requestedMode = Platform::WindowMode::Exclusive;
+      hasRequestedMode = true;
       continue;
     }
 
     if (equals_nocase(s, "/borderless") || equals_nocase(s, "-borderless")) {
-      requestedFullscreen = false;
-      requestedBorderless = true;
-      hasRequestedFullscreen = true;
-      hasRequestedBorderless = true;
+      requestedMode = Platform::WindowMode::Borderless;
+      hasRequestedMode = true;
       continue;
     }
 
@@ -162,18 +154,9 @@ void ProcessCommandLine()
 
   }
 
-  if (hasRequestedFullscreen) FULLSCREEN = requestedFullscreen;
-  if (hasRequestedBorderless) BORDERLESS = requestedBorderless;
-
-  if (hasRequestedResolution) {
-    const int index = GameDisplay::FindResolution(
-        ResolutionList, ResCount, {requestedWidth, requestedHeight});
-    // Unlike config.cfg, an unmatched CLI request keeps both ordinals.
-    if (index >= 0) {
-      CurRes = index;
-      OptRes = index;
-    }
-    WinW = requestedWidth;
-    WinH = requestedHeight;
-  }
+  if (hasRequestedMode) DisplayConfiguration.mode = requestedMode;
+  if (hasRequestedResolution)
+    GameDisplay::ApplyCommandLineResolution(DisplayConfiguration, {requestedWidth, requestedHeight},
+                                            ResolutionList, ResCount, OptRes, CurRes);
+  SyncLegacyDisplayState();
 }
