@@ -266,13 +266,8 @@ TEST_F(Session, DefaultConfigCannotBeCreatedBesideExecutable) {
 TEST_F(Session, ProductionLogsScreenshotAndDebugExportAreSeparateFromState) {
     ASSERT_EQ(Start(),EngineSession::Startup::Ready); Logs(); PrintLog("debug dump sentinel\n");
     const auto original=Scan(work/"state");
-    std::uint16_t pixels[4]={0,31,1024,32767}; WinW=2; WinH=2; VideoPitch=2; lpVideoBuf=pixels; _shotcounter=0;
-#ifndef _WIN32
-    SaveScreenShot(); // Real resource call site -> real BMP writer.
-#else
-    // The legacy Windows call site needs a GDI DIB; exercise its shared output API.
-    EXPECT_TRUE(Platform::SaveBitmap555("HUNT0001.BMP",pixels,2,2,2));
-#endif
+    std::uint16_t pixels[4]={0,31,1024,32767}; WinW=2; WinH=2; WinEY=1; VideoPitch=2; lpVideoBuf=pixels; _shotcounter=0;
+    SaveScreenShot(); // Real resource call site, with only GPU readback doubled.
     auto dump=Platform::OpenFile("debug-export.bmp",Platform::FileMode::Write);
     ASSERT_NE(dump,Platform::InvalidFile); std::uint32_t count=0;
     EXPECT_TRUE(Platform::WriteFile(dump,pixels,sizeof(pixels),&count)); EXPECT_TRUE(Platform::CloseFile(dump));
