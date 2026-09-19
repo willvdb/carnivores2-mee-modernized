@@ -1,5 +1,12 @@
 # Hunter and expedition state, schema 1
 
+Session follow-up: [SESSION_MODEL.md](SESSION_MODEL.md) defines a separate version-1
+journal, independent disposable working copies and durable reconciliation
+candidates. The association schema, original import provenance and authority do
+not change. `writable: false` still forbids writing an associated source; a
+controlled synthetic process can write only its independent session copy. There
+is no promotion, native synchronization or schema migration in this milestone.
+
 Status: backend prototype contract, 2026-09-18. The authoritative conclusions in
 the task and the full user-supplied 20-edition static audit are the evidence base.
 Repository evidence: `Shared/LegacyProfile.h`, `docs/PROFILE_SERIALIZATION.md`,

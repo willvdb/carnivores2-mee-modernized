@@ -245,3 +245,9 @@ pinned menu-versus-engine policy when they disagree, approve the session workspa
 contract, and choose a disposable validation profile. No further visual or toolkit
 decision is needed for that work. Packaged example saves must remain explicitly
 classified. Automatic cross-revision state/trophy migration remains out of scope.
+# Subsequent session milestone
+
+The foundation below is now merged through PR #10. The bounded follow-up is
+documented in [SESSION_HANDOFF.md](SESSION_HANDOFF.md): controlled synthetic
+process sessions, durable return candidates, and a pinned Genesis observer
+policy blocked on a precisely described engine seam.
