@@ -11,10 +11,10 @@ Original main worktree's untracked carnivor.log/render.log retained untouched.
 
 - [x] Read repository/portability/frontend/display contracts and trace write sites.
 - [x] Integrate prerequisite preserving its history.
-- [ ] Versioned pre-startup policy, strict arguments and independent state/config/output.
-- [ ] Production file routing, strict profile loads and sticky I/O exit failures.
-- [ ] Production-path regression harness and actual Linux engine build.
-- [ ] Standalone frontend Linux/Windows CI with mandatory codec probe.
+- [x] Versioned pre-startup policy, strict arguments and independent state/config/output.
+- [x] Production file routing, strict profile loads and sticky I/O exit failures.
+- [x] Production-path regression harness and actual Linux engine build.
+- [x] Standalone frontend Linux/Windows CI with mandatory codec probe.
 - [ ] Optional explicitly gated native observer, only after required checks pass.
 - [ ] Distinct self-review, final tests and draft PR.
 
@@ -26,4 +26,27 @@ Output directory starts empty; performance captures disabled. This is a trusted
 engine's I/O contract, not containment of hostile binaries/concurrent writers or
 third-party driver/library behavior. No disk format or display-policy change.
 
-Baseline builds/tests started before functional changes. Results to be recorded.
+## Required checkpoint
+
+Interface and layout: [ENGINE_SESSION.md](ENGINE_SESSION.md).
+Baseline: actual GCC Linux Debug engine with pinned SDL built; 17 runnable CTest
+checks passed, 5 existing opt-in display checks skipped. Frontend: 90 tests passed,
+zero skips with the production probe.
+
+After routing: actual engine built; 24 CTest entries, 19 passed and the same five
+opt-in display checks skipped. Includes 22 production C++ session tests and six
+Python actual-engine startup tests (five run, Windows-junction case platform-skipped).
+Clang ASan/UBSan with leak detection: session production harness and existing core
+suite pass. Frontend's same 90 tests pass with an ASan/UBSan production C++ probe;
+this does not instrument Python process logic. Logs are /tmp/c2-session-*.log and
+/tmp/c2-frontend-sanitizer-*.log. Windows CI definitions added; results pending.
+
+The production tests inventory source/content/baseline fixtures, exercise real
+profile/config/log/screenshot code, and hash before/after inventories including
+the copied actual executable in subprocess tests. No original user profile or
+assets selected. Actual engine subprocesses ran only capability/invalid-startup
+and forced platform-failure checks against synthetic files; no Genesis hunt.
+
+Required work is implemented and reasonably validated. Continue with the narrowly
+scoped experimental observer adapter, retaining synthetic schema-1 behavior and
+candidate-only authority. A separate read-only engine review is in progress.
