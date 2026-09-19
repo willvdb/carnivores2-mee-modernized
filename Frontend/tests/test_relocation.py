@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from lodge.discovery import move_candidates, register, relocate
+from lodge.discovery import inspect_instance, move_candidates, refresh_instance, register, relocate
 from lodge.store import FrontendError, Store, empty_manifest, validate
 from support import game
 
@@ -134,6 +134,98 @@ class RelocationTests(unittest.TestCase):
             instance['managed_root'] = bad
             with self.assertRaises(FrontendError):
                 validate(self.data)
+
+    def test_matching_content_and_engine_needs_no_review(self):
+        instance = register(self.data, self.root)
+        engines = deepcopy(instance['engine_evidence'])
+        moved = self.managed / 'Moved'
+        self.root.rename(moved)
+        relocate(self.data, instance['id'], moved)
+        self.assertEqual(instance['engine_evidence'], engines)
+        self.assertNotIn('engine_relocation_reviews', instance)
+        self.assertFalse(inspect_instance(instance)['engine_review_required'])
+
+    def test_changed_engine_records_persistent_review_without_accepting_baseline(self):
+        instance = register(self.data, self.root)
+        engines = deepcopy(instance['engine_evidence'])
+        original = (self.root / 'CARN2.EXE').read_bytes()
+        moved = self.managed / 'Moved'
+        self.root.rename(moved)
+        (moved / 'CARN2.EXE').write_bytes(b'different engine, identical HUNTDAT')
+        relocate(self.data, instance['id'], moved)
+        self.assertEqual(instance['engine_evidence'], engines)
+        review = instance['engine_relocation_reviews'][0]
+        self.assertEqual(review['status'], 'required')
+        self.assertEqual(review['baseline_engine_evidence'], engines)
+        self.assertNotEqual(review['destination_engine_evidence'], engines)
+        self.assertEqual(review['from']['path'], str(self.root))
+        self.assertEqual(review['to']['path'], str(moved))
+        store = Store(self.directory / 'Lodge')
+        with store.transaction() as data:
+            data.update(self.data)
+        instance = store.read()['instances'][instance['id']]
+        self.assertTrue(refresh_instance(instance)['engine_review_required'])
+        # Restoring the original binary does not silently reconcile history.
+        (moved / 'CARN2.EXE').write_bytes(original)
+        result = refresh_instance(instance)
+        self.assertFalse(result['engine_changed'])
+        self.assertTrue(result['engine_review_required'])
+        self.assertEqual(instance['engine_relocation_reviews'], [review])
+        self.assertEqual(instance['engine_evidence'], engines)
+        self.data['instances'][instance['id']] = instance
+        moved.rename(self.root)
+        relocate(self.data, instance['id'], self.root)
+        self.assertTrue(inspect_instance(instance)['engine_review_required'])
+        self.assertEqual(instance['engine_relocation_reviews'], [review])
+
+    def test_engine_removal_at_destination_is_a_reviewable_relocation(self):
+        instance = self.register_managed()
+        moved = self.managed / 'Moved'
+        self.root.rename(moved)
+        (moved / 'CARN2.EXE').unlink()
+        relocate(self.data, instance['id'], moved)
+        self.assertEqual(instance['mode'], 'managed')
+        self.assertEqual(instance['engine_relocation_reviews'][0]['destination_engine_evidence'], [])
+        result = inspect_instance(instance)
+        self.assertTrue(result['recognized'])
+        self.assertTrue(result['engine_review_required'])
+        self.assertEqual(result['capabilities']['bundled_engine_evidence'], 'none')
+
+    def test_engine_less_relocation_matches_until_a_binary_is_added(self):
+        (self.root / 'CARN2.EXE').unlink()
+        instance = register(self.data, self.root)
+        moved = self.managed / 'Moved'
+        self.root.rename(moved)
+        relocate(self.data, instance['id'], moved)
+        self.assertFalse(inspect_instance(instance)['engine_review_required'])
+        moved.rename(self.root)
+        (self.root / 'CARN2.EXE').write_bytes(b'new candidate')
+        relocate(self.data, instance['id'], self.root)
+        self.assertEqual(instance['engine_evidence'], [])
+        self.assertTrue(inspect_instance(instance)['engine_review_required'])
+
+    def test_content_mismatch_rejects_relocation_without_mutation(self):
+        instance = self.register_managed()
+        moved = self.managed / 'Moved'
+        self.root.rename(moved)
+        (moved / 'HUNTDAT/AREAS/AREA1.MAP').write_bytes(b'changed content')
+        (moved / 'CARN2.EXE').write_bytes(b'changed engine as well')
+        self.assert_relocation_rejected(instance, moved)
+
+    def test_malformed_engine_review_metadata_is_rejected(self):
+        instance = register(self.data, self.root)
+        moved = self.managed / 'Moved'
+        self.root.rename(moved)
+        (moved / 'CARN2.EXE').unlink()
+        relocate(self.data, instance['id'], moved)
+        valid = deepcopy(self.data)
+        for field, value in (('status', 'accepted'), ('baseline_engine_evidence', []),
+                             ('destination_engine_evidence', None), ('from', {'path': 'relative'})):
+            with self.subTest(field=field):
+                data = deepcopy(valid)
+                data['instances'][instance['id']]['engine_relocation_reviews'][0][field] = value
+                with self.assertRaises(FrontendError):
+                    validate(data)
 
 
 if __name__ == '__main__':

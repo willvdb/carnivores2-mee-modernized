@@ -95,7 +95,7 @@ reconciliation after partial writes. Never restore only one half automatically.
 Missing roots retain identities and associations. Discovery may suggest a move
 when a missing instance has the same fingerprint; it never automatically decides
 that a clone is the original. Explicit relocation requires the old path absent,
-the new path unclaimed, and the same revision; conflicting/changed replacements
+the new path unclaimed, and the same content revision; changed content replacements
 require a separate reviewed reconciliation. Native relative filenames remain
 relative to the instance or managed snapshot. Native absolute paths carry OS
 flavor and are not portable machine IDs. Cross-OS relocation is explicit.
@@ -122,6 +122,22 @@ Windows flavor (including drive/UNC boundaries), not the current OS parser.
 Like installation locators, these are not machine/filesystem identities: a
 same-path directory replacement cannot be distinguished without future evidence.
 
+Relocation observes destination engine/launcher hashes separately from HUNTDAT.
+Exact content and engine matches move normally. Matching content with different
+engine evidence is allowed only as an explicit relocation with a persistent
+review record: `engine_relocation_reviews[]` contains `status: required`,
+`observed_at`, `from`/`to` locators, `baseline_engine_evidence` and
+`destination_engine_evidence`. The baseline is the original registered
+`engine_evidence`, not a compatibility approval, and is never overwritten.
+Engine removal/addition counts as change; two empty evidence sets match.
+Each relocation differing from the baseline appends a record. Existing records
+remain pending even after a later baseline-matching relocation or refresh.
+Inspection exposes `engine_review_required` and a diagnostic whenever a review
+is pending (including missing/foreign roots) or current engine evidence differs.
+This blocks candidate argv, independently of the unconditional process-launch
+prohibition. No accept/clear-review operation is implemented in this prototype;
+future execution must explicitly reconcile the engine build/dialect evidence.
+
 Uninstall is observed as missing, never cascades into deleting hunter state.
 A reinstall at a new path gets a new ID unless explicitly reconciled with a
 missing instance. Reusing a registered path retains its registry record and is
@@ -134,6 +150,10 @@ saves or retargets trophy metadata. Save hash drift is separately reported.
 Host settings own display/monitor/resolution/mode/refresh, audio and input.
 They are frontend preferences pending a validated engine adapter; native gameplay
 options stay in expedition saves/config. No runtime values are rewritten here.
+
+The full HUNTDAT fingerprint intentionally includes presentation files such as
+`MENUM.TGA`. Separating semantic/gameplay revision from presentation revision is
+future design work, not a fingerprint algorithm change in this review pass.
 
 ## Future curated Hall of Fame
 

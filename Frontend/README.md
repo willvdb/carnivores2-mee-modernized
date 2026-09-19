@@ -117,6 +117,15 @@ profile creation, slot reconciliation and writable launch are separate work.
 * Content changes append revision history on refresh. Existing association
   provenance remains pinned; the prototype cannot approve a save migration.
   Engine/launcher hashes are tracked separately and changes require review.
+* Explicit relocation still requires the exact HUNTDAT revision. Destination
+  engine candidates are hashed and compared to the retained registration baseline.
+  If they differ (including removal/addition), relocation records a persistent
+  `engine_relocation_reviews` entry with `status: required`, both evidence sets,
+  both locations and observation time. The original `engine_evidence` is never
+  replaced. Inspection/refresh report `engine_review_required`; pending reviews
+  block candidate argv even if the original binary bytes later return. Refresh
+  and subsequent moves do not clear reviews. Approving a new engine baseline is
+  deliberately deferred to a future reviewed reconciliation operation.
 * `hunter archive HUNTER_UUID` is reversible archival metadata, not native save
   deletion. Restoring an archived hunter is not exposed in this first CLI.
 * Store writes use `lodge.lock`, atomic replacement and `lodge.json.bak`. On a
@@ -136,6 +145,9 @@ logs are outside the content hash. They are not claims of unchanged gameplay.
 Symlinked or case-colliding content requires future policy and is rejected for
 registration/fingerprinting. Asset references diagnose missing, unsafe and
 case-ambiguous paths rather than picking one.
+Presentation assets such as `MENUM.TGA` also change the full HUNTDAT revision.
+Distinguishing gameplay/semantic revisions from presentation-only revisions is a
+future design issue; this pass retains the conservative fingerprint unchanged.
 
 ## Evidence, limits and development
 

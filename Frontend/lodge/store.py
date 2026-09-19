@@ -56,6 +56,22 @@ def validate_locator(locator):
     return parsed
 
 
+def validate_engine_evidence(evidence):
+    if not isinstance(evidence, list):
+        raise FrontendError('invalid engine evidence')
+    paths = set()
+    for item in evidence:
+        if not isinstance(item, dict):
+            raise FrontendError('invalid engine evidence entry')
+        path, digest = item.get('path'), item.get('sha256')
+        if (not isinstance(path, str) or not path or path in ('.', '..')
+                or any(c in path for c in '/\\:\x00') or path in paths
+                or not isinstance(digest, str) or not re.fullmatch(r'[0-9a-f]{64}', digest)
+                or item.get('semantics') != 'unknown'):
+            raise FrontendError('invalid engine evidence entry')
+        paths.add(path)
+
+
 def validate(data):
     if not isinstance(data, dict) or type(data.get("schema_version")) is not int or data["schema_version"] != 1:
         raise FrontendError("unsupported manifest schema; explicit migration required")
@@ -103,6 +119,20 @@ def validate(data):
             raise FrontendError("current revision absent from history")
         if not all(revision_valid(value) for value in instance['revisions']):
             raise FrontendError('invalid content revision')
+        validate_engine_evidence(instance.get('engine_evidence'))
+        reviews = instance.get('engine_relocation_reviews', [])
+        if not isinstance(reviews, list):
+            raise FrontendError('invalid engine relocation review history')
+        for review in reviews:
+            if (not isinstance(review, dict) or review.get('status') != 'required'
+                    or not isinstance(review.get('observed_at'), str) or not review['observed_at']):
+                raise FrontendError('invalid engine relocation review')
+            validate_locator(review.get('from'))
+            validate_locator(review.get('to'))
+            validate_engine_evidence(review.get('baseline_engine_evidence'))
+            validate_engine_evidence(review.get('destination_engine_evidence'))
+            if review['baseline_engine_evidence'] != instance['engine_evidence']:
+                raise FrontendError('engine relocation review must retain registration baseline')
     referenced = set()
     for association in data["associations"].values():
         if not isinstance(association.get('hunter_id'), str) or not isinstance(association.get('instance_id'), str):

@@ -6,7 +6,7 @@ import sys
 import tempfile
 import unittest
 
-from lodge.discovery import register
+from lodge.discovery import register, relocate
 from lodge.launch import prepare, simulated_return
 from lodge.profiles import associate
 from lodge.store import Store, hunter
@@ -79,6 +79,28 @@ class LaunchTests(unittest.TestCase):
         self.assertFalse(result['process_launch_allowed'])
         self.assertIsNone(result['executable'])
         self.assertIn('missing-engine-evidence', [d['code'] for d in result['diagnostics']])
+
+    def test_engine_relocation_review_blocks_planning_without_native_writes(self):
+        before = {name: (self.root / name).read_bytes() for name in ('trophy00.sav', 'trophy00.sab')}
+        engine = (self.root / 'CARN2.EXE').read_bytes()
+        data = self.store.read()
+        association = data['associations'][self.association]
+        original_association = json.dumps(association, sort_keys=True)
+        instance = data['instances'][association['instance_id']]
+        moved = self.root.with_name('Moved')
+        self.root.rename(moved)
+        (moved / 'CARN2.EXE').write_bytes(b'changed bundled engine')
+        relocate(data, instance['id'], moved)
+        self.assertEqual(original_association, json.dumps(association, sort_keys=True))
+        # Even if the original engine returns, relocation review remains pending.
+        (moved / 'CARN2.EXE').write_bytes(engine)
+        result = prepare(self.store, data, self.association, 'areas:0', mode='observer')
+        self.assertIn('engine-review-required', [d['code'] for d in result['diagnostics']])
+        self.assertEqual(result['candidate_argv'], [])
+        self.assertFalse(result['process_launch_allowed'])
+        provenance = {key: value for key, value in association.items() if key != 'last_observation'}
+        self.assertEqual(original_association, json.dumps(provenance, sort_keys=True))
+        self.assertEqual(before, {name: (moved / name).read_bytes() for name in before})
 
     def test_return_refresh_retains_provenance(self):
         data = self.store.read()

@@ -190,7 +190,7 @@ def register(data, path, mode='registered', dialect='unknown', family=None, rele
     if not evidence['recognized']:
         raise FrontendError('not a coherent installation: ' + json.dumps(evidence['diagnostics']))
     revision = fingerprint(root)
-    engines = [{'path': name, 'sha256': hash_file(root / name), 'semantics': 'unknown'} for name in evidence['executables']]
+    engines = engine_evidence(root, evidence)
     identity = new_id()
     instance = {'id': identity, 'path': str(root), 'path_flavor': os.name, 'mode': mode, 'managed_root': managed,
                 'family': family, 'release': release, 'dialect_hint': dialect,
@@ -207,19 +207,28 @@ def get_instance(data, identity):
     return data['instances'][identity]
 
 
+def engine_evidence(root, observation):
+    return [{'path': name, 'sha256': hash_file(Path(root) / name), 'semantics': 'unknown'}
+            for name in observation['executables']]
+
+
 def inspect_instance(instance):
     if instance['path_flavor'] != os.name:
-        return {'recognized': False, 'diagnostics': [diagnostic('foreign-path', 'Explicit relocation needed on this OS.')]}
-    observed = recognize(instance['path'])
+        observed = {'recognized': False, 'diagnostics': [diagnostic('foreign-path', 'Explicit relocation needed on this OS.')]}
+    else:
+        observed = recognize(instance['path'])
     if observed['recognized']:
         observed['revision'] = fingerprint(instance['path'])
         observed['revision_changed'] = observed['revision'] != instance['revision']
         if observed['revision_changed']:
             observed['diagnostics'].append(diagnostic('content-revision-changed', 'Interpretations require review; saves are unchanged by inspection.'))
-        observed['engine_evidence'] = [{'path': name, 'sha256': hash_file(Path(instance['path']) / name), 'semantics': 'unknown'} for name in observed['executables']]
+        observed['engine_evidence'] = engine_evidence(instance['path'], observed)
         observed['engine_changed'] = observed['engine_evidence'] != instance.get('engine_evidence', [])
         if observed['engine_changed']:
             observed['diagnostics'].append(diagnostic('engine-evidence-changed', 'Engine/launcher bytes changed independently of content revision.'))
+    observed['engine_review_required'] = bool(instance.get('engine_relocation_reviews') or observed.get('engine_changed'))
+    if observed['engine_review_required']:
+        observed['diagnostics'].append(diagnostic('engine-review-required', 'Engine evidence requires reviewed reconciliation; relocation and refresh do not accept a new engine baseline.'))
     return observed
 
 
@@ -261,9 +270,20 @@ def relocate(data, identity, path):
                 or root == directory):
             raise FrontendError('managed root missing or ambiguous; explicit ownership reconciliation required')
         mode = 'managed' if root.is_relative_to(directory) else 'registered'
-    if not recognize(root)['recognized'] or fingerprint(root) != instance['revision']:
+    observation = recognize(root)
+    if not observation['recognized'] or fingerprint(root) != instance['revision']:
         raise FrontendError('relocation requires a coherent root with matching content revision')
-    instance.setdefault('previous_locations', []).append({'path': instance['path'], 'path_flavor': instance['path_flavor']})
+    engines = engine_evidence(root, observation)
+    previous = {'path': instance['path'], 'path_flavor': instance['path_flavor']}
+    if engines != instance['engine_evidence']:
+        # The registration baseline remains immutable. Even returning to its
+        # bytes later cannot erase a pending review of an explicit relocation.
+        instance.setdefault('engine_relocation_reviews', []).append({
+            'status': 'required', 'observed_at': now(), 'from': previous,
+            'to': {'path': str(root), 'path_flavor': os.name},
+            'baseline_engine_evidence': instance['engine_evidence'],
+            'destination_engine_evidence': engines})
+    instance.setdefault('previous_locations', []).append(previous)
     # Keep the root locator as provenance even after relinquishing ownership.
     # A registered instance never regains management merely by its destination.
     instance.update(path=str(root), path_flavor=os.name, mode=mode)
