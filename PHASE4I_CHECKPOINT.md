@@ -131,3 +131,17 @@ Final scoped runtime reruns: x11-sanitized-final.log and
 wayland-runtime-final.log both exit 0. X11 performs 20 fullscreen/windowed
 cycles on each output with zero remaining SDL allocations. Weston passes
 production mixed-density, presentation/fallback and connection-loss checks.
+
+## Final capture-order audit correction
+
+The first pushed review candidate is dbdf41ee81b2a8c8ed78f8f8dbb19b98d1972470.
+A subsequent bounded fix keeps `drawableSuspended` true across a recovery attempt
+and reacquires capture only at the existing usable/reachable frame boundary.
+Previously an already suspended window could reacquire capture while its recovered
+metrics were still invalid, then skip the release because it was already marked
+suspended. `game_capture.py` keeps injected zero metrics across native recovery
+and logs actual `Platform::SetMouseCapture` calls: only releases occur while
+invalid, and capture returns once valid. `game_capture_negative.py` uses the saved
+pre-fix actual-game executable under the same isolated fixture: it logs
+`CAPTURE_WHILE_INVALID 1`, while the corrected executable never does.
+Final acceptance must use the subsequent corrected pushed SHA and its own CI run.

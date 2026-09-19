@@ -43,7 +43,8 @@ and capture. Valid drawable dimensions are 2..8192 per axis and at most 16,777,2
 pixels (32 MiB CPU overlay, 64 MiB RGBA readback). Last safe storage is retained;
 no zero-size projection/division or huge compositor-driven allocation occurs.
 A non-minimized invalid drawable can still recover to a live output. Restore
-resumes at valid metrics; unsupported larger drawables remain suspended until
+resumes at valid metrics; topology recovery keeps capture released until those
+metrics are valid and the window is reachable; unsupported larger drawables remain suspended until
 the user/compositor returns to valid dimensions. This is not GL-context recovery
 from a permanently dead or frozen compositor.
 

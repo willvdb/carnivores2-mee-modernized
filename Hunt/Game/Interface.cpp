@@ -379,13 +379,13 @@ bool ServiceDisplayChanges()
     if (displayRecovery.Resolve(DisplayConfiguration, catalog, window) && !catalog.displays.empty()) {
       LOG_INFO("Display topology recovery: reapplying retained request with fresh selection");
       CaptureMouse(false);
+      drawableSuspended = true; // Reacquire only after valid, reachable metrics below.
       SetVideoMode(DisplayConfiguration.size.width, DisplayConfiguration.size.height);
       window = Platform::QueryWindowState();
       // Self-generated mode/layout events must not cause an endless retry if
       // the window manager rejects recovery. Retry only a distinct topology
       // or the user's next explicit mode request.
       displayRecovery.Recovered(Platform::QueryDisplayCatalog());
-      CaptureMouse(blActive && _GameState && !IsPaused());
     }
   }
   if (!GameDisplay::UsableWindow(window)) {
