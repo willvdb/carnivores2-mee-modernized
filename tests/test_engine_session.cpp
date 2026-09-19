@@ -160,7 +160,7 @@ TEST_F(Session, SessionValuesCannotReachLegacySubstringParser) {
 }
 TEST_F(Session, RejectLegacySlotAndProjectAmbiguity) {
     const auto good=args;
-    for (const auto& bad : {"reg=0", "a-reg=0", "REG=0", "prj=../escape", "prj=/tmp/escape", "prj=C:\\escape", "xxxprj=HUNTDAT", "prj=HUNTDAT/../escape", "-multiplayer", "-host"}) {
+    for (const auto& bad : {"reg=0", "a-reg=0", "REG=0", "prj=../escape", "prj=/tmp/escape", "prj=\\escape", "prj=C:\\escape", "xxxprj=HUNTDAT", "prj=HUNTDAT/../escape", "-multiplayer", "-host"}) {
         args=good; args.push_back(bad); EXPECT_EQ(Start(), EngineSession::Startup::Error) << bad;
     }
 }

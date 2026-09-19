@@ -167,7 +167,7 @@ Startup Initialize(const std::vector<std::string>& arguments, const std::string&
                 Require(arg.rfind("prj=", 0) == 0 && arg.size() > 4 && arg.size() < 120, "ambiguous session project");
                 const fs::path project(Platform::NormalizePath(arg.substr(4)));
                 Components(project);
-                Require(!project.is_absolute() && !project.has_root_name(), "session project must be content-relative");
+                Require(!project.has_root_path(), "session project must be content-relative");
             }
         }
         root = Directory(options["--session-root"]);
