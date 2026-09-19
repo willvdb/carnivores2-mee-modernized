@@ -75,6 +75,39 @@ class DiscoveryTests(unittest.TestCase):
         self.assertFalse(result['revision_changed'])
         self.assertTrue(result['engine_changed'])
 
+    def test_engine_less_content_is_recognized_and_registerable(self):
+        (self.root / 'CARN2.EXE').unlink()
+        result = recognize(self.root)
+        self.assertTrue(result['recognized'])
+        self.assertEqual(result['capabilities'], {'content_recognized': 'yes',
+                         'bundled_engine_evidence': 'none', 'modern_engine_compatibility': 'unknown'})
+        self.assertIn('missing-engine-evidence', [d['code'] for d in result['diagnostics']])
+        self.assertEqual(register(self.data, self.root)['engine_evidence'], [])
+
+    def test_engine_less_partial_content_still_fails(self):
+        (self.root / 'CARN2.EXE').unlink()
+        (self.root / 'HUNTDAT/AREAS/AREA1.RSC').unlink()
+        result = recognize(self.root)
+        self.assertFalse(result['recognized'])
+        self.assertEqual(result['capabilities']['bundled_engine_evidence'], 'none')
+        self.assertIn('missing-map-pair', [d['code'] for d in result['diagnostics']])
+        with self.assertRaises(FrontendError):
+            register(self.data, self.root)
+
+    def test_bundled_engine_is_evidence_not_content_identity(self):
+        instance = register(self.data, self.root)
+        result = recognize(self.root)
+        self.assertTrue(result['recognized'])
+        self.assertEqual(result['capabilities']['bundled_engine_evidence'], 'candidate-files-only')
+        self.assertEqual([e['path'] for e in instance['engine_evidence']], ['CARN2.EXE'])
+        old = instance['revision']
+        (self.root / 'CARN2.EXE').write_bytes(b'updated bundled engine')
+        self.assertEqual(fingerprint(self.root), old)
+        (self.root / 'CARN2.EXE').unlink()
+        self.assertEqual(fingerprint(self.root), old)
+        self.assertTrue(inspect_instance(instance)['recognized'])
+        self.assertTrue(inspect_instance(instance)['engine_changed'])
+
     def test_random_script_or_trophy_only_tree_is_not_coherent(self):
         (self.root / 'HUNTDAT/_RES.TXT').write_text('not a resource script')
         self.assertFalse(recognize(self.root)['recognized'])

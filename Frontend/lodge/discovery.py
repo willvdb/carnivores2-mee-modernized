@@ -101,7 +101,11 @@ def fingerprint(root):
 
 def recognize(root):
     root = Path(root).expanduser().resolve()
-    result = {'path': str(root), 'recognized': False, 'diagnostics': [], 'executables': []}
+    # Content failures and engine observations are independent evidence. Keep
+    # recognized as the existing content-only API; diagnostics may be advisory.
+    result = {'path': str(root), 'recognized': False, 'diagnostics': [], 'executables': [],
+              'capabilities': {'content_recognized': 'no', 'bundled_engine_evidence': 'unknown',
+                               'modern_engine_compatibility': 'unknown'}}
     if not root.is_dir():
         result['diagnostics'].append(diagnostic('missing-installation', 'Registered root is unavailable.'))
         return result
@@ -111,8 +115,6 @@ def recognize(root):
             result['diagnostics'].append(diagnostic('incomplete-root', 'Required coherent-root evidence unavailable.', **status))
     result['executables'] = [p.name for p in sorted(root.iterdir()) if p.is_file() and not p.is_symlink()
                              and (p.suffix.lower() in ('.exe', '.ren') or p.name.lower() in ('carnivores2', 'carnivores2-gl'))]
-    if not result['executables']:
-        result['diagnostics'].append(diagnostic('missing-engine-evidence', 'No root engine/launcher candidate; assets or partial overlay only.'))
     areas = resolve_reference(root, 'HUNTDAT/AREAS')
     pairs = []
     if areas['status'] == 'found':
@@ -141,6 +143,10 @@ def recognize(root):
                 if len(script) > 8 * 1024 * 1024 or not all(re.search(rb'\b' + key + rb'\s*\{', script, re.I) for key in (b'characters', b'weapons')):
                     result['diagnostics'].append(diagnostic('missing-script-evidence', 'Resource script lacks conventional characters/weapons blocks.'))
     result['recognized'] = not result['diagnostics']
+    result['capabilities']['content_recognized'] = 'yes' if result['recognized'] else 'no'
+    result['capabilities']['bundled_engine_evidence'] = 'candidate-files-only' if result['executables'] else 'none'
+    if not result['executables']:
+        result['diagnostics'].append(diagnostic('missing-engine-evidence', 'No bundled engine/launcher candidate; content recognition does not certify execution.'))
     return result
 
 

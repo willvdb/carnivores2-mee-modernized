@@ -13,6 +13,8 @@ def prepare(store, data, association_id, area_id, licenses=(), weapons=(), equip
     observation = inspect_instance(instance)
     diagnostics = list(observation['diagnostics'])
     capabilities = {'installation_recognized': 'yes' if observation['recognized'] else 'no',
+                    'content_recognized': 'yes' if observation['recognized'] else 'no',
+                    'bundled_engine_evidence': observation.get('capabilities', {}).get('bundled_engine_evidence', 'unknown'),
                     'native_profile_associated': 'yes', 'native_save_format_readable': 'unknown',
                     'content_dialect_recognized': 'unknown', 'console_can_be_generated': 'unknown',
                     'modern_engine_compatibility': 'unknown', 'launch_tested': 'unknown',

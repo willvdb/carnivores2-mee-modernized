@@ -69,6 +69,17 @@ class LaunchTests(unittest.TestCase):
         self.assertIn('duplicate-selection', codes)
         self.assertEqual(bad['candidate_argv'], [])
 
+    def test_engine_less_content_can_project_but_never_launch(self):
+        (self.root / 'CARN2.EXE').unlink()
+        result = prepare(self.store, self.store.read(), self.association, 'areas:0', mode='observer')
+        self.assertEqual(result['capabilities']['content_recognized'], 'yes')
+        self.assertEqual(result['capabilities']['bundled_engine_evidence'], 'none')
+        self.assertEqual(result['capabilities']['console_can_be_generated'], 'partial')
+        self.assertEqual(result['capabilities']['modern_engine_compatibility'], 'unknown')
+        self.assertFalse(result['process_launch_allowed'])
+        self.assertIsNone(result['executable'])
+        self.assertIn('missing-engine-evidence', [d['code'] for d in result['diagnostics']])
+
     def test_return_refresh_retains_provenance(self):
         data = self.store.read()
         before = data['associations'][self.association]['files']

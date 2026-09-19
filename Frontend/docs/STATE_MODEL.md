@@ -29,6 +29,10 @@ Repository evidence: `Shared/LegacyProfile.h`, `docs/PROFILE_SERIALIZATION.md`,
   grammar does not prove an engine version. Classic Triassic is an Ice Age-derived
   family; older/newer MEE require separate semantic adapters. A user-supplied
   dialect hint is recorded as an assertion, not detection or runtime validation.
+  Coherent content recognition does not require bundled engine/launcher files.
+  Their absence remains an advisory diagnostic and a separate `none` capability;
+  script/menu and non-trophy MAP/RSC requirements still reject partial overlays.
+  Recognition is structural evidence, not a validated map decode or runtime claim.
 * Native slot: installation-local `trophyNN` filename slot, never hunter identity.
   The current menu enumerates eight slots (0..7); discovery preserves outliers but
   cannot authorize using them. Embedded registration/name remain separately

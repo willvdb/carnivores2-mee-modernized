@@ -70,6 +70,13 @@ known classic Triassic instance; the C2 save codec is then explicitly disabled.
 unknown. Registration is idempotent by canonical path and does not overwrite an
 existing instance's evidence with later command arguments.
 
+Content recognition requires the existing coherent script/menu structure and a
+non-trophy MAP/RSC pair. A bundled executable or renderer is independent evidence:
+its absence is diagnosed but does not block registration or catalog projection.
+Discovery and dry runs report `content_recognized` and `bundled_engine_evidence`
+separately. Candidate binaries never certify modern-engine compatibility, and
+engine-less content is not claimed to be runnable. Partial overlays remain rejected.
+
 Every `launch-dry-run` result has `process_launch_allowed: false`. A structurally
 valid selection may contain candidate argv, but there is no executable choice,
 native rank/unlock certification, writable-state transaction, or actual process
