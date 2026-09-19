@@ -9,6 +9,7 @@
 // ============================================================================
 
 #include "GLPerf.h"
+#include "Session/Session.h"
 
 #ifndef GL_PERF_HOOKS
 
@@ -713,6 +714,7 @@ extern "C" void glperf_trigger_capture() {
 }
 
 extern "C" void glperf_set_logging(bool enabled) {
+    if (EngineSession::Active()) enabled = false;
     g_pendingLoggingEnabled = enabled;
     if (g_state.initialized) {
         g_state.loggingEnabled = enabled;
@@ -928,6 +930,7 @@ extern "C" void glperf_note_state_change() {
 // ---------------------------------------------------------------------------
 
 extern "C" void glperf_init() {
+    if (EngineSession::Active()) return; // v1 disables all perf files and GPU capture
     if (glperf_internal::g_perfInitCalled) return;
     glperf_internal::g_perfInitCalled = true;
 

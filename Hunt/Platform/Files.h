@@ -20,6 +20,7 @@ std::int64_t FileSize(FileHandle file); // -1 on error
 std::int64_t SeekFile(FileHandle file, std::int64_t offset, SeekOrigin origin);
 bool FileExists(const std::string& path);
 std::FILE* OpenTextFile(const char* path, const char* mode);
+bool CloseTextFile(std::FILE* file); // records buffered write/close failures in session mode
 std::string ModuleDirectory();
 std::string FindShader(const char* path); // CWD, then executable directory
 }

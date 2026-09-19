@@ -6,6 +6,7 @@
 #include "Hunt.h"
 #include "Platform/Platform.h"
 #include "Platform/System.h"
+#include "Session/Session.h"
 
 #include <cerrno>
 #include <cstdlib>
@@ -750,6 +751,11 @@ void MakeCall()
 static std::string GetConfigPath()
 {
   std::string resolved;
+  if (EngineSession::Active()) {
+    if (!EngineSession::Resolve(EngineSession::ConfigPath(), false, resolved))
+      DoHalt("Unsafe session configuration path.");
+    return resolved;
+  }
   if (Platform::ResolveLegacyPath(Platform::ModuleDirectory()+"/config.cfg", resolved)) return resolved;
   if (Platform::ResolveLegacyPath("config.cfg", resolved)) return resolved;
   return "config.cfg";
@@ -760,7 +766,9 @@ static std::string GetConfigPath()
 static void CreateDefaultConfig()
 {
   const auto directory = Platform::ModuleDirectory();
-  const auto path = directory.empty() ? std::string("config.cfg") : directory + "/config.cfg";
+  const auto path = EngineSession::Active() ? GetConfigPath() :
+      (directory.empty() ? std::string("config.cfg") : directory + "/config.cfg");
+  if (EngineSession::Active() && Platform::FileExists(path)) return;
   const char* writePath = path.c_str();
   auto hfile = Platform::OpenFile(writePath, Platform::FileMode::CreateNew, false);
   if (hfile == Platform::InvalidFile) return;
@@ -851,6 +859,7 @@ static void LoadConfig()
 
   std::ifstream input(configPath, std::ios::binary);
   if (!input) {
+    if (EngineSession::Active()) DoHalt("Cannot read session configuration.");
     PrintLog("Config: config.cfg not found, using defaults.\n");
     return;
   }
@@ -858,6 +867,7 @@ static void LoadConfig()
   std::string text;
   size_t nulBytes = 0;
   if (!ReadConfigText(input, text, nulBytes)) {
+    if (EngineSession::Active()) DoHalt("Unreadable session configuration.");
     PrintLog("Config: unreadable, unsupported encoding, or larger than 1 MiB; using defaults.\n");
     return;
   }

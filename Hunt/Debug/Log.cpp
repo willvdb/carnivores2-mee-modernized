@@ -4,6 +4,7 @@
 
 #include "Hunt.h"
 #include "Log.h"
+#include "Session/Session.h"
 
 #include <cstdio>
 #include <cstdarg>
@@ -13,8 +14,8 @@ static FILE* g_logFile = nullptr;
 
 void LogInit(const char* filename)
 {
-    if (g_logFile) fclose(g_logFile);
-    g_logFile = fopen(filename, "a");
+    if (g_logFile) Platform::CloseTextFile(g_logFile);
+    g_logFile = Platform::OpenTextFile(filename, "a");
     if (g_logFile) {
         LOG_INFO("Log started");
     }
@@ -51,14 +52,15 @@ void LogWrite(LogLevel level, const char* file, int line, const char* fmt, ...)
         t->tm_hour, t->tm_min, t->tm_sec,
         label, file, line, msg);
 
-    fflush(g_logFile);
+    const bool flushed = fflush(g_logFile) == 0;
+    EngineSession::Check(flushed && !ferror(g_logFile));
 }
 
 void LogClose()
 {
     if (g_logFile) {
         LOG_INFO("Log closed");
-        fclose(g_logFile);
+        Platform::CloseTextFile(g_logFile);
         g_logFile = nullptr;
     }
 }

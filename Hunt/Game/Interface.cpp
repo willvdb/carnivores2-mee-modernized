@@ -1,5 +1,6 @@
 #define INITGUID
 #include "Hunt.h"
+#include "Session/Session.h"
 #include "Platform/Platform.h"
 #include "Game/DisplaySelection.h"
 #include "Game/DisplayRecovery.h"
@@ -109,6 +110,7 @@ void DoHalt(const char* Mess)
 
   CloseLog();
   LogClose();
+  if (EngineSession::Active()) std::exit(EngineSession::ExitStatus(Mess && *Mess ? 1 : 0));
 #ifdef _WIN32
   TerminateProcess(GetCurrentProcess(), 0);
 #else
@@ -138,6 +140,7 @@ void DoHalt2(const char* Mess)
 
 	CloseLog();
 	LogClose();
+  if (EngineSession::Active()) std::exit(EngineSession::ExitStatus(Mess && *Mess ? 1 : 0));
 #ifdef _WIN32
   TerminateProcess(GetCurrentProcess(), 0);
 #else

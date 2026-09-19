@@ -4,6 +4,7 @@
 
 #include "Hunt.h"
 #include "Platform/Platform.h"
+#include "Session/Session.h"
 #include <thread>
 #include <mutex>
 #include <atomic>
@@ -266,7 +267,7 @@ void InitAudioSystem(int driver)
 #ifdef _WIN32
     driver = NormalizeAudioBackend(driver);
 
-    if (driver == AUDIO_DIRECTSOUND) {
+    if (driver == AUDIO_DIRECTSOUND && !EngineSession::Active()) {
         if (LoadLegacyAudioBackend("a_ds3d.dll")) {
             PrintLog("DirectSound: legacy audio DLL loaded\n");
             if (g_LegacyInitAudioSystem)

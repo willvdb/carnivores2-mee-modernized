@@ -187,7 +187,7 @@ else()
 endif()
 
 add_library(CarnivoresPlatformMemory STATIC Hunt/Platform/Memory.cpp Hunt/Platform/Files.cpp
-    Hunt/Platform/System.cpp Hunt/Platform/SharedLibrary.cpp Hunt/Platform/Screenshot.cpp)
+    Hunt/Session/Session.cpp Hunt/Platform/System.cpp Hunt/Platform/SharedLibrary.cpp Hunt/Platform/Screenshot.cpp)
 if(NOT WIN32)
     target_link_libraries(CarnivoresPlatformMemory PUBLIC ${CMAKE_DL_LIBS})
 endif()

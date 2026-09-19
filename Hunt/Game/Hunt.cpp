@@ -9,6 +9,8 @@
 #include <algorithm>
 #include "Platform/Platform.h"
 #include "Platform/System.h"
+#include "Session/Session.h"
+#include <filesystem>
 #ifdef _WIN32
 #include "Platform/PlatformWin32.h"
 #endif
@@ -1679,6 +1681,21 @@ void ProcessGame()
 int RunGame()
 {
 	
+  std::vector<std::string> legacyArguments;
+  std::string sessionError;
+  std::error_code cwdError;
+  const auto contentDirectory = std::filesystem::current_path(cwdError).string();
+  const auto startup = EngineSession::Initialize(Platform::Arguments(), contentDirectory,
+      Platform::ModuleDirectory(), legacyArguments, sessionError);
+  if (startup == EngineSession::Startup::Error) {
+    std::fprintf(stderr, "Session setup failed: %s\n", sessionError.c_str());
+    return 2; // Before platform, ordinary logging, config, or profile writes.
+  }
+  if (startup == EngineSession::Startup::Query) {
+    std::puts(EngineSession::Capability);
+    return 0;
+  }
+  Platform::SetArguments(legacyArguments);
   int quitCode = 0;
 
   const bool platformReady = Platform::InitializeApplication();
@@ -1708,7 +1725,7 @@ int RunGame()
       Platform::ShutdownApplication();
       CloseLog();
       LogClose();
-      return 0;
+      return EngineSession::ExitStatus(0);
     }
   }
   if (!platformReady || !CreateMainWindow()) {
@@ -1869,5 +1886,5 @@ int RunGame()
 
   CloseLog();
   LogClose();
-  return quitCode;
+  return EngineSession::ExitStatus(quitCode);
 }

@@ -1,6 +1,8 @@
 #include "Files.h"
+#include "../Session/Session.h"
 #include <algorithm>
 #include <cerrno>
+#include <cstring>
 #include <filesystem>
 #include <vector>
 #ifdef _WIN32
@@ -56,7 +58,7 @@ bool ResolveLegacyPath(const std::string& path, std::string& resolved, bool crea
     resolved = current.string();
     return true;
 }
-FileHandle OpenFile(const char* path, FileMode mode, bool shareRead)
+static FileHandle OpenNativeFile(const char* path, FileMode mode, bool shareRead)
 {
     if (!path) return InvalidFile;
 #ifdef _WIN32
@@ -68,7 +70,10 @@ FileHandle OpenFile(const char* path, FileMode mode, bool shareRead)
                        disposition, FILE_ATTRIBUTE_NORMAL, nullptr);
 #else
     std::string resolved;
-    if (!ResolveLegacyPath(path, resolved, mode == FileMode::Write || mode == FileMode::CreateNew)) return InvalidFile;
+    // Session-owned targets have already been checked. Do not case-resolve a
+    // missing leaf into a different (possibly linked) output file afterwards.
+    if (EngineSession::Active() && mode != FileMode::Read) resolved = NormalizePath(path);
+    else if (!ResolveLegacyPath(path, resolved, mode == FileMode::Write || mode == FileMode::CreateNew)) return InvalidFile;
     FILE* file = nullptr;
     if (mode == FileMode::CreateNew) {
         const int fd = open(resolved.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0666);
@@ -81,7 +86,18 @@ FileHandle OpenFile(const char* path, FileMode mode, bool shareRead)
     return file ? file : InvalidFile;
 #endif
 }
-bool CloseFile(FileHandle file)
+FileHandle OpenFile(const char* path, FileMode mode, bool shareRead)
+{
+    std::string resolved;
+    if (!path || !EngineSession::Resolve(path, mode != FileMode::Read, resolved)) {
+        EngineSession::Fail();
+        return InvalidFile;
+    }
+    const auto file = OpenNativeFile(resolved.c_str(), mode, shareRead);
+    if (mode != FileMode::Read) EngineSession::Check(file != InvalidFile);
+    return file;
+}
+static bool CloseNativeFile(FileHandle file)
 {
     if (!file || file == InvalidFile) return false;
 #ifdef _WIN32
@@ -90,6 +106,7 @@ bool CloseFile(FileHandle file)
     return std::fclose(static_cast<FILE*>(file)) == 0;
 #endif
 }
+bool CloseFile(FileHandle file) { return EngineSession::Check(CloseNativeFile(file)); }
 bool ReadFile(FileHandle file, void* data, std::uint32_t bytes, std::uint32_t* read)
 {
     if (read) *read = 0;
@@ -106,7 +123,7 @@ bool ReadFile(FileHandle file, void* data, std::uint32_t bytes, std::uint32_t* r
     return !std::ferror(stream);
 #endif
 }
-bool WriteFile(FileHandle file, const void* data, std::uint32_t bytes, std::uint32_t* written)
+static bool WriteNativeFile(FileHandle file, const void* data, std::uint32_t bytes, std::uint32_t* written)
 {
     if (written) *written = 0;
     if (!file || file == InvalidFile) return false;
@@ -114,12 +131,16 @@ bool WriteFile(FileHandle file, const void* data, std::uint32_t bytes, std::uint
     DWORD count = 0;
     const bool ok = ::WriteFile(file, data, bytes, &count, nullptr) != 0;
     if (written) *written = count;
-    return ok;
+    return ok && count == bytes;
 #else
     const auto count = std::fwrite(data, 1, bytes, static_cast<FILE*>(file));
     if (written) *written = static_cast<std::uint32_t>(count);
     return count == bytes;
 #endif
+}
+bool WriteFile(FileHandle file, const void* data, std::uint32_t bytes, std::uint32_t* written)
+{
+    return EngineSession::Check(WriteNativeFile(file, data, bytes, written));
 }
 std::int64_t SeekFile(FileHandle file, std::int64_t offset, SeekOrigin origin)
 {
@@ -151,13 +172,29 @@ std::int64_t FileSize(FileHandle file)
 bool FileExists(const std::string& path)
 {
     std::string resolved;
-    return ResolveLegacyPath(path, resolved);
+    std::string routed;
+    return EngineSession::Resolve(path, false, routed) && ResolveLegacyPath(routed, resolved);
 }
 std::FILE* OpenTextFile(const char* path, const char* mode)
 {
-    std::string resolved;
-    if (!path || !ResolveLegacyPath(path, resolved, mode[0] != 'r')) return nullptr;
-    return std::fopen(resolved.c_str(), mode);
+    std::string routed, resolved;
+    const bool write = mode && (mode[0] != 'r' || std::strchr(mode, '+'));
+    if (!path || !mode || !EngineSession::Resolve(path, write, routed) ||
+        !ResolveLegacyPath(routed, resolved, write)) {
+        if (write) EngineSession::Fail();
+        return nullptr;
+    }
+    if (EngineSession::Active() && write) resolved = routed;
+    auto* file = std::fopen(resolved.c_str(), mode);
+    if (write) EngineSession::Check(file != nullptr);
+    return file;
+}
+bool CloseTextFile(std::FILE* file)
+{
+    if (!file) return EngineSession::Check(false);
+    const bool ok = !std::ferror(file);
+    const bool closed = std::fclose(file) == 0;
+    return EngineSession::Check(ok && closed);
 }
 std::string ModuleDirectory()
 {
