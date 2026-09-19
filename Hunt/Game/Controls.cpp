@@ -8,12 +8,6 @@
 #include <cmath>
 #include "Core/WaterColor.h"  // §3.2: water-colour-aware depth modulation
 
-void CaptureMouse(std::int32_t capture)
-{
-  Platform::SetMouseCapture(capture != false);
-  if (capture) ResetMousePos();
-}
-
 void ResetMousePos()
 {
   if (blActive && _GameState && !IsPaused()) {

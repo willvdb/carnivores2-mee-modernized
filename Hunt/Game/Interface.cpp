@@ -3,6 +3,7 @@
 #include "Platform/Platform.h"
 #include "Game/DisplaySelection.h"
 #include "Game/DisplayRecovery.h"
+#include "Game/MouseCapture.h"
 #include "Renderer/CPUText.h"
 #ifdef _gl
 #include "Renderer/GLRenderer.h"
@@ -340,7 +341,6 @@ static void UpdateDrawableGeometry()
 #ifndef _WIN32
 static GameDisplay::DisplayRecovery displayRecovery;
 static bool displayConfigured = false;
-static bool drawableSuspended = false;
 
 void ObserveDisplayEvent(const Platform::Event& event)
 {
@@ -370,16 +370,14 @@ bool ServiceDisplayChanges()
   if (!displayConfigured) return true; // Loading has its own dimensions.
   auto window = Platform::QueryWindowState();
   if (window.minimized) {
-    if (!drawableSuspended) CaptureMouse(false);
-    drawableSuspended = true;
+    SuspendMouseCaptureForDisplay();
     return false;
   }
   if (displayRecovery.Ready(Platform::Milliseconds())) {
     const auto catalog = Platform::QueryDisplayCatalog();
     if (displayRecovery.Resolve(DisplayConfiguration, catalog, window) && !catalog.displays.empty()) {
       LOG_INFO("Display topology recovery: reapplying retained request with fresh selection");
-      CaptureMouse(false);
-      drawableSuspended = true; // Reacquire only after valid, reachable metrics below.
+      SuspendMouseCaptureForDisplay();
       SetVideoMode(DisplayConfiguration.size.width, DisplayConfiguration.size.height);
       window = Platform::QueryWindowState();
       // Self-generated mode/layout events must not cause an endless retry if
@@ -389,23 +387,17 @@ bool ServiceDisplayChanges()
     }
   }
   if (!GameDisplay::UsableWindow(window)) {
-    if (!drawableSuspended) {
+    if (SuspendMouseCaptureForDisplay()) {
       LOG_WARN("Drawable suspended: minimized=%d pixels=%dx%d", window.minimized, window.pixels.width, window.pixels.height);
-      CaptureMouse(false);
-      drawableSuspended = true;
     }
     return false;
   }
   if (!window.reachable) {
-    if (!drawableSuspended) CaptureMouse(false);
-    drawableSuspended = true;
+    SuspendMouseCaptureForDisplay();
     return false;
   }
   const bool usable = SynchronizeDrawable(window);
-  if (usable && drawableSuspended) {
-    CaptureMouse(blActive && _GameState && !IsPaused());
-    drawableSuspended = false;
-  }
+  if (usable) ResumeMouseCaptureAfterDisplay(blActive && _GameState && !IsPaused());
   return usable;
 }
 
@@ -525,5 +517,4 @@ void SetVideoMode(int W, int H)
 #endif
   Platform::HideArrowCursor();
 }
-
 

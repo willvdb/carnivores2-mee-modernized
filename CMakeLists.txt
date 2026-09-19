@@ -225,6 +225,7 @@ set(CORE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/Hunt/Game/CharacterAnimation/AnimateBrahiOld.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Hunt/Game/CharacterAnimation/AnimateDimor.cpp
     Hunt/Game/Controls.cpp
+    Hunt/Game/MouseCapture.cpp
     Hunt/Game/PlayerMovement.cpp
     Hunt/Game/Effects.cpp
     Hunt/Game/Network.cpp
@@ -381,6 +382,12 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     add_test(NAME Carnivores2Tests.Platform COMMAND Carnivores2PlatformTests)
     add_test(NAME Carnivores2Tests.PlatformBoundary COMMAND ${CMAKE_COMMAND}
         "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}" -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_platform_boundary.cmake")
+
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_executable(Carnivores2DisplayCaptureTests tests/test_display_capture.cpp Hunt/Game/MouseCapture.cpp)
+        target_link_libraries(Carnivores2DisplayCaptureTests PRIVATE gtest_main)
+        add_test(NAME Carnivores2Tests.DisplayCapture COMMAND Carnivores2DisplayCaptureTests)
+    endif()
 
     if(CARNIVORES_PLATFORM STREQUAL "SDL3")
         if(NOT CARNIVORES_SYSTEM_SDL3)
