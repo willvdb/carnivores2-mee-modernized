@@ -110,7 +110,7 @@ void DoHalt(const char* Mess)
 
   CloseLog();
   LogClose();
-  if (EngineSession::Active()) std::exit(EngineSession::ExitStatus(Mess && *Mess ? 1 : 0));
+  if (EngineSession::Active()) std::_Exit(EngineSession::ExitStatus(Mess && *Mess ? 1 : 0));
 #ifdef _WIN32
   TerminateProcess(GetCurrentProcess(), 0);
 #else
@@ -140,7 +140,7 @@ void DoHalt2(const char* Mess)
 
 	CloseLog();
 	LogClose();
-  if (EngineSession::Active()) std::exit(EngineSession::ExitStatus(Mess && *Mess ? 1 : 0));
+  if (EngineSession::Active()) std::_Exit(EngineSession::ExitStatus(Mess && *Mess ? 1 : 0));
 #ifdef _WIN32
   TerminateProcess(GetCurrentProcess(), 0);
 #else

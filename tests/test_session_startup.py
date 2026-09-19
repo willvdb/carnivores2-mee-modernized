@@ -10,6 +10,7 @@ import tempfile
 import unittest
 
 ENGINE = Path(sys.argv.pop(1)).resolve(strict=True)
+EXIT_PROBE = Path(sys.argv.pop(1)).resolve(strict=True)
 
 
 def inventory(root):
@@ -21,12 +22,14 @@ class Startup(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='c2 startup spaces ')
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve()
         for name in ('content/HuNtDaT', 'engine', 'source', 'baseline',
                      'work/state', 'work/config', 'work/output'):
             (self.root / name).mkdir(parents=True)
         self.engine = self.root / 'engine' / ENGINE.name
         shutil.copy2(ENGINE, self.engine)
+        self.exit_probe = self.engine.parent / EXIT_PROBE.name
+        shutil.copy2(EXIT_PROBE, self.exit_probe)
         for dll in ENGINE.parent.glob('*.dll'):
             shutil.copy2(dll, self.engine.parent / dll.name)
         self.content = self.root / 'content'
@@ -90,6 +93,16 @@ class Startup(unittest.TestCase):
         self.assertEqual({p.name for p in (self.root / 'work/output').iterdir()},
                          {'render.log', 'carnivor.log'})
         self.assertEqual(list((self.root / 'work/config').iterdir()), [])
+
+    def test_production_exit_closes_logs_and_preserves_failures_without_destructors(self):
+        for mode, expected in (('clean', 0), ('io', 3), ('fatal', 1), ('early', 1)):
+            with self.subTest(mode=mode):
+                for log in (self.root / 'work/output').iterdir():
+                    log.unlink()
+                result = subprocess.run([str(self.exit_probe), *self.args, mode],
+                                        cwd=self.content, capture_output=True, timeout=10)
+                self.assertEqual(result.returncode, expected, result.stderr)
+                self.assertIn(b'Log closed', (self.root / 'work/output/carnivor.log').read_bytes())
 
     @unittest.skipUnless(os.name == 'nt', 'Windows junction regression')
     def test_junction_is_rejected_before_startup(self):

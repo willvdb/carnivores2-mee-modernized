@@ -26,6 +26,9 @@ void LoadTrophy2(int);
 void SyncLegacyDisplayState() {}
 bool Audio_SetEnvParam(int, int, float) { return false; }
 void CopyHARDToDIB() {}
+std::int32_t _HeapFree(Platform::HeapHandle heap, std::uint32_t flags, void* memory) {
+    return Platform::FreeHeap(heap, flags, memory);
+}
 
 namespace {
 namespace fs = std::filesystem;
@@ -54,7 +57,7 @@ struct Session : testing::Test {
     std::string error;
     void SetUp() override {
         cwd = fs::current_path();
-        base = fs::temp_directory_path() / ("c2 session " + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        base = fs::canonical(fs::temp_directory_path()) / ("c2 session " + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
         content = base/"content"; source = base/"source"; baseline = base/"baseline";
         work = base/"workspace"; module = base/"engine";
         for (const auto& p : {content/"HuNtDaT/Areas", source, baseline, work/"state", work/"config", work/"output", module}) fs::create_directories(p);
@@ -113,6 +116,30 @@ TEST_F(Session, StrictArgumentsFailBeforeAnyOutput) {
         args=good; args.erase(args.begin()+i);
         EXPECT_EQ(Start(), EngineSession::Startup::Error) << i;
     }
+}
+TEST_F(Session, InvalidValuesAreTestedWithoutDuplicateOptions) {
+    const auto good=args;
+    for (const auto& bad : {"--session-slot=00", "--session-slot=8", "--session-slot=+0", "--session-slot=0x0",
+                          "--session-contract=2", "--session-contract=01", "--session-root", "--session-root="}) {
+        args=good; const auto key=std::string(bad).substr(0,std::string(bad).find('='));
+        for (auto& arg:args) if(arg.rfind(key+"=",0)==0) arg=bad;
+        EXPECT_EQ(Start(),EngineSession::Startup::Error) << bad;
+    }
+}
+TEST_F(Session, NonzeroSlotProductionRoundTrip) {
+    LegacyProfile::Save save; save.profile.header.registration=7; save.profile.header.score=77;
+    save.profile.items[0].type=1;
+    for(const auto& dir:{source,baseline,work/"state"}) {
+        fs::remove(dir/"trophy00.sav"); fs::rename(dir/"trophy00.sab",dir/"trophy07.sab");
+        Put(dir/"trophy07.sav",LegacyProfile::EncodeSave(save));
+    }
+    const auto original=Scan(source);
+    args.back()="--session-slot=7"; ASSERT_EQ(Start(),EngineSession::Startup::Ready) << error;
+    Logs(); Platform::SetArguments(legacy); ProcessCommandLine(); LoadTrophy();
+    EXPECT_EQ(TrophyRoom.RegNumber,7); EXPECT_EQ(TrophyRoom.Score,77);
+    TrophyRoom.Score=99; SaveTrophy(); LoadTrophy(); EXPECT_EQ(TrophyRoom.Score,99);
+    EXPECT_EQ(Scan(source),original); EXPECT_EQ(Scan(baseline),original); CloseLogs();
+    EXPECT_EQ(EngineSession::ExitStatus(0),0);
 }
 TEST_F(Session, QueryMustBeStandaloneAndHasVersionedEvidence) {
     args={"engine", "--session-capabilities"};
