@@ -55,8 +55,15 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(resolve_reference(self.root, r'huntdat\areas\area1.map')['status'], 'found')
         self.assertEqual(resolve_reference(self.root, '../elsewhere')['status'], 'unsafe')
         self.assertEqual(resolve_reference(self.root, 'C:\\elsewhere')['status'], 'unsafe')
-        (self.root / 'HUNTDAT/areas').mkdir()
-        self.assertEqual(resolve_reference(self.root, 'HUNTDAT/AREAS')['status'], 'ambiguous')
+        try:
+            (self.root / 'HUNTDAT/areas').mkdir()
+        except FileExistsError:
+            # Case-insensitive hosts cannot represent the collision; verify
+            # their actual single-directory resolution and still test escapes.
+            self.assertTrue((self.root / 'HUNTDAT/areas').samefile(self.root / 'HUNTDAT/AREAS'))
+            self.assertEqual(resolve_reference(self.root, 'HUNTDAT/AREAS')['status'], 'found')
+        else:
+            self.assertEqual(resolve_reference(self.root, 'HUNTDAT/AREAS')['status'], 'ambiguous')
         try:
             (self.root / 'escape').symlink_to(Path(self.temp.name), target_is_directory=True)
         except OSError:

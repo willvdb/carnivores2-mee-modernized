@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 def game(parent, name='Game'):
-    root = Path(parent) / name
+    root = Path(parent).resolve() / name
     for part in ('HUNTDAT/MENU/TXT', 'HUNTDAT/MENU/PICS', 'HUNTDAT/AREAS'):
         (root / part).mkdir(parents=True)
     (root / 'HUNTDAT/_RES.TXT').write_text("weapons {\n}\ncharacters {\n{\n name = 'Synthetic animal'\n ai = 10\n}\n}\n")

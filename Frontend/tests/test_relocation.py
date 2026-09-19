@@ -13,7 +13,7 @@ class RelocationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.directory = Path(self.temp.name)
+        self.directory = Path(self.temp.name).resolve()
         self.managed = self.directory / 'Expeditions'
         self.root = game(self.managed, 'Triassic')
         self.data = empty_manifest()
