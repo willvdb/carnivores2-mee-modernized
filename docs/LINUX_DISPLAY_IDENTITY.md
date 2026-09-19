@@ -1,5 +1,7 @@
 # Linux saved monitor preferences (Phase 4h)
 
+Current live Linux recovery and dimension semantics: [Phase 4i](LINUX_DISPLAY_RECOVERY.md). Earlier deferred descriptions below are historical.
+
 Linux now supports opt-in serial-backed monitor preference on supported native
 backends. Run `-list-displays`, then copy the desired complete `display_identity`
 line into modern `config.cfg`. The token is intentionally opaque. No session

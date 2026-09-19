@@ -1,5 +1,7 @@
 # Linux display behavior and direct Wayland gameplay (Phase 4g)
 
+Current live Linux recovery and dimension semantics: [Phase 4i](LINUX_DISPLAY_RECOVERY.md). Earlier deferred descriptions below are historical.
+
 Current Linux opt-in serial identity support is documented in [Phase 4h](LINUX_DISPLAY_IDENTITY.md). Earlier unsupported-identity descriptions below are historical.
 
 The game supports an interactive direct Wayland route on compositors offering
