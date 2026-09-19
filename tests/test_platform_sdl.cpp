@@ -1,5 +1,6 @@
 #include "../Hunt/Platform/Platform.h"
 #include "../Hunt/Debug/Log.h"
+#include "../Hunt/Platform/PlatformSDLInternal.h"
 #include <SDL3/SDL.h>
 #include <gtest/gtest.h>
 
@@ -99,4 +100,30 @@ TEST_F(PlatformSDL, NewEventsBehindSDLPollBoundaryAreNotAnIdleFrame)
     EXPECT_EQ(event.key.key,'W');
     EXPECT_EQ(Platform::PumpOneEvent(code,&event),Platform::PumpResult::Idle);
     EXPECT_EQ(code,-7);
+}
+
+namespace {
+int relativeReads = 0;
+SDL_MouseButtonFlags SDLCALL ReadRelativeMotion(float* x, float* y)
+{
+    ++relativeReads;
+    *x = 0.25f; *y = -12.75f;
+    return 0;
+}
+}
+TEST(SDLMouseLook, WaylandConsumesFractionalMotionWithoutAbsoluteCenterOrSensitivityChanges)
+{
+    relativeReads = 0;
+    const auto delta = Platform::SDLDetails::ReadWaylandMouseLook(true, true, ReadRelativeMotion);
+    EXPECT_FLOAT_EQ(delta.x, 0.25f); EXPECT_FLOAT_EQ(delta.y, -12.75f);
+    EXPECT_EQ(relativeReads, 1);
+}
+TEST(SDLMouseLook, UncapturedOrUnfocusedWaylandDrainsMotionWithoutMovingView)
+{
+    relativeReads = 0;
+    for (auto flags : {std::pair{false, false}, std::pair{true, false}, std::pair{false, true}}) {
+        const auto delta = Platform::SDLDetails::ReadWaylandMouseLook(flags.first, flags.second, ReadRelativeMotion);
+        EXPECT_FLOAT_EQ(delta.x, 0); EXPECT_FLOAT_EQ(delta.y, 0);
+    }
+    EXPECT_EQ(relativeReads, 3);
 }

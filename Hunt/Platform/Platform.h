@@ -137,11 +137,14 @@ struct Event {
     bool focused = false;
 };
 
-// Capture is confinement + visibility, not relative input or OS button capture.
-// Engine decides whether/when to recenter and supplies its video center.
+// Capture controls confinement + visibility. Wayland uses relative input because
+// its cursor warps are advisory. Other backends retain legacy recentering.
 void SetMouseCapture(bool capture);
 void WarpPointerInClient(Point position);
 Point PointerInClient();
+struct MouseDelta { float x = 0, y = 0; };
+// Consume one frame of mouse-look motion, preserving fractional relative input.
+MouseDelta ReadMouseLookDelta(Point center);
 
 void EnableDpiAwareness();
 bool InitializeApplication();

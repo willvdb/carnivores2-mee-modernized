@@ -217,6 +217,12 @@ Point PointerInClient()
     return {point.x, point.y};
 }
 
+MouseDelta ReadMouseLookDelta(Point center)
+{
+    const auto point = PointerInClient();
+    return {static_cast<float>(point.x - center.x), static_cast<float>(point.y - center.y)};
+}
+
 bool HasGameWindow() { return gameWindow != nullptr; }
 
 void ShowAndFocusGameWindow()

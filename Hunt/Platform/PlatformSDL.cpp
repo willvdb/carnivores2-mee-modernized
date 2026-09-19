@@ -7,6 +7,13 @@
 #include <optional>
 
 namespace Platform::SDLDetails {
+MouseDelta ReadWaylandMouseLook(bool captured, bool focused, MouseStateQuery query)
+{
+    MouseDelta delta;
+    query(&delta.x, &delta.y); // Drain even when inactive: no stale motion on regain.
+    return captured && focused ? delta : MouseDelta{};
+}
+
 WindowDisplay MapWindowDisplay(const std::vector<NativeDisplay>& displays, SDL_DisplayID primary,
                                std::optional<DisplayTarget> target, std::optional<DisplayMode> mode)
 {
@@ -61,6 +68,7 @@ SDL_Cursor* arrowCursor = nullptr;
 Platform::SDLInput::Keyboard keyboard;
 bool quitRequested = false;
 bool altGrLayout = false;
+bool wayland = false;
 std::optional<Platform::Event> pendingKey;
 
 Platform::Display ReadDisplay(SDL_DisplayID id)
@@ -151,6 +159,8 @@ bool InitializeApplication()
     pendingKey.reset();
     keyboard.ClearDown();
     if (!SDL_Init(SDL_INIT_VIDEO)) return false;
+    wayland = SDL_strcmp(SDL_GetCurrentVideoDriver(), "wayland") == 0;
+    LOG_INFO("SDL video backend: %s", SDL_GetCurrentVideoDriver());
     altGrLayout = HasAltGrLayout();
     return true;
 }
@@ -297,12 +307,21 @@ void RequestQuit() { quitRequested = true; }
 void SetMouseCapture(bool capture)
 {
     if (!gameWindow) return;
-    Check(SDL_SetWindowMouseGrab(gameWindow, capture), "SDL_SetWindowMouseGrab");
+    if (wayland) {
+        if (!SDL_SetWindowRelativeMouseMode(gameWindow, capture))
+            LOG_WARN("Wayland relative mouse capture %s failed: %s; mouse-look unavailable (try SDL_VIDEODRIVER=x11)",
+                     capture ? "enable" : "disable", SDL_GetError());
+        SDL_GetRelativeMouseState(nullptr, nullptr);
+    } else Check(SDL_SetWindowMouseGrab(gameWindow, capture), "SDL_SetWindowMouseGrab");
     Check(capture ? SDL_HideCursor() : SDL_ShowCursor(), "SDL cursor visibility");
 }
 void WarpPointerInClient(Point point)
 {
-    if (gameWindow) SDL_WarpMouseInWindow(gameWindow, static_cast<float>(point.x), static_cast<float>(point.y));
+    if (wayland) {
+        // The engine calls this after reading a frame and on capture/re-entry.
+        // Do not issue advisory Wayland warps or synthesize absolute motion.
+        SDL_GetRelativeMouseState(nullptr, nullptr);
+    } else if (gameWindow) SDL_WarpMouseInWindow(gameWindow, static_cast<float>(point.x), static_cast<float>(point.y));
 }
 Point PointerInClient()
 {
@@ -315,6 +334,14 @@ Point PointerInClient()
     SDL_GetMouseState(&x, &y); // Window-relative; Wayland has no global pointer query.
 #endif
     return {static_cast<std::int32_t>(x) - wx, static_cast<std::int32_t>(y) - wy};
+}
+MouseDelta ReadMouseLookDelta(Point center)
+{
+    if (wayland)
+        return SDLDetails::ReadWaylandMouseLook(gameWindow && SDL_GetWindowRelativeMouseMode(gameWindow),
+            gameWindow && (SDL_GetWindowFlags(gameWindow) & SDL_WINDOW_INPUT_FOCUS));
+    const auto point = PointerInClient();
+    return {static_cast<float>(point.x - center.x), static_cast<float>(point.y - center.y)};
 }
 void LoadArrowCursor() { arrowCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_DEFAULT); }
 void HideArrowCursor()

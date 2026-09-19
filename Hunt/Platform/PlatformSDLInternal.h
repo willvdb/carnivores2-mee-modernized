@@ -3,6 +3,11 @@
 #include <SDL3/SDL.h>
 
 namespace Platform::SDLDetails {
+using MouseStateQuery = SDL_MouseButtonFlags (SDLCALL *)(float*, float*);
+// No absolute-coordinate fallback when Wayland relative capture is unavailable.
+MouseDelta ReadWaylandMouseLook(bool captured, bool focused,
+                               MouseStateQuery query = SDL_GetRelativeMouseState);
+
 struct NativeDisplay { SDL_DisplayID id; DisplayBounds bounds; };
 struct WindowDisplay {
     SDL_DisplayID id;
