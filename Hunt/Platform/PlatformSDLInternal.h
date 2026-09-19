@@ -29,6 +29,11 @@ struct FullscreenResult {
 FullscreenResult EnterFullscreen(SDL_Window* window, const SDL_DisplayMode& mode, bool emulated,
                                  const FullscreenAPI& api = {});
 
+using DesktopModeQuery = decltype(&SDL_GetDesktopDisplayMode);
+FullscreenResult EnterDesktopFullscreen(SDL_Window* window, SDL_DisplayID display,
+                                        const FullscreenAPI& api = {},
+                                        DesktopModeQuery query = SDL_GetDesktopDisplayMode);
+
 struct NativeDisplay { SDL_DisplayID id; DisplayBounds bounds; };
 struct WindowDisplay {
     SDL_DisplayID id;
@@ -36,6 +41,11 @@ struct WindowDisplay {
     std::optional<DisplayMode> exclusiveMode;
     bool ambiguousBounds = false;
 };
+// Refresh a mapped target's bounds. A disappeared target atomically becomes
+// primary/automatic for this application; no saved game preference is changed.
+std::optional<SDL_Rect> RefreshWindowDisplayBounds(WindowDisplay& display,
+    decltype(&SDL_GetDisplayBounds) bounds = SDL_GetDisplayBounds,
+    decltype(&SDL_GetPrimaryDisplay) primary = SDL_GetPrimaryDisplay);
 // Mechanism only: exactly one full-rectangle match, no catalog index or eligibility.
 WindowDisplay MapWindowDisplay(const std::vector<NativeDisplay>& displays, SDL_DisplayID primary,
                                std::optional<DisplayTarget> target, std::optional<DisplayMode> mode);

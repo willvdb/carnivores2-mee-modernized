@@ -2,17 +2,19 @@
 
 ## Review state
 
-Implementation complete; feature push, exact-head 12-job CI and independent
-supervisor review are the next gates. No 4h work has started.
+Implementation and first review correction complete; new exact-head CI and
+supervisor re-review are the next gates. No 4h work has started.
 
 - Branch: `port/linux-display-behavior`.
 - Worktree: `/home/willvdb/code/games/carnivores2-phase4-linux-display`.
 - Accepted unmerged 4f base: `14563c9f9570b94a8dcd77464fa86ab4ce860fa6`.
 - Main verified before work: `a2cfec8ef3590c6c8d56d16c7a69e4c0e5327f5a`.
-- Implementation head: `7804380f709b27c44e795cbac2b4de32cbfe22c4`.
-- This checkpoint is a subsequent documentation commit; the final pushed SHA and
-  its CI URL/results are supplied in the supervisor handoff. CI has not yet run
-  at the time this file is committed.
+- Initial implementation head: `7804380f709b27c44e795cbac2b4de32cbfe22c4`.
+- Initial review head: `fffdea57eaf1c0936142a296913f82043dbf109b`; all 12 CI jobs
+  passed: https://github.com/willvdb/carnivores2-mee-modernized/actions/runs/35413390812.
+- The narrow supervisor correction below is included in this subsequent commit.
+  Its final pushed SHA and exact-head CI results are supplied in the handoff;
+  the previous green run is not acceptance for this new code.
 
 Ordered implementation commits:
 
@@ -142,3 +144,28 @@ report CI plus this evidence to the supervisor, address review findings in new
 commits and wait for acceptance. Only the supervisor may dispatch a fresh 4h
 agent. Physical acceptance remains pending for Will when a suitable session is
 available; it must not be inferred from nested fixtures.
+
+## Supervisor correction — effective target after disappearance
+
+Independent review found that the existing disappearance-during-exclusive path
+retried primary but retained the vanished secondary in `mapped.id`/`mapped.target`.
+If primary also rejected the requested size, the new Wayland desktop fallback
+queried the vanished secondary; diagnostics likewise named that stale output.
+
+The application now uses one native WindowDisplay value for ID, target and exact
+mode. Refreshing a vanished target resets that value to primary/automatic in both
+existing race paths. Retry, desktop fullscreen fallback and final diagnostics all
+consume that value. This changes only the current application; caller-owned/saved
+intent is retained. There is no new hotplug/recovery framework.
+
+A focused injected regression first observes a valid secondary, then loses it,
+rejects the primary's requested exact size, and confirms primary desktop fullscreen
+with primary timing. It verifies cleared secondary target/rate and unchanged caller
+preference. The production desktop helper is used by both the test and fallback.
+
+Post-correction validation: GCC Debug/Release and Clang full builds/CTest pass;
+strict GCC/Clang platform compilation passes; all 11 changed SDL tests pass with
+ASan/UBSan/LSan; the disposable production Wayland presentation/fallback/restoration
+and socket-disconnect runtime passes. Logs `review-fix-*.log` in the evidence root.
+Earlier full-game, X11 runtime and known sanitizer limitations remain as above.
+New exact-head 12-job CI and supervisor re-review are required before acceptance.

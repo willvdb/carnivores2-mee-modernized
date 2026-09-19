@@ -35,6 +35,23 @@ FullscreenResult EnterFullscreen(SDL_Window* window, const SDL_DisplayMode& mode
     return result;
 }
 
+FullscreenResult EnterDesktopFullscreen(SDL_Window* window, SDL_DisplayID display,
+                                        const FullscreenAPI& api, DesktopModeQuery query)
+{
+    const auto* desktop = query(display);
+    return desktop && desktop->displayID == display ? EnterFullscreen(window, *desktop, true, api) : FullscreenResult{};
+}
+
+std::optional<SDL_Rect> RefreshWindowDisplayBounds(WindowDisplay& display,
+    decltype(&SDL_GetDisplayBounds) bounds, decltype(&SDL_GetPrimaryDisplay) primary)
+{
+    if (!display.target) return std::nullopt;
+    SDL_Rect current{};
+    if (bounds(display.id, &current)) return current;
+    display = {primary(), std::nullopt, std::nullopt};
+    return std::nullopt;
+}
+
 WindowDisplay MapWindowDisplay(const std::vector<NativeDisplay>& displays, SDL_DisplayID primary,
                                std::optional<DisplayTarget> target, std::optional<DisplayMode> mode)
 {
@@ -397,7 +414,7 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
                          std::optional<DisplayMode> exclusiveMode, std::optional<DisplayTarget> target)
 {
     if (!gameWindow) return;
-    SDLDetails::WindowDisplay mapped{0, std::nullopt, exclusiveMode};
+    SDLDetails::WindowDisplay mapped{SDL_GetPrimaryDisplay(), std::nullopt, exclusiveMode};
     if (target) {
         // Resolve BEFORE leaving fullscreen: the caller's snapshot can describe
         // the current exclusive rectangle. Native IDs stay within this call.
@@ -410,7 +427,6 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
                 nativeDisplays.push_back({ids.get()[i], {{bounds.x, bounds.y}, {bounds.w, bounds.h}}});
         }
         mapped = SDLDetails::MapWindowDisplay(nativeDisplays, SDL_GetPrimaryDisplay(), target, exclusiveMode);
-        exclusiveMode = mapped.exclusiveMode;
         if (!mapped.target)
             LOG_WARN("SDL display target (%d,%d %dx%d) %s; using primary display and automatic refresh",
                      target->bounds.origin.x, target->bounds.origin.y,
@@ -427,15 +443,9 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
     Check(SDL_SyncWindow(gameWindow), "SDL leave fullscreen sync");
 #endif
     if (mapped.target) {
-        SDL_Rect bounds{};
-        if (SDL_GetDisplayBounds(mapped.id, &bounds)) {
-            targetBounds = bounds;
-        } else {
+        targetBounds = SDLDetails::RefreshWindowDisplayBounds(mapped);
+        if (!targetBounds)
             LOG_WARN("SDL display target disappeared during restoration; using primary display and automatic refresh");
-            mapped.id = SDL_GetPrimaryDisplay();
-            mapped.target.reset();
-            exclusiveMode.reset();
-        }
     }
     if (target && !mapped.target) targetBounds = DesktopBounds();
     Check(SDL_SetWindowBordered(gameWindow, mode == WindowMode::Windowed), "SDL_SetWindowBordered");
@@ -444,7 +454,6 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
         // Do not choose a merely close resolution: the reference falls back to
         // a desktop-sized popup when the exact mode cannot be applied.
         SDL_DisplayMode closest{};
-        const auto display = target ? mapped.id : SDL_GetPrimaryDisplay();
         const auto applyMode = [&](const SDL_DisplayMode& nativeMode) {
 #ifdef _WIN32
             return SDL_SetWindowFullscreenMode(gameWindow, &nativeMode) && SDL_SetWindowFullscreen(gameWindow, true);
@@ -471,13 +480,13 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
         }
         bool explicitMode = false;
         bool applied = false;
-        if (exclusiveMode && HasRefresh(exclusiveMode->refresh)) {
-            const auto refresh = exclusiveMode->refresh;
+        if (mapped.exclusiveMode && HasRefresh(mapped.exclusiveMode->refresh)) {
+            const auto refresh = mapped.exclusiveMode->refresh;
             int count = 0;
             const std::unique_ptr<SDL_DisplayMode*, decltype(&SDL_free)> modes(
-                SDL_GetFullscreenDisplayModes(display, &count), SDL_free);
-            const auto* selected = exclusiveMode->size.width == size.width && exclusiveMode->size.height == size.height
-                ? SDLDetails::FindNativeDisplayMode(modes.get(), count, *exclusiveMode, display) : nullptr;
+                SDL_GetFullscreenDisplayModes(mapped.id, &count), SDL_free);
+            const auto* selected = mapped.exclusiveMode->size.width == size.width && mapped.exclusiveMode->size.height == size.height
+                ? SDLDetails::FindNativeDisplayMode(modes.get(), count, *mapped.exclusiveMode, mapped.id) : nullptr;
             if (selected) {
                 explicitMode = true;
                 // SDL 3.2.28 copies the mode in SetWindowFullscreenMode. Keep
@@ -496,11 +505,10 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
             }
         }
         if (!explicitMode) {
-            applied = applyAutomatic(display);
+            applied = applyAutomatic(mapped.id);
         }
         if (!applied && mapped.target) {
-            SDL_Rect currentBounds{};
-            if (!SDL_GetDisplayBounds(display, &currentBounds)) {
+            if (!SDLDetails::RefreshWindowDisplayBounds(mapped)) {
                 LOG_WARN("SDL display target disappeared during exclusive application; using primary display and automatic refresh");
                 Check(SDL_SetWindowFullscreen(gameWindow, false), "SDL leave disappeared target");
                 Check(SDL_SyncWindow(gameWindow), "SDL disappeared target sync");
@@ -509,7 +517,7 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
                 Check(SDL_SyncWindow(gameWindow), "SDL primary fallback move sync");
                 // One automatic primary attempt, never reuse the missing
                 // target's rate or recursively select another secondary.
-                applied = applyAutomatic(SDL_GetPrimaryDisplay());
+                applied = applyAutomatic(mapped.id);
             }
         }
         if (!applied) {
@@ -525,8 +533,7 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
             if (wayland) {
                 // A popup cannot target a Wayland output. Request the target's
                 // desktop-size fullscreen once; no physical mode/refresh change.
-                const auto* desktop = SDL_GetDesktopDisplayMode(target ? mapped.id : SDL_GetPrimaryDisplay());
-                applied = desktop && applyMode(*desktop);
+                applied = SDLDetails::EnterDesktopFullscreen(gameWindow, mapped.id).confirmed;
                 if (applied) LOG_INFO("Wayland fallback: target desktop-size fullscreen confirmed");
                 else {
                     LOG_WARN("Wayland fullscreen fallback unconfirmed; using compositor-placed window");
@@ -552,7 +559,7 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
     Check(SDL_ShowWindow(gameWindow), "SDL_ShowWindow");
 #ifndef _WIN32
     const auto actualDisplay = SDL_GetDisplayForWindow(gameWindow);
-    const auto requestedDisplay = target ? mapped.id : SDL_GetPrimaryDisplay();
+    const auto requestedDisplay = mapped.id;
     const auto pixels = ClientSize();
     LOG_INFO("SDL presentation: requested mode=%d display=%u; sync=%d actual fullscreen=%d display=%u pixels=%dx%d",
              static_cast<int>(mode), requestedDisplay, synchronized,

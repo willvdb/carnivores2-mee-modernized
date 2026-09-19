@@ -201,3 +201,45 @@ TEST_F(FullscreenFixture, FailedPixelQueryCannotConfirmCachedDimensions)
 {
     pixelsValid=false; EXPECT_FALSE(Apply().confirmed);
 }
+
+TEST_F(FullscreenFixture, LostSecondaryUsesPrimaryAutomaticThenPrimaryDesktopFallback)
+{
+    using namespace Platform;
+    const DisplayTarget preference{{{1920,0},{1280,1024}}};
+    const auto preferredMode = SDLDetails::CopyDisplayMode(mode);
+    SDLDetails::WindowDisplay mapped{2, preference, preferredMode};
+    ASSERT_TRUE(SDLDetails::RefreshWindowDisplayBounds(mapped,
+        [](SDL_DisplayID id, SDL_Rect* bounds) -> bool {
+            EXPECT_EQ(id,2u); *bounds={1920,0,1280,1024}; return true;
+        }));
+    ASSERT_TRUE(mapped.target); ASSERT_TRUE(mapped.exclusiveMode);
+    EXPECT_EQ(mapped.id,2u);
+    EXPECT_FALSE(SDLDetails::RefreshWindowDisplayBounds(mapped,
+        [](SDL_DisplayID id, SDL_Rect*) -> bool { EXPECT_EQ(id,2u); return false; },
+        []() -> SDL_DisplayID { return 1; }));
+    EXPECT_EQ(mapped.id,1u);
+    EXPECT_FALSE(mapped.target);
+    EXPECT_FALSE(mapped.exclusiveMode); // Secondary rational refresh cannot be reused.
+
+    SDL_DisplayMode closest{};
+    EXPECT_FALSE(SDLDetails::FindAutomaticDisplayMode(mapped.id,{800,600},closest,
+        [](SDL_DisplayID id, int w, int h, float rate, bool, SDL_DisplayMode*) -> bool {
+            EXPECT_EQ(id,1u); EXPECT_EQ(w,800); EXPECT_EQ(h,600); EXPECT_EQ(rate,0);
+            return false; // Primary cannot satisfy the requested size.
+        }));
+    reported.displayID=1; reported.w=1920; reported.h=1080;
+    reported.refresh_rate_numerator=144; reported.refresh_rate_denominator=1;
+    actualDisplay=1; actualPixels={1920,1080};
+    api.setMode=[](SDL_Window*, const SDL_DisplayMode* request) -> bool {
+        ++setCalls;
+        EXPECT_EQ(request->displayID,1u); EXPECT_EQ(request->w,1920); EXPECT_EQ(request->h,1080);
+        EXPECT_EQ(request->refresh_rate_numerator,144); EXPECT_EQ(request->refresh_rate_denominator,1);
+        return true;
+    };
+    const auto result=SDLDetails::EnterDesktopFullscreen(nullptr,mapped.id,api,
+        [](SDL_DisplayID id) -> const SDL_DisplayMode* { EXPECT_EQ(id,1u); return &reported; });
+    EXPECT_TRUE(result.confirmed); EXPECT_EQ(result.display,1u); EXPECT_EQ(setCalls,1);
+    EXPECT_EQ(preference.bounds.origin.x,1920); // Caller-owned preference is retained.
+    EXPECT_EQ(preferredMode.refresh.numerator,60000u);
+    EXPECT_EQ(preferredMode.refresh.denominator,1001u);
+}
