@@ -103,6 +103,25 @@ Legacy references accept backslash/slash and case-insensitive components; case
 collisions, traversal, absolute references and symlinks outside the root fail
 closed. Managed discovery does not follow directory symlinks.
 
+Managed instances persist `managed_root: {path, path_flavor}` separately from the
+installation locator. It is the canonical absolute configured Expeditions
+directory; installations must be strict descendants. Explicit relocation within
+that root preserves `mode: managed`; outside it changes mode to `registered`.
+The root locator is retained as historical context after ownership is relinquished.
+Registered instances never become managed merely by moving into a directory.
+State-association ownership and pinned revision provenance remain unchanged.
+
+The recorded managed root must still exist on the current OS at its canonical
+location, without symlink retargeting, and contain the previous installation
+locator. Missing context, missing roots, foreign flavors or ambiguous paths fail
+without changing metadata. The whole managed tree cannot implicitly move with an
+instance. Older schema-1 records without `managed_root` still load, but managed
+relocation requires a future explicit ownership reconciliation; no parent path is
+guessed. Present root locators are shape-checked using their recorded POSIX or
+Windows flavor (including drive/UNC boundaries), not the current OS parser.
+Like installation locators, these are not machine/filesystem identities: a
+same-path directory replacement cannot be distinguished without future evidence.
+
 Uninstall is observed as missing, never cascades into deleting hunter state.
 A reinstall at a new path gets a new ID unless explicitly reconciled with a
 missing instance. Reusing a registered path retains its registry record and is

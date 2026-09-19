@@ -43,6 +43,19 @@ def valid_id(value):
         return False
 
 
+def validate_locator(locator):
+    if not isinstance(locator, dict) or locator.get('path_flavor') not in ('posix', 'nt'):
+        raise FrontendError('invalid path flavor or locator')
+    path = locator.get('path')
+    if not isinstance(path, str) or not path or '\x00' in path:
+        raise FrontendError('invalid installation locator')
+    path_type = PurePosixPath if locator['path_flavor'] == 'posix' else PureWindowsPath
+    parsed = path_type(path)
+    if not parsed.is_absolute() or '..' in parsed.parts:
+        raise FrontendError('locator must be absolute without parent traversal')
+    return parsed
+
+
 def validate(data):
     if not isinstance(data, dict) or type(data.get("schema_version")) is not int or data["schema_version"] != 1:
         raise FrontendError("unsupported manifest schema; explicit migration required")
@@ -70,14 +83,14 @@ def validate(data):
     for instance in data["instances"].values():
         if instance.get("mode") not in ("managed", "registered"):
             raise FrontendError("invalid installation mode")
-        path = instance.get("path")
-        if not isinstance(path, str) or not path:
-            raise FrontendError("invalid installation locator")
-        if instance.get('path_flavor') not in ('posix', 'nt'):
-            raise FrontendError('invalid path flavor')
-        path_type = PurePosixPath if instance['path_flavor'] == 'posix' else PureWindowsPath
-        if not path_type(path).is_absolute():
-            raise FrontendError('installation locator must be absolute')
+        installation_path = validate_locator(instance)
+        path = instance['path']
+        managed = instance.get('managed_root')
+        if managed is not None:
+            managed_path = validate_locator(managed)
+            if instance['mode'] == 'managed' and (managed['path_flavor'] != instance['path_flavor']
+                    or installation_path == managed_path or not installation_path.is_relative_to(managed_path)):
+                raise FrontendError('managed installation must be below its recorded managed root')
         if instance.get('dialect_hint') not in ('unknown', 'c2-classic', 'iceage-triassic', 'mee-older', 'mee-newer'):
             raise FrontendError('invalid dialect hint')
         key = (instance.get("path_flavor"), path)

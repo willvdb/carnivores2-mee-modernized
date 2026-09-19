@@ -107,8 +107,13 @@ profile creation, slot reconciliation and writable launch are separate work.
 * Missing roots retain their identities. After moving an installation, use
   `expedition relocate INSTANCE_UUID /new/path`. The old path must be absent and
   content fingerprints must match. Matching fingerprints alone never trigger
-  an automatic move. Relocation resets installation mode to registered, preserving
-  existing association ownership.
+  an automatic move. Managed registration persists a separate `managed_root`
+  locator (`path`, `path_flavor`). A rename/move within that existing root remains
+  managed; moving outside relinquishes installation management. Already registered
+  installs remain registered. Association ownership never changes on relocation.
+  Missing root context (including older records), an unavailable/retargeted root,
+  or foreign managed paths block relocation pending explicit ownership
+  reconciliation; this prototype does not provide that reconciliation operation.
 * Content changes append revision history on refresh. Existing association
   provenance remains pinned; the prototype cannot approve a save migration.
   Engine/launcher hashes are tracked separately and changes require review.

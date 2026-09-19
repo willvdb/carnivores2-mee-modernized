@@ -2,10 +2,10 @@
 import hashlib
 import json
 import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import re
 
-from .store import FrontendError, new_id, now
+from .store import FrontendError, new_id, now, validate_locator
 
 MUTABLE_SUFFIXES = {'.sav', '.sab', '.log', '.tmp', '.bak'}
 MUTABLE_DIRS = {'saves', 'logs', 'screenshots', 'cache'}
@@ -14,6 +14,16 @@ DIALECTS = {'unknown', 'c2-classic', 'iceage-triassic', 'mee-older', 'mee-newer'
 
 def diagnostic(code, message, **context):
     return {'code': code, 'message': message, **context}
+
+
+def native_path(path):
+    """Do not reinterpret foreign/drive-relative input as a local locator."""
+    text = os.fspath(path)
+    windows = PureWindowsPath(text)
+    if (os.name == 'posix' and (windows.drive or '\\' in text)
+            or os.name == 'nt' and bool(windows.drive) != bool(windows.root)):
+        raise FrontendError('foreign or ambiguous path; supply an explicit native location')
+    return Path(path).expanduser().resolve()
 
 
 def resolve_reference(root, reference):
@@ -162,11 +172,17 @@ def discover(directory):
 
 
 def register(data, path, mode='registered', dialect='unknown', family=None, release=None, managed_root=None):
-    root = Path(path).expanduser().resolve()
+    root = native_path(path)
     if mode not in ('registered', 'managed') or dialect not in DIALECTS:
         raise FrontendError('invalid installation mode or dialect')
-    if mode == 'managed' and (managed_root is None or not root.is_relative_to(Path(managed_root).expanduser().resolve())):
-        raise FrontendError('managed installation must be under the explicit Expeditions directory')
+    managed = None
+    if mode == 'managed':
+        if managed_root is None:
+            raise FrontendError('managed installation requires an explicit Expeditions directory')
+        directory = native_path(managed_root)
+        if not directory.is_dir() or root == directory or not root.is_relative_to(directory):
+            raise FrontendError('managed installation must be below the existing explicit Expeditions directory')
+        managed = {'path': str(directory), 'path_flavor': os.name}
     for instance in data['instances'].values():
         if instance['path_flavor'] == os.name and Path(instance['path']).resolve() == root:
             return instance
@@ -176,7 +192,7 @@ def register(data, path, mode='registered', dialect='unknown', family=None, rele
     revision = fingerprint(root)
     engines = [{'path': name, 'sha256': hash_file(root / name), 'semantics': 'unknown'} for name in evidence['executables']]
     identity = new_id()
-    instance = {'id': identity, 'path': str(root), 'path_flavor': os.name, 'mode': mode,
+    instance = {'id': identity, 'path': str(root), 'path_flavor': os.name, 'mode': mode, 'managed_root': managed,
                 'family': family, 'release': release, 'dialect_hint': dialect,
                 'identity_evidence': 'user assertion' if family or release or dialect != 'unknown' else 'unresolved',
                 'created_at': now(), 'revision': revision, 'revisions': [revision], 'evidence': evidence,
@@ -225,15 +241,30 @@ def move_candidates(data, path):
 
 def relocate(data, identity, path):
     instance = get_instance(data, identity)
-    root = Path(path).expanduser().resolve()
-    if instance['path_flavor'] == os.name and Path(instance['path']).exists():
+    root = native_path(path)
+    if instance['path_flavor'] == os.name and (Path(instance['path']).exists() or Path(instance['path']).is_symlink()):
         raise FrontendError('old installation still exists; this could be a clone, not a move')
     if any(i['path_flavor'] == os.name and Path(i['path']).resolve() == root for i in data['instances'].values()):
         raise FrontendError('destination already registered')
+    mode = instance['mode']
+    if mode == 'managed':
+        managed = instance.get('managed_root')
+        if managed is None:
+            raise FrontendError('managed root context missing; explicit ownership reconciliation required')
+        validate_locator(managed)
+        if managed['path_flavor'] != os.name or instance['path_flavor'] != os.name:
+            raise FrontendError('foreign managed root requires explicit ownership reconciliation')
+        directory = Path(managed['path'])
+        previous = Path(instance['path'])
+        if (not directory.is_dir() or directory.resolve() != directory
+                or previous.resolve() != previous or previous == directory or not previous.is_relative_to(directory)
+                or root == directory):
+            raise FrontendError('managed root missing or ambiguous; explicit ownership reconciliation required')
+        mode = 'managed' if root.is_relative_to(directory) else 'registered'
     if not recognize(root)['recognized'] or fingerprint(root) != instance['revision']:
         raise FrontendError('relocation requires a coherent root with matching content revision')
     instance.setdefault('previous_locations', []).append({'path': instance['path'], 'path_flavor': instance['path_flavor']})
-    instance.update(path=str(root), path_flavor=os.name)
-    # Moving outside the previous management tree relinquishes managed-install ownership.
-    instance['mode'] = 'registered'
+    # Keep the root locator as provenance even after relinquishing ownership.
+    # A registered instance never regains management merely by its destination.
+    instance.update(path=str(root), path_flavor=os.name, mode=mode)
     return instance
