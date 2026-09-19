@@ -19,5 +19,5 @@ if(BUILD_TESTING)
     COMMAND "${CMAKE_COMMAND}" -E env
       "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}"
       "C2_PROFILE_PROBE=$<TARGET_FILE:c2-profile-probe>"
-      "${Python3_EXECUTABLE}" -m unittest discover -s "${CMAKE_CURRENT_SOURCE_DIR}/tests" -v)
+      "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/run_tests.py")
 endif()
