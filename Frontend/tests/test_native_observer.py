@@ -148,6 +148,17 @@ class NativeObserverTests(unittest.TestCase):
         with self.assertRaises(FrontendError):
             run_native(self.store,j['id'],self.engine,'0'*64,True)
 
+    def test_native_screenshot_name_follows_platform_without_extra_output_permission(self):
+        for accepted in (True, False):
+            with self.subTest(accepted=accepted):
+                j=self.prepare(); self.launch(j)
+                name = 'HUNT0001.BM' if os.name == 'nt' else 'HUNT0001.BMP'
+                if not accepted:
+                    name += '.unclassified'
+                (session_root(self.store,j['id'])/'work/output'/name).write_bytes(b'BM fixture')
+                result = reconcile_session(self.store,j['id'])
+                self.assertEqual(result['state'], 'candidate' if accepted else 'quarantined', result['diagnostics'])
+
     def test_unexpected_output_config_or_native_members_quarantine(self):
         for relative in ('work/extra', 'work/output/glperf-capture.csv', 'work/config/extra.cfg', 'work/state/extra.log'):
             with self.subTest(relative=relative):

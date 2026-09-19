@@ -120,8 +120,11 @@ def validate_workspace(root, journal, returning=False):
     output, _ = capture(work / 'output')
     if not returning and output:
         raise FrontendError('native output already exists; no relaunch')
+    # Legacy Windows screenshot code truncates its 12-byte name buffer to .BM.
+    # Admit exactly that existing form; do not relax to arbitrary BMP-like names.
+    screenshot = r'HUNT[0-9]{4}\.BM' if os.name == 'nt' else r'HUNT[0-9]{4,}\.BMP'
     for entry in output:
-        if (entry['type'] != 'file' or not re.fullmatch(r'carnivor\.log|render\.log|HUNT[0-9]{4,}\.BMP', entry['path'])):
+        if (entry['type'] != 'file' or not re.fullmatch(r'carnivor\.log|render\.log|' + screenshot, entry['path'])):
             raise FrontendError('unexpected native output; retained for review')
 
 

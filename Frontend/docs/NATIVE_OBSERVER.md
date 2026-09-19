@@ -33,8 +33,9 @@ The schema-2 directory contains the existing `journal.json`, `baseline/`,
 - `config/config.cfg`: pinned developer settings (800x600 windowed, 60 FPS,
   performance logging off), validated unchanged before and after execution;
 - `output/`: engine logs/screenshots, initially empty. Only flat `render.log`,
-  `carnivor.log` and `HUNT` plus at least four digits plus `.BMP` are admitted on
-  return. Unexpected files, directories, links or over-limit captures quarantine
+  `carnivor.log` and platform screenshot names are admitted on return: Linux
+  `HUNT` plus at least four digits plus `.BMP`; Windows `HUNT` plus exactly four
+  digits plus `.BM` (the existing filename buffer truncates `.BMP`). Unexpected files, directories, links or over-limit captures quarantine
   the session and retain its evidence. Nothing is silently ignored or deleted.
 
 Cwd is the content installation; all writable engine files use `work/` under the

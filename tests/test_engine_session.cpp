@@ -272,7 +272,15 @@ TEST_F(Session, ProductionLogsScreenshotAndDebugExportAreSeparateFromState) {
     ASSERT_NE(dump,Platform::InvalidFile); std::uint32_t count=0;
     EXPECT_TRUE(Platform::WriteFile(dump,pixels,sizeof(pixels),&count)); EXPECT_TRUE(Platform::CloseFile(dump));
     CloseLogs(); lpVideoBuf=nullptr;
-    EXPECT_TRUE(fs::exists(work/"output/HUNT0001.BMP"));
+#ifdef _WIN32
+    // Preserve the legacy 12-byte filename buffer: HUNT0001.BMP loses its P.
+    const auto screenshot = work/"output/HUNT0001.BM";
+#else
+    const auto screenshot = work/"output/HUNT0001.BMP";
+#endif
+    ASSERT_TRUE(fs::is_regular_file(screenshot));
+    EXPECT_EQ(Read(screenshot).substr(0,2), "BM");
+    EXPECT_GT(fs::file_size(screenshot), 54u);
     EXPECT_NE(Read(work/"output/render.log").find("debug dump sentinel"),std::string::npos);
     EXPECT_NE(Read(work/"output/carnivor.log").find("Log started"),std::string::npos);
     EXPECT_EQ(Scan(work/"state"),original); EXPECT_EQ(EngineSession::ExitStatus(0),0);

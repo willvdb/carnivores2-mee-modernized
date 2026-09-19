@@ -11,9 +11,10 @@ Task branch: `codex/native-session-isolation`, independent worktree at
   `46252588a76db705ed7b7148041f4f91c44897b5`.
 - Normal no-conflict merge preserving that history:
   `1219fc54e5c4a2c1cebc9ad55e006e7e2c0ae7e3`.
-- Final implementation checkpoint:
+- Implementation checkpoint before final Windows screenshot compatibility correction:
   `5f19cbb6a5afd018525ab6bfcb939d054f2c824b`; following changes document delivery.
 
+Draft review: [PR #13](https://github.com/willvdb/carnivores2-mee-modernized/pull/13).
 Only the task branch was pushed. No main, engine-development or existing frontend
 branch was modified, rebased or force-pushed. Original main worktree still has
 its untouched untracked `carnivor.log` and `render.log`.
@@ -81,7 +82,7 @@ SDLX11ModeLeak, DisplayRecoveryRuntime, SDLWaylandPresentation and SDLWaylandDis
 Local openbox/weston are absent; their virtual display scripts were run successfully
 by hosted Linux CI instead. No physical monitor/interactive acceptance was attempted.
 
-Frontend: **105 tests passed, no local skips**, with real C++ codec probe and a
+Frontend: **106 tests passed, no local skips**, with real C++ codec probe and a
 separate compiled native fixture using production Session/Files APIs. Existing
 90 synthetic/discovery/policy tests remain. Probe-dependent tests cannot silently
 skip through the CTest runner; the native fixture is mandatory too.
@@ -110,7 +111,7 @@ ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 \
 
 Sanitized engine checks passed: 142 core + 24 production session GoogleTests,
 plus the actual instrumented engine's earliest startup and production exit probe
-(six Python cases run, Windows junction skipped). All 105 frontend cases also
+(six Python cases run, Windows junction skipped). All 106 frontend cases also
 passed using instrumented C++ probe/native child. Python orchestration itself is
 not sanitizer-instrumented. No full graphics hunt was sanitized; immediate fatal
 termination intentionally skips global destruction after explicit shutdown.
@@ -122,8 +123,13 @@ both completed successfully. Engine matrix retained all ten Windows jobs (x86/x6
 Win32/SDL, Debug/Release, software and menu) and two Linux jobs, including existing
 X11/Wayland regression scripts. Frontend passed Linux and Windows; Windows retains
 one existing case-sensitive-filesystem skip, with no codec-dependent skips.
-The final recovery/screenshot test follow-up has been pushed for another CI run;
-its result is reported in the draft PR/final delivery rather than presumed here.
+The frontend recovery follow-up at `5f19cbb` also passed both hosted jobs. Its
+stronger Windows screenshot test exposed the legacy `.BM` name noted below:
+`ctest --test-dir build/windows-x64-gl-debug -R "^Carnivores2Tests" --output-on-failure`
+failed only the expected `.BMP` filename assertion; other Windows presets reported
+the same failure. The compatibility correction retains actual production naming,
+adds content checks and another native adapter test (106 total). Corrected CI
+results are reported in the draft PR/final delivery rather than presumed here.
 
 Logs are in the build trees' Testing/Temporary/LastTest.log and
 `/tmp/c2-session-*.log`, `/tmp/c2-native-adapter-tests.log`,
@@ -150,7 +156,11 @@ Separate read-only review and self-review found and fixed:
   type drift, quarantines changed evidence and never executes a query on recovery.
   Partial returned-copy recovery is covered and remains candidate-only.
 - The Windows screenshot regression now calls the real production screenshot
-  function with only GPU readback doubled.
+  function with only GPU readback doubled. It exposed the existing 12-byte Windows
+  filename buffer's `.BM` suffix. Tests assert that actual file and BMP signature;
+  the adapter admits precisely the Windows four-digit `.BM` form, retaining legacy
+  engine behavior. Extra/unknown suffixes still quarantine. Windows screenshot
+  naming beyond 9999 shots remains unsupported by this validation adapter.
 
 Final write audit: trophy/config/screenshot/render/debug outputs use the routed
 Platform APIs; structured logs use routed text APIs with flush/close checks;
