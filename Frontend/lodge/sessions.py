@@ -33,7 +33,7 @@ def codec_evidence(probe):
     return executable_evidence(path)
 
 
-def snapshot_pins(store, association_id, selection, probe):
+def snapshot_pins(store, association_id, selection, probe, expected_codec=None):
     data = store.read()
     association = data['associations'].get(association_id)
     if association is None:
@@ -76,6 +76,8 @@ def snapshot_pins(store, association_id, selection, probe):
             or set(blobs) - allowed):
         raise FrontendError('managed source membership/bytes differ or require review')
     codec = codec_evidence(probe)
+    if expected_codec is not None and codec != expected_codec:
+        raise FrontendError('pinned codec evidence changed; helper not executed')
     decoded, diagnostics = inspect_bytes(blobs, slot, codec['path'])
     if diagnostics:
         raise FrontendError('managed source is unreadable or has a registration mismatch')
@@ -137,9 +139,11 @@ def prepare_session(store, association_id, area_id, scenario='unchanged',
                    'synthetic_process_launch_allowed': True}
         persist(root, journal)
         if os.name == 'posix':
-            fd = os.open(root.parent, os.O_RDONLY)
-            try:
-                os.fsync(fd)
-            finally:
-                os.close(fd)
+            # Persist both the UUID directory and a newly created sessions/ entry.
+            for directory in (root.parent, store.directory):
+                fd = os.open(directory, os.O_RDONLY)
+                try:
+                    os.fsync(fd)
+                finally:
+                    os.close(fd)
         return journal

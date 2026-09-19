@@ -15,7 +15,7 @@ LOG_LIMIT = 64 * 1024
 
 def preflight(store, root, journal, probe):
     pins = journal['pins']
-    current, _ = snapshot_pins(store, pins['association_id'], pins['selection'], probe)
+    current, _ = snapshot_pins(store, pins['association_id'], pins['selection'], probe, pins['codec'])
     if current != pins:
         raise FrontendError('pinned identity, content, engine, policy, codec or source evidence changed')
     spec = journal['execution']

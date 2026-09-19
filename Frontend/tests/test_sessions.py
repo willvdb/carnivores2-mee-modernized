@@ -344,6 +344,53 @@ session_runner.run_session(Store(sys.argv[1]), sys.argv[2])
             self.assertFalse((root / 'returned/outside').exists())
         self.assert_sources_untouched()
 
+    def test_malformed_and_foreign_journal_fail_cleanly(self):
+        for field, value in (('schema_version', 2), ('transitions', [None]),
+                             ('path_flavor', 'nt' if os.name == 'posix' else 'posix'),
+                             ('baseline_members', [{'path': '../outside'}])):
+            j = self.prepare()
+            j[field] = value
+            (session_root(self.store, j['id']) / 'journal.json').write_text(json.dumps(j))
+            with self.subTest(field=field), self.assertRaises(FrontendError):
+                read_journal(self.store, j['id'])
+
+    def test_native_execution_evidence_cannot_enter_fixed_runner(self):
+        from lodge.session_io import persist
+        j = self.prepare()
+        j['execution'].update(kind='native-engine', argv=['/arbitrary/engine'])
+        persist(session_root(self.store, j['id']), j)
+        with patch('lodge.session_runner.Popen') as spawn:
+            result = run_session(self.store, j['id'])
+            spawn.assert_not_called()
+        self.assertEqual(result['state'], 'failed')
+
+    def test_codec_drift_is_rejected_before_helper_execution(self):
+        from lodge.session_io import persist
+        j = self.prepare()
+        j['pins']['codec']['sha256'] = '0' * 64
+        persist(session_root(self.store, j['id']), j)
+        with patch('lodge.profiles.subprocess.run') as helper:
+            result = run_session(self.store, j['id'])
+            helper.assert_not_called()
+        self.assertEqual(result['state'], 'failed')
+
+    def test_cli_session_pipeline_and_genesis_refusal(self):
+        cli = Path(__file__).resolve().parents[1] / 'frontend.py'
+        def command(*args, expected=0):
+            process = subprocess.run([sys.executable, str(cli), '--store', str(self.store.directory), *args],
+                                     capture_output=True, text=True, timeout=15)
+            self.assertEqual(process.returncode, expected, process.stderr)
+            return json.loads(process.stdout if expected == 0 else process.stderr)
+        prepared = command('session', 'prepare-synthetic', self.association, '--area', 'areas:0', '--scenario', 'sav')
+        returned = command('session', 'run', prepared['id'])
+        self.assertEqual(returned['state'], 'candidate')
+        self.assertEqual(command('session', 'inspect', prepared['id']), returned)
+        self.assertEqual(command('session', 'recover', prepared['id']), returned)
+        self.assertEqual(command('session', 'reconcile', prepared['id']), returned)
+        refused = command('genesis-observer-plan', self.association, '--area', 'areas:0', expected=2)
+        self.assertIn('unpinned', refused['error'])
+        self.assert_sources_untouched()
+
 
 def capture_native(root):
     return {p.name: p.read_bytes() for p in root.iterdir() if p.suffix in ('.sav', '.sab')}

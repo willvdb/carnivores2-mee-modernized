@@ -17,7 +17,7 @@ def reconcile_locked(store, root, journal, probe=None):
         diagnostics.append({'code': 'unclean-process-return'})
     entries, blobs, decoded = [], {}, {}
     try:
-        current, _ = snapshot_pins(store, pins['association_id'], pins['selection'], probe)
+        current, _ = snapshot_pins(store, pins['association_id'], pins['selection'], probe, pins['codec'])
         if current != pins:
             diagnostics.append({'code': 'pinned-evidence-changed-on-return'})
         baseline, _ = capture(root / 'baseline')

@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import stat
 
 from .profiles import MAX_STATE_BYTES, codec_inspect
@@ -59,17 +60,19 @@ def validate_journal(journal, identity):
             or type(journal.get('schema_version')) is not int
             or journal.get('id') != identity or not valid_id(identity)
             or journal.get('path_flavor') != os.name
+            or not isinstance(journal.get('state'), str)
             or journal.get('state') not in TRANSITIONS):
         raise FrontendError('invalid/foreign session journal; explicit review required')
     events = journal.get('transitions')
-    if not isinstance(events, list) or not events or events[0].get('state') != 'prepared':
+    if (not isinstance(events, list) or not events or not isinstance(events[0], dict)
+            or events[0].get('state') != 'prepared'):
         raise FrontendError('invalid session transition history')
     previous = None
     for event in events:
         if not isinstance(event, dict) or not isinstance(event.get('at'), str):
             raise FrontendError('invalid session event')
         state = event.get('state')
-        if state not in TRANSITIONS or (previous and state not in TRANSITIONS[previous]):
+        if not isinstance(state, str) or state not in TRANSITIONS or (previous and state not in TRANSITIONS[previous]):
             raise FrontendError('illegal session transition history')
         previous = state
     if previous != journal['state']:
@@ -82,6 +85,27 @@ def validate_journal(journal, identity):
     for field in ('hunter_id', 'instance_id', 'association_id'):
         if not valid_id(journal['pins'].get(field)):
             raise FrontendError('invalid session provenance identity')
+    pins = journal['pins']
+    for field in ('selection', 'codec', 'revision', 'instance', 'association'):
+        if not isinstance(pins.get(field), dict):
+            raise FrontendError('incomplete pinned session provenance')
+    if type(pins.get('native_slot')) is not int or pins['native_slot'] not in range(8):
+        raise FrontendError('invalid pinned native slot')
+    for members in (pins.get('source_members'), journal.get('baseline_members')):
+        if not isinstance(members, list) or not 1 <= len(members) <= 2:
+            raise FrontendError('invalid baseline state membership')
+        names = set()
+        for member in members:
+            if (not isinstance(member, dict) or member.get('type') != 'file'
+                    or member.get('path') not in (f"trophy{pins['native_slot']:02d}.sav", f"trophy{pins['native_slot']:02d}.sab")
+                    or member['path'] in names or type(member.get('size')) is not int
+                    or not 0 <= member['size'] <= MAX_STATE_BYTES
+                    or not isinstance(member.get('sha256'), str)
+                    or not re.fullmatch('[0-9a-f]{64}', member['sha256'])):
+                raise FrontendError('invalid baseline member evidence')
+            names.add(member['path'])
+        if f"trophy{pins['native_slot']:02d}.sav" not in names:
+            raise FrontendError('session baseline requires a save')
     return journal
 
 
