@@ -17,7 +17,14 @@ def reconcile_locked(store, root, journal, probe=None):
         diagnostics.append({'code': 'unclean-process-return'})
     entries, blobs, decoded = [], {}, {}
     try:
-        current, _ = snapshot_pins(store, pins['association_id'], pins['selection'], probe, pins['codec'])
+        if journal['schema_version'] == 2:
+            from .native_observer import native_pins
+            current, _ = native_pins(store, pins['association_id'], pins['selection'], probe, pins['codec'])
+            from .sessions import executable_evidence
+            if executable_evidence(journal['execution']['executable']['path']) != journal['execution']['executable']:
+                diagnostics.append({'code': 'selected-engine-changed-on-return'})
+        else:
+            current, _ = snapshot_pins(store, pins['association_id'], pins['selection'], probe, pins['codec'])
         if current != pins:
             diagnostics.append({'code': 'pinned-evidence-changed-on-return'})
         baseline, _ = capture(root / 'baseline')
@@ -27,7 +34,10 @@ def reconcile_locked(store, root, journal, probe=None):
         diagnostics.append({'code': 'source-review-required', 'message': str(error)})
     try:
         safe_path(root / 'work')
-        if {p.name for p in (root / 'work').iterdir()} != {'state'}:
+        if journal['schema_version'] == 2:
+            from .native_observer import validate_workspace
+            validate_workspace(root, journal, returning=True)
+        elif {p.name for p in (root / 'work').iterdir()} != {'state'}:
             diagnostics.append({'code': 'unexpected-workspace-entry',
                                 'message': 'All extra workspace entries retained in work.'})
         entries, blobs = capture(root / 'work/state')

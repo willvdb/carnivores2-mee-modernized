@@ -15,9 +15,15 @@ add_custom_target(c2-frontend
   COMMENT "Show the optional frontend CLI")
 include(CTest)
 if(BUILD_TESTING)
+  # Native test child, separate from the retained fixed Python fixture. No SDL,
+  # game assets or gameplay dependencies; only the production engine I/O seam.
+  add_executable(c2-native-session-fixture tests/native_session_fixture.cpp
+    ../Hunt/Session/Session.cpp ../Hunt/Platform/Files.cpp)
+  target_compile_features(c2-native-session-fixture PRIVATE cxx_std_17)
   add_test(NAME frontend-backend
     COMMAND "${CMAKE_COMMAND}" -E env
       "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}"
       "C2_PROFILE_PROBE=$<TARGET_FILE:c2-profile-probe>"
+      "C2_NATIVE_TEST_ENGINE=$<TARGET_FILE:c2-native-session-fixture>"
       "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/run_tests.py")
 endif()

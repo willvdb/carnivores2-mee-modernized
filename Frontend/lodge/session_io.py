@@ -59,7 +59,7 @@ def persist(root, journal):
 
 
 def validate_journal(journal, identity):
-    if (not isinstance(journal, dict) or journal.get('schema_version') != 1
+    if (not isinstance(journal, dict) or journal.get('schema_version') not in (1, 2)
             or type(journal.get('schema_version')) is not int
             or journal.get('id') != identity or not valid_id(identity)
             or journal.get('path_flavor') != os.name
@@ -83,6 +83,13 @@ def validate_journal(journal, identity):
     for field in ('pins', 'execution', 'capabilities'):
         if not isinstance(journal.get(field), dict):
             raise FrontendError('incomplete session journal')
+    kind = journal['execution'].get('kind')
+    if ((journal['schema_version'] == 1 and kind == 'experimental-native-observer-v1')
+            or (journal['schema_version'] == 2 and (kind != 'experimental-native-observer-v1'
+                or journal.get('experimental_native_process_launch_allowed') is not True
+                or journal.get('process_launch_allowed') is not False
+                or journal.get('synthetic_process_launch_allowed') is not False))):
+        raise FrontendError('incompatible session journal kind/version/capability')
     if not isinstance(journal.get('diagnostics'), list):
         raise FrontendError('invalid session diagnostics')
     for field in ('hunter_id', 'instance_id', 'association_id'):

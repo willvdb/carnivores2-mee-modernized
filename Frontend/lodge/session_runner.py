@@ -1,4 +1,4 @@
-"""Owned, bounded subprocess lifecycle for the fixed synthetic fixture only."""
+"""Owned child lifecycle with distinct synthetic and explicitly gated native preflight."""
 import os
 import subprocess
 from subprocess import Popen
@@ -64,7 +64,7 @@ class BoundedLog:
 
 
 def stop_owned(process):
-    """Never target journal PIDs. The fixed fixture cannot spawn descendants."""
+    """Only signal the owned child handle; trusted specs must not spawn descendants."""
     if process.poll() is None:
         process.terminate()
         try:
@@ -74,15 +74,21 @@ def stop_owned(process):
     return process.wait(timeout=5)
 
 
-def run_session(store, identity, probe=None, cancel=None):
-    """Launch once, with no caller-supplied executable or shell command surface."""
+def run_session(store, identity, probe=None, cancel=None, *, native_authorization=None):
+    """Launch once after the journal kind's preflight; never accept raw argv."""
     with store.lock():
         root = session_root(store, identity)
         journal = read_journal(store, identity)
         if journal['state'] != 'prepared':
             raise FrontendError('only a prepared session can launch; recovery never relaunches')
+        if journal['schema_version'] == 2 and native_authorization is None:
+            raise FrontendError('native observer requires the separate gated developer run command')
         try:
-            preflight(store, root, journal, probe)
+            if journal['schema_version'] == 2:
+                from .native_observer import preflight_native
+                preflight_native(store, root, journal, probe, native_authorization)
+            else:
+                preflight(store, root, journal, probe)
         except (FrontendError, OSError, KeyError, TypeError) as error:
             journal['diagnostics'].append({'code': 'preflight-failed', 'message': str(error)})
             transition(root, journal, 'failed', failed_at=now())
@@ -138,7 +144,12 @@ def run_session(store, identity, probe=None, cancel=None):
             journal['diagnostics'].append({'code': 'process-' + reason, 'exit_code': code})
         if any(log['error'] for log in output.values()):
             journal['diagnostics'].append({'code': 'log-capture-failed'})
-        journal['capabilities']['synthetic_child_lifecycle'] = 'completed'
+        if journal['schema_version'] == 2:
+            journal['capabilities']['native_observer_lifecycle'] = 'completed'
+            journal['capabilities']['engine_process_executed'] = True
+            # Process completion alone cannot certify entry into the game world.
+        else:
+            journal['capabilities']['synthetic_child_lifecycle'] = 'completed'
         transition(root, journal, 'returned', returned_at=returned, logs=output,
                    process={'pid': process.pid, 'started_at': started, 'returned_at': returned,
                             'exit_code': code, 'stop_reason': reason})
