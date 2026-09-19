@@ -34,11 +34,19 @@ here; a known binary hash alone cannot remove this architectural blocker.
 
 ## Smallest recommended portable contract
 
-Consider an opt-in engine **session mode** with two explicit absolute roots:
-read-only content and frontend-owned writable session output. Names/flags remain
-to be agreed with engine maintainers. The output root can contain a state subdir
-and log/config/screenshot subdirs; the exact layout is less important than the
-enforced read/write domains.
+The smallest useful change is an opt-in engine **session mode** with an explicit
+absolute writable session root covering profiles **and every other output**.
+Existing cwd-relative content reads can remain intact if the frontend sets cwd to
+the selected content installation and the engine guarantees all profile reads
+and all writes use the session root without fallback. That would avoid a broad
+rewrite of content readers. Merely adding a profile root is insufficient because
+configuration and other output paths also escape the workspace today.
+
+An explicit content root as well may make the eventual contract clearer, but it
+is not a prerequisite if cwd is formally the read-only content context. Names and
+flags remain to be agreed with engine maintainers. The output root can contain
+a state subdir and log/config/screenshot subdirs; the enforced read/write domains
+matter more than their names.
 
 1. Resolve every content read relative to the selected content root; preserve
    legacy filename casing/separator behavior. Required engine-owned shaders may
@@ -59,8 +67,9 @@ enforced read/write domains.
    captures the quiescent set and quarantines anomalies. An engine-side atomic
    save redesign is not required for the first candidate-only proof.
 
-Likely edits: engine command-line/init, Trophy load/save, Platform file resolution,
-resource readers and output sinks listed above, plus targeted engine tests. Root
+Likely edits: engine command-line/init, Trophy load/save, an explicit session
+path helper and the output sinks listed above, plus targeted engine tests. Content
+readers need changes only if an explicit content root replaces the cwd contract. Root
 CMake/CI may need test integration. These include hot engine files and were kept
 read-only. `port/linux-display-behavior` and `port/linux-display-persistence` were
 inspected for overlap, not imported. The frontend changes are entirely under
