@@ -145,7 +145,7 @@ def run_session(store, identity, probe=None, cancel=None):
         return journal
 
 
-def recover_session(store, identity):
+def recover_session(store, identity, probe=None):
     """Never infer child death from a PID or read potentially live returned state."""
     with store.lock():
         root = session_root(store, identity)
@@ -154,4 +154,7 @@ def recover_session(store, identity):
             journal['diagnostics'].append({'code': 'process-ownership-lost',
                 'message': 'Child may still exist. No signal, relaunch or state capture performed.'})
             transition(root, journal, 'interrupted', interrupted_at=now())
+        elif journal['state'] in ('returned', 'inspecting'):
+            from .reconciliation import reconcile_locked
+            return reconcile_locked(store, root, journal, probe)
         return journal

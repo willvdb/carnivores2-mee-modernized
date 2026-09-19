@@ -1,6 +1,8 @@
 import json
 import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import threading
 import unittest
@@ -11,6 +13,7 @@ from lodge.profiles import associate
 from lodge.session_io import capture, read_journal, session_root, transition
 from lodge.sessions import prepare_session
 from lodge.session_runner import recover_session, run_session
+from lodge.reconciliation import reconcile_session
 from lodge.store import FrontendError, Store, hunter, valid_id
 from support import game
 from test_launch import SCRIPT
@@ -202,6 +205,143 @@ class SessionTests(unittest.TestCase):
                 spawn.assert_not_called()
             self.assertEqual(result['state'], 'interrupted')
             self.assertFalse((root / 'returned').exists())
+        self.assert_sources_untouched()
+
+    def test_clean_return_candidates_preserve_authority_and_exact_bytes(self):
+        for scenario, changed in (('unchanged', []), ('sav', ['trophy00.sav']),
+                                  ('pair', ['trophy00.sab', 'trophy00.sav'])):
+            with self.subTest(scenario=scenario):
+                j = run_session(self.store, self.prepare(scenario)['id'])
+                result = reconcile_session(self.store, j['id'])
+                root = session_root(self.store, j['id'])
+                self.assertEqual(result['state'], 'candidate')
+                self.assertEqual(result['reconciliation']['changed_members'], changed)
+                self.assertEqual(result['reconciliation']['authority'], 'original-managed-snapshot')
+                self.assertEqual(capture(root / 'returned'), capture(root / 'work/state'))
+                self.assertEqual(reconcile_session(self.store, j['id']), result)
+                self.assertFalse(result['capabilities']['hunt_save_round_trip_validated'])
+                self.assertEqual(result['capabilities']['returned_native_state_readable'], 'yes')
+                if scenario != 'unchanged':
+                    self.assertEqual(result['returned_observation']['trophy00.sav']['score'], 175)
+                self.assert_sources_untouched()
+
+    def test_failure_matrix_quarantines_and_keeps_exact_return_evidence(self):
+        cases = {'nonzero': 'unclean-process-return', 'changed-nonzero': 'unclean-process-return',
+                 'corrupt-sav': 'unreadable-state', 'corrupt-sab': 'unreadable-state',
+                 'missing-sab': 'missing-state-member', 'deleted-sav': 'missing-state-member',
+                 'extra': 'unexpected-state-member', 'registration': 'registration-mismatch',
+                 'hang': 'unclean-process-return', 'terminated': 'unclean-process-return'}
+        for scenario, diagnostic in cases.items():
+            with self.subTest(scenario=scenario):
+                j = self.prepare(scenario, timeout=0.2 if scenario == 'hang' else 5)
+                run_session(self.store, j['id'])
+                result = reconcile_session(self.store, j['id'])
+                root = session_root(self.store, j['id'])
+                self.assertEqual(result['state'], 'quarantined')
+                self.assertIn(diagnostic, [d['code'] for d in result['diagnostics']])
+                self.assertEqual(capture(root / 'returned'), capture(root / 'work/state'))
+                self.assert_sources_untouched()
+
+    def test_returned_and_inspecting_recovery_are_idempotent(self):
+        for stage in ('returned', 'inspecting'):
+            j = run_session(self.store, self.prepare('sav')['id'])
+            if stage == 'inspecting':
+                transition(session_root(self.store, j['id']), j, 'inspecting')
+            result = recover_session(Store(self.store.directory), j['id'])
+            self.assertEqual(result['state'], 'candidate')
+            self.assertEqual(recover_session(self.store, j['id']), result)
+        self.assert_sources_untouched()
+
+    def test_crash_during_capture_resumes_but_changed_evidence_never_overwritten(self):
+        for mutate in (False, True):
+            with self.subTest(mutate=mutate):
+                j = run_session(self.store, self.prepare('pair')['id'])
+                root = session_root(self.store, j['id'])
+                with patch('lodge.reconciliation.write_blobs', side_effect=SystemExit('frontend stops')):
+                    with self.assertRaises(SystemExit):
+                        reconcile_session(self.store, j['id'])
+                self.assertEqual(read_journal(self.store, j['id'])['state'], 'inspecting')
+                before = read_journal(self.store, j['id'])['return_capture']
+                if mutate:
+                    (root / 'work/state/trophy00.sav').write_bytes(save_bytes(score=999))
+                result = recover_session(self.store, j['id'])
+                self.assertEqual(result['state'], 'quarantined' if mutate else 'candidate')
+                self.assertEqual(result['return_capture'], before)
+
+    def test_actual_frontend_restart_after_durable_return(self):
+        j = self.prepare('sav')
+        code = '''
+import os, sys
+from lodge.store import Store
+from lodge import session_runner
+original = session_runner.transition
+def interrupted(root, journal, state, **fields):
+    original(root, journal, state, **fields)
+    if state == 'returned':
+        os._exit(91)
+session_runner.transition = interrupted
+session_runner.run_session(Store(sys.argv[1]), sys.argv[2])
+'''
+        result = subprocess.run([sys.executable, '-c', code, str(self.store.directory), j['id']],
+                                capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 91, result.stderr)
+        self.assertEqual(read_journal(self.store, j['id'])['state'], 'returned')
+        # This test owns/reaped the frontend and the returned journal proves it
+        # reaped the fixed child. Simulate the documented manual stale-lock step.
+        (self.store.directory / 'lodge.lock').unlink()
+        self.assertEqual(recover_session(Store(self.store.directory), j['id'])['state'], 'candidate')
+        self.assert_sources_untouched()
+
+    def test_failed_running_journal_write_still_reaps_child(self):
+        j = self.prepare('hang')
+        children = []
+        def spawn(*args, **kwargs):
+            p = subprocess.Popen(*args, **kwargs)
+            children.append(p)
+            return p
+        def fail_running(root, journal, state, **kwargs):
+            if state == 'running':
+                raise OSError('simulated disk failure')
+            return transition(root, journal, state, **kwargs)
+        with patch('lodge.session_runner.Popen', side_effect=spawn), patch('lodge.session_runner.transition', side_effect=fail_running):
+            with self.assertRaises(OSError):
+                run_session(self.store, j['id'])
+        self.assertEqual(len(children), 1)
+        self.assertIsNotNone(children[0].poll())
+        self.assertEqual(recover_session(self.store, j['id'])['state'], 'interrupted')
+
+    def test_optional_sab_absence_and_later_addition_policy(self):
+        (self.source / 'trophy00.sab').unlink()
+        with self.store.transaction() as data:
+            a = data['associations'][self.association]
+            a['files'] = [f for f in a['files'] if f['kind'] == 'sav']
+        j = run_session(self.store, self.prepare()['id'])
+        self.assertEqual(reconcile_session(self.store, j['id'])['state'], 'candidate')
+        j = run_session(self.store, self.prepare()['id'])
+        (session_root(self.store, j['id']) / 'work/state/trophy00.sab').write_bytes(room_bytes())
+        self.assertEqual(reconcile_session(self.store, j['id'])['state'], 'quarantined')
+
+    def test_links_and_unexpected_directories_never_followed(self):
+        j = run_session(self.store, self.prepare()['id'])
+        root = session_root(self.store, j['id'])
+        extra = root / 'work/state/nested'
+        extra.mkdir()
+        (extra / 'opaque').write_bytes(b'retain unexpected nested bytes')
+        self.assertEqual(reconcile_session(self.store, j['id'])['state'], 'quarantined')
+        self.assertEqual((root / 'returned/nested/opaque').read_bytes(), b'retain unexpected nested bytes')
+        if os.name == 'posix':
+            j = self.prepare()
+            root = session_root(self.store, j['id'])
+            state = root / 'work/state/trophy00.sav'
+            state.unlink()
+            state.symlink_to(self.source / 'trophy00.sav')
+            self.assertEqual(run_session(self.store, j['id'])['state'], 'failed')
+            j = run_session(self.store, self.prepare()['id'])
+            root = session_root(self.store, j['id'])
+            (root / 'work/state/outside').symlink_to(self.source)
+            result = reconcile_session(self.store, j['id'])
+            self.assertEqual(result['state'], 'quarantined')
+            self.assertFalse((root / 'returned/outside').exists())
         self.assert_sources_untouched()
 
 
