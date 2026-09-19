@@ -52,7 +52,10 @@ def encode(value):
 def persist(root, journal):
     safe_path(root)
     validate_journal(journal, root.name)
-    atomic_write(safe_path(root / 'journal.json'), encode(journal))
+    content = encode(journal)
+    if len(content) > 4 * 1024 * 1024:
+        raise FrontendError('session journal exceeds limit; evidence retained for review')
+    atomic_write(safe_path(root / 'journal.json'), content)
 
 
 def validate_journal(journal, identity):
@@ -156,8 +159,12 @@ def capture(directory):
                 entries.append(entry)
                 if any(c in path.name for c in ('\\', ':', '\x00')):
                     continue
-                if path.is_symlink():
-                    entry['type'] = 'symlink'
+                if (stat.S_ISLNK(info.st_mode)
+                        or getattr(info, 'st_file_attributes', 0) & getattr(stat, 'FILE_ATTRIBUTE_REPARSE_POINT', 0)
+                        or path.resolve() != path):
+                    # Includes Windows directory junctions, which are not
+                    # necessarily reported by Path.is_symlink() on Python 3.10.
+                    entry['type'] = 'link-or-alias'
                 elif path.is_dir():
                     entry.update(type='directory', size=0)
                     visit(path)
@@ -185,6 +192,7 @@ def capture(directory):
 
 def write_blobs(directory, blobs):
     safe_path(directory).mkdir(parents=True, exist_ok=True)
+    directories = {directory, directory.parent}
     for relative, content in blobs.items():
         parts = Path(relative)
         if parts.is_absolute() or '..' in parts.parts or '\\' in relative or ':' in relative:
@@ -192,6 +200,16 @@ def write_blobs(directory, blobs):
         path = safe_path(directory / parts)
         path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write(path, content)
+        directories.update(p for p in path.parents if p.is_relative_to(directory))
+    if os.name == 'posix':
+        # File replacement fsyncs its own directory. Also persist every new
+        # nested directory entry (notably work/state) before publishing a journal.
+        for path in sorted(directories, key=lambda p: len(p.parts), reverse=True):
+            fd = os.open(safe_path(path), os.O_RDONLY)
+            try:
+                os.fsync(fd)
+            finally:
+                os.close(fd)
 
 
 def inspect_bytes(blobs, slot, probe):

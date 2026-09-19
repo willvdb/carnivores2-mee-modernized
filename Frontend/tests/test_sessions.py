@@ -391,6 +391,52 @@ session_runner.run_session(Store(sys.argv[1]), sys.argv[2])
         self.assertIn('unpinned', refused['error'])
         self.assert_sources_untouched()
 
+    def test_oversized_and_linked_returns_stay_quarantined_in_workspace(self):
+        for kind in ('oversized', 'hardlink'):
+            with self.subTest(kind=kind):
+                j = run_session(self.store, self.prepare()['id'])
+                root = session_root(self.store, j['id'])
+                extra = root / 'work/state/trophy00.extra'
+                if kind == 'oversized':
+                    with extra.open('wb') as stream:
+                        stream.truncate(16 * 1024 * 1024 + 1)
+                else:
+                    os.link(root / 'work/state/trophy00.sav', extra)
+                result = reconcile_session(self.store, j['id'])
+                self.assertEqual(result['state'], 'quarantined')
+                self.assertTrue(extra.exists())
+                self.assertFalse((root / 'returned/trophy00.extra').exists())
+                self.assertIn('unsafe-state-entry', [d['code'] for d in result['diagnostics']])
+        self.assert_sources_untouched()
+
+    def test_partial_capture_resumes_without_overwriting_changed_captured_bytes(self):
+        from lodge.session_io import persist, write_blobs
+        for altered in (False, True):
+            j = run_session(self.store, self.prepare('pair')['id'])
+            root = session_root(self.store, j['id'])
+            transition(root, j, 'inspecting')
+            entries, blobs = capture(root / 'work/state')
+            j['return_capture'] = entries
+            persist(root, j)
+            saved = b'changed evidence' if altered else blobs['trophy00.sav']
+            write_blobs(root / 'returned', {'trophy00.sav': saved})
+            result = recover_session(self.store, j['id'])
+            self.assertEqual(result['state'], 'quarantined' if altered else 'candidate')
+            self.assertEqual((root / 'returned/trophy00.sav').read_bytes(), saved)
+
+    def test_source_and_baseline_drift_after_return_prevent_clean_candidate(self):
+        for target in ('source', 'baseline'):
+            j = run_session(self.store, self.prepare('sav')['id'])
+            root = session_root(self.store, j['id'])
+            path = (self.source if target == 'source' else root / 'baseline') / 'trophy00.sav'
+            before = path.read_bytes()
+            path.write_bytes(save_bytes(score=999))
+            result = reconcile_session(self.store, j['id'])
+            path.write_bytes(before)
+            self.assertEqual(result['state'], 'quarantined')
+            self.assertEqual(capture(root / 'returned'), capture(root / 'work/state'))
+        self.assert_sources_untouched()
+
 
 def capture_native(root):
     return {p.name: p.read_bytes() for p in root.iterdir() if p.suffix in ('.sav', '.sab')}
