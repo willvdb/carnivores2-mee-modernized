@@ -2,6 +2,7 @@
 #include "Hunt.h"
 #include "Platform/Platform.h"
 #include "Game/DisplaySelection.h"
+#include "Game/DisplayRecovery.h"
 #include "Renderer/CPUText.h"
 #ifdef _gl
 #include "Renderer/GLRenderer.h"
@@ -192,7 +193,11 @@ void SetFullScreen()
   }
 #endif
 
+#ifdef _WIN32
   SetVideoMode(WinW, WinH);
+#else
+  SetVideoMode(DisplayConfiguration.size.width, DisplayConfiguration.size.height);
+#endif
 
 #ifdef _gl
   if (g_GLRenderer)
@@ -303,8 +308,123 @@ void SyncLegacyDisplayState()
   BORDERLESS = legacy.borderless;
 }
 
+static void UpdateDrawableGeometry()
+{
+  VideoPitch  = WinW;        // std::uint16_t index (pixels) for 16-bit video buffer
+  VideoPitchB = WinW * 2;    // std::uint8_t index for 16-bit video buffer
+
+  WinEX = WinW - 1;
+  WinEY = WinH - 1;
+  VideoCX = WinW / 2;
+  VideoCY = WinH / 2;
+
+  // Vertical FOV is the fundamental projection parameter. CameraH is
+  // derived from VideoCY and the user-selected FOV (OptFov, in degrees).
+  // CameraW is set equal to CameraH to keep square pixels: a square in
+  // world-space appears square on screen regardless of aspect ratio.
+  // The horizontal FOV then widens automatically as WinW/WinH grows
+  // (e.g. ~80 deg at 4:3, ~120 deg at 16:9 with OptFov=62). This is
+  // the same approach C1 uses and it avoids the horizontal stretching
+  // that the old 4:3-hardcoded formula produced on 16:9 displays.
+  CameraH = static_cast<float>(VideoCY) * FovScaleFromDegrees(OptFov);
+  CameraW = CameraH;
+
+  LoDetailSky =(WinW>400);
+#if defined(_gl) && !defined(_WIN32)
+  // All Linux publication paths, including topology fallback, update viewport
+  // together with CPU pitch/centers. No later size comparison can bypass this.
+  if (g_GLRenderer) g_GLRenderer->SetVideoMode(WinW, WinH);
+#endif
+}
+
+#ifndef _WIN32
+static GameDisplay::DisplayRecovery displayRecovery;
+static bool displayConfigured = false;
+static bool drawableSuspended = false;
+
+void ObserveDisplayEvent(const Platform::Event& event)
+{
+  displayRecovery.Observe(event, Platform::Milliseconds());
+}
+
+// No native reconfiguration here: resize/scale events update CPU storage,
+// viewport, readback and camera dimensions together before any frame renders.
+static bool SynchronizeDrawable(const Platform::WindowState& window)
+{
+  if (!GameDisplay::UsableWindow(window)) return false;
+  if (window.pixels.width != WinW || window.pixels.height != WinH) {
+    LOG_INFO("Drawable changed: logical=%dx%d pixels=%dx%d requested=%dx%d",
+             window.logical.width, window.logical.height, window.pixels.width, window.pixels.height,
+             DisplayConfiguration.size.width, DisplayConfiguration.size.height);
+    WinW = window.pixels.width;
+    WinH = window.pixels.height;
+    CreateVideoDIB(WinW, WinH);
+    UpdateDrawableGeometry();
+    ResetMousePos();
+  }
+  return true;
+}
+
+bool ServiceDisplayChanges()
+{
+  if (!displayConfigured) return true; // Loading has its own dimensions.
+  auto window = Platform::QueryWindowState();
+  if (window.minimized) {
+    if (!drawableSuspended) CaptureMouse(false);
+    drawableSuspended = true;
+    return false;
+  }
+  if (displayRecovery.Ready(Platform::Milliseconds())) {
+    const auto catalog = Platform::QueryDisplayCatalog();
+    if (displayRecovery.Resolve(DisplayConfiguration, catalog, window) && !catalog.displays.empty()) {
+      LOG_INFO("Display topology recovery: reapplying retained request with fresh selection");
+      CaptureMouse(false);
+      SetVideoMode(DisplayConfiguration.size.width, DisplayConfiguration.size.height);
+      window = Platform::QueryWindowState();
+      // Self-generated mode/layout events must not cause an endless retry if
+      // the window manager rejects recovery. Retry only a distinct topology
+      // or the user's next explicit mode request.
+      displayRecovery.Recovered(Platform::QueryDisplayCatalog());
+      CaptureMouse(blActive && _GameState && !IsPaused());
+    }
+  }
+  if (!GameDisplay::UsableWindow(window)) {
+    if (!drawableSuspended) {
+      LOG_WARN("Drawable suspended: minimized=%d pixels=%dx%d", window.minimized, window.pixels.width, window.pixels.height);
+      CaptureMouse(false);
+      drawableSuspended = true;
+    }
+    return false;
+  }
+  if (!window.reachable) {
+    if (!drawableSuspended) CaptureMouse(false);
+    drawableSuspended = true;
+    return false;
+  }
+  const bool usable = SynchronizeDrawable(window);
+  if (usable && drawableSuspended) {
+    CaptureMouse(blActive && _GameState && !IsPaused());
+    drawableSuspended = false;
+  }
+  return usable;
+}
+
+// Focus/context restoration retains the user's current placement and dimensions.
+// Explicit Alt+Enter and topology recovery still apply the requested mode.
+void RestoreGameDisplay()
+{
+  if (!displayConfigured)
+    SetVideoMode(DisplayConfiguration.size.width, DisplayConfiguration.size.height);
+  else
+    SynchronizeDrawable(Platform::QueryWindowState());
+}
+#endif
+
 void SetVideoMode(int W, int H)
 {
+#ifndef _WIN32
+  const Platform::Size priorPixels{WinW, WinH};
+#endif
   DisplayConfiguration.size = {W, H};
   SyncLegacyDisplayState();
 
@@ -315,11 +435,14 @@ void SetVideoMode(int W, int H)
   // hwndMain is not yet created) — that path uses the old hardcoded
   // 1024x768 DIB which is fine because the initial render is the
   // loading screen only.
+#ifdef _WIN32
   if (Platform::HasGameWindow()) CreateVideoDIB(WinW, WinH);
+#endif
 
   const auto mode = DisplayConfiguration.mode;
   std::optional<Platform::DisplayMode> exclusiveMode;
   std::optional<Platform::DisplayTarget> target;
+  GameDisplay::DisplaySelection appliedSelection;
   const bool wantsRefresh = mode == Platform::WindowMode::Exclusive && Platform::HasRefresh(DisplayConfiguration.refresh);
   const bool wantsMonitor = DisplayConfiguration.monitor.kind != GameDisplay::MonitorPreferenceKind::Primary;
   if ((wantsMonitor || wantsRefresh) && Platform::HasGameWindow()) {
@@ -328,6 +451,7 @@ void SetVideoMode(int W, int H)
     const auto catalog = Platform::QueryDisplayCatalog();
     const auto selected = GameDisplay::SelectMonitor(catalog, DisplayConfiguration.monitor, {W, H},
         wantsRefresh ? DisplayConfiguration.refresh : Platform::RefreshRate{});
+    appliedSelection = selected;
     target = selected.target;
     exclusiveMode = selected.exclusiveMode;
     if (wantsMonitor) {
@@ -359,6 +483,7 @@ void SetVideoMode(int W, int H)
   // than the visible area and the top/bottom of the HUD would be clipped
   // (e.g. ammo counter hidden behind the title bar at 2560x1440 windowed on
   // a 2560x1440 desktop).
+#ifdef _WIN32
   if (Platform::HasGameWindow()) {
     const auto client = Platform::ClientSize();
     int actualW = client.width;
@@ -378,26 +503,26 @@ void SetVideoMode(int W, int H)
     }
   }
 
-  VideoPitch  = WinW;        // std::uint16_t index (pixels) for 16-bit video buffer
-  VideoPitchB = WinW * 2;    // std::uint8_t index for 16-bit video buffer
+#else
+  if (Platform::HasGameWindow()) {
+    const auto client = Platform::ClientSize();
+    const auto safe = GameDisplay::UsableDrawable(client) ? client :
+        GameDisplay::UsableDrawable(priorPixels) ? priorPixels : Platform::Size{800, 600};
+    WinW = safe.width;
+    WinH = safe.height;
+  }
+#endif
 
-  WinEX = WinW - 1;
-  WinEY = WinH - 1;
-  VideoCX = WinW / 2;
-  VideoCY = WinH / 2;
-
-  // Vertical FOV is the fundamental projection parameter. CameraH is
-  // derived from VideoCY and the user-selected FOV (OptFov, in degrees).
-  // CameraW is set equal to CameraH to keep square pixels: a square in
-  // world-space appears square on screen regardless of aspect ratio.
-  // The horizontal FOV then widens automatically as WinW/WinH grows
-  // (e.g. ~80 deg at 4:3, ~120 deg at 16:9 with OptFov=62). This is
-  // the same approach C1 uses and it avoids the horizontal stretching
-  // that the old 4:3-hardcoded formula produced on 16:9 displays.
-  CameraH = static_cast<float>(VideoCY) * FovScaleFromDegrees(OptFov);
-  CameraW = CameraH;
-
-  LoDetailSky =(W>400);
+#ifndef _WIN32
+  if (Platform::HasGameWindow() && GameDisplay::UsableDrawable({WinW, WinH})) CreateVideoDIB(WinW, WinH);
+#endif
+  UpdateDrawableGeometry();
+#ifdef _WIN32
+  LoDetailSky = (W > 400);
+#else
+  displayRecovery.Applied(DisplayConfiguration, appliedSelection);
+  displayConfigured = true;
+#endif
   Platform::HideArrowCursor();
 }
 

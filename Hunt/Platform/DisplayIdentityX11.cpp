@@ -45,6 +45,26 @@ std::optional<DisplayIdentity> ReadEdid(::Display* connection, RROutput output, 
     return X11Edid(std::vector<std::uint8_t>(bytes, bytes + items));
 }
 }
+// SDL 3.2 keeps initial enumeration order when RandR primary changes. Query
+// the borrowed exact connection/output mapping on each application instead.
+SDL_DisplayID X11PrimaryDisplay()
+{
+    int count=0;
+    const std::unique_ptr<SDL_DisplayID, decltype(&SDL_free)> ids(SDL_GetDisplays(&count),SDL_free);
+    if (!ids) return 0;
+    for (int i=0; i<count; ++i) {
+        const auto props=SDL_GetDisplayProperties(ids.get()[i]);
+        auto* connection=static_cast<::Display*>(SDL_GetPointerProperty(props,"Carnivores.display.x11.connection",nullptr));
+        const auto root=SDL_GetNumberProperty(props,"Carnivores.display.x11.root",0);
+        const auto output=SDL_GetNumberProperty(props,"Carnivores.display.x11.output",0);
+        if (!connection || root<=0 || output<=0) continue;
+        ErrorScope errors(connection);
+        const auto primary=XRRGetOutputPrimary(connection,static_cast<Window>(root));
+        if (!errors.Failed() && primary && primary==static_cast<RROutput>(output)) return ids.get()[i];
+    }
+    return 0; // No native primary/mapping: keep SDL's documented default.
+}
+
 void DiscoverX11(DisplayCatalog& catalog, const SDL_DisplayID* ids, int count)
 {
     ::Display* connection = nullptr;

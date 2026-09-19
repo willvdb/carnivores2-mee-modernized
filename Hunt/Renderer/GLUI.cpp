@@ -80,7 +80,11 @@ void Activate3DHardware()
     LOG_INFO("Activate3DHardware");
 
     // Set video mode (this sets window size and position)
+#ifdef _WIN32
     SetVideoMode(WinW, WinH);
+#else
+    RestoreGameDisplay();
+#endif
 
     // If the renderer was shut down (e.g., during RestartMode), create a
     // new one. ShutDown3DHardware() deletes g_GLRenderer and nulls the

@@ -243,3 +243,26 @@ TEST_F(FullscreenFixture, LostSecondaryUsesPrimaryAutomaticThenPrimaryDesktopFal
     EXPECT_EQ(preferredMode.refresh.numerator,60000u);
     EXPECT_EQ(preferredMode.refresh.denominator,1001u);
 }
+
+#ifndef _WIN32
+TEST_F(PlatformSDL, DisplayAndPixelEventsReachFrameBoundaryWithoutNativeReconfiguration)
+{
+    for (auto type : {SDL_EVENT_DISPLAY_ADDED, SDL_EVENT_DISPLAY_REMOVED, SDL_EVENT_DISPLAY_MOVED,
+         SDL_EVENT_DISPLAY_ORIENTATION, SDL_EVENT_DISPLAY_DESKTOP_MODE_CHANGED,
+         SDL_EVENT_DISPLAY_CURRENT_MODE_CHANGED, SDL_EVENT_DISPLAY_CONTENT_SCALE_CHANGED}) {
+        Push(type);int code=0;Platform::Event event;
+        ASSERT_EQ(Platform::PumpOneEvent(code,&event),Platform::PumpResult::Dispatched);
+        EXPECT_EQ(event.type,Platform::EventType::DisplayChanged);
+    }
+    for (auto type : {SDL_EVENT_WINDOW_RESIZED, SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED,
+         SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED, SDL_EVENT_WINDOW_MOVED,
+         SDL_EVENT_WINDOW_DISPLAY_CHANGED, SDL_EVENT_WINDOW_MINIMIZED, SDL_EVENT_WINDOW_RESTORED}) {
+        Push(type);int code=0;Platform::Event event;
+        ASSERT_EQ(Platform::PumpOneEvent(code,&event),Platform::PumpResult::Dispatched);
+        EXPECT_EQ(event.type,Platform::EventType::WindowChanged);
+    }
+    SDL_Event other{};other.type=SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED;other.window.windowID=99;
+    ASSERT_TRUE(SDL_PushEvent(&other));int code=0;Platform::Event event;
+    Platform::PumpOneEvent(code,&event);EXPECT_EQ(event.type,Platform::EventType::None);
+}
+#endif

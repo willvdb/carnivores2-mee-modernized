@@ -295,6 +295,12 @@ Size ClientSize()
     return {rect.right - rect.left, rect.bottom - rect.top};
 }
 
+WindowState QueryWindowState()
+{
+    const auto size = ClientSize();
+    return {size, size, IsIconic(gameWindow) != FALSE, gameWindow != nullptr};
+}
+
 void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
                          std::optional<DisplayMode> exclusiveMode, std::optional<DisplayTarget> target)
 {

@@ -1832,9 +1832,15 @@ int RunGame()
     const auto event = Platform::PumpOneEvent(quitCode, &input);
     if (input.type == Platform::EventType::FocusChanged) HandleFocusChange(input.focused);
     if (input.type == Platform::EventType::KeyDown) HandleKeyEvent(input.key);
+#ifndef _WIN32
+    ObserveDisplayEvent(input);
+#endif
     if (event == Platform::PumpResult::Quit) break;
     if (event == Platform::PumpResult::Idle)
     {
+#ifndef _WIN32
+      if (!ServiceDisplayChanges()) { Platform::SleepMilliseconds(10); continue; }
+#endif
       if (blActive) { ProcessGame(); LimitFPS(); }
       else Platform::SleepMilliseconds(100);
     }

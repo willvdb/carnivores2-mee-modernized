@@ -34,7 +34,7 @@ FullscreenResult EnterDesktopFullscreen(SDL_Window* window, SDL_DisplayID displa
                                         const FullscreenAPI& api = {},
                                         DesktopModeQuery query = SDL_GetDesktopDisplayMode);
 
-struct NativeDisplay { SDL_DisplayID id; DisplayBounds bounds; };
+struct NativeDisplay { SDL_DisplayID id; DisplayBounds bounds; std::optional<DisplayIdentity> identity = std::nullopt; };
 struct WindowDisplay {
     SDL_DisplayID id;
     std::optional<DisplayTarget> target;
@@ -61,6 +61,7 @@ bool FindAutomaticDisplayMode(SDL_DisplayID display, Size size, SDL_DisplayMode&
 
 // Private backend bridge for genuinely deferred Windows compatibility.
 namespace Platform::SDLCompatibility {
+SDL_DisplayID PrimaryDisplay();
 void ShutdownMonitorDiscovery();
 void SetProcessActive(bool active);
 std::uint8_t LayoutKey(const SDL_KeyboardEvent& event, std::uint8_t fallback);

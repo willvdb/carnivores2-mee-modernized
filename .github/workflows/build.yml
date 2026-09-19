@@ -68,7 +68,7 @@ jobs:
       run: ctest --preset ${{ matrix.preset }}
 
     - name: SDL X11 fullscreen allocation and desktop restoration regression
-      run: bash tests/x11/run_mode_leak_test.sh build/${{ matrix.preset }}/Carnivores2SDLX11ModeLeakTest build/${{ matrix.preset }}/Carnivores2SDLX11IdentityTest build/${{ matrix.preset }}/bin/Carnivores1_GL
+      run: bash tests/x11/run_mode_leak_test.sh build/${{ matrix.preset }}/Carnivores2SDLX11ModeLeakTest build/${{ matrix.preset }}/Carnivores2SDLX11IdentityTest build/${{ matrix.preset }}/bin/Carnivores1_GL build/${{ matrix.preset }}/Carnivores2DisplayRecoveryTest
     - name: Wayland production presentation regression
       if: runner.os == 'Linux'
-      run: bash tests/wayland/run_presentation_test.sh build/${{ matrix.preset }}/Carnivores2SDLWaylandPresentationTest build/${{ matrix.preset }}/Carnivores2SDLWaylandDisconnectTest
+      run: bash tests/wayland/run_presentation_test.sh build/${{ matrix.preset }}/Carnivores2SDLWaylandPresentationTest build/${{ matrix.preset }}/Carnivores2SDLWaylandDisconnectTest build/${{ matrix.preset }}/Carnivores2DisplayRecoveryTest

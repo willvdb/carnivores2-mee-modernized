@@ -3,6 +3,7 @@
 set -euo pipefail
 binary=$(realpath "${1:?Usage: $0 /path/to/Carnivores2SDLWaylandPresentationTest}")
 disconnect_binary=$(realpath "${2:?Supply /path/to/Carnivores2SDLWaylandDisconnectTest}")
+recovery_binary=${3:-}
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 scratch=$(mktemp -d)
 xorg_pid= weston_pid=
@@ -35,8 +36,18 @@ done
 export DISPLAY=":$(cat "$scratch/display")"
 export XDG_RUNTIME_DIR="$scratch/runtime"
 export WAYLAND_DISPLAY=carnivores-test
+cat > "$scratch/weston.ini" <<'CONFIG'
+[output]
+name=screen0
+mode=1280x1024
+scale=1
+[output]
+name=screen1
+mode=1280x1024
+scale=2
+CONFIG
 weston --backend=x11-backend.so --use-pixman --width=1280 --height=1024 --output-count=2 \
-    --socket="$WAYLAND_DISPLAY" --idle-time=0 --no-config --log="$scratch/weston.log" \
+    --socket="$WAYLAND_DISPLAY" --idle-time=0 --config="$scratch/weston.ini" --log="$scratch/weston.log" \
     >"$scratch/weston-console.log" 2>&1 &
 weston_pid=$!
 for ((i=0;i<100;++i)); do
@@ -46,5 +57,8 @@ for ((i=0;i<100;++i)); do
 done
 [[ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]]
 export SDL_VIDEODRIVER=wayland CARNIVORES_TEST_WAYLAND_PRESENTATION=1
+if [[ -n "$recovery_binary" ]]; then
+    CARNIVORES_TEST_DISPLAY_RECOVERY=1 CARNIVORES_TEST_MIXED_SCALE=1 timeout --kill-after=5 60 "$recovery_binary"
+fi
 timeout --kill-after=5 60 "$binary"
 timeout --kill-after=2 10 "$disconnect_binary"

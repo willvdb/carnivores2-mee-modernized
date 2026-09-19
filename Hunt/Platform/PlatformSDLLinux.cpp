@@ -11,6 +11,13 @@ void DiscoverMonitorIdentities(DisplayCatalog& catalog, const SDL_DisplayID* ids
     if (SDL_strcmp(driver, "x11") == 0) LinuxIdentity::DiscoverX11(catalog, ids, count);
     if (SDL_strcmp(driver, "wayland") == 0) LinuxIdentity::DiscoverWayland(catalog, ids, count);
 }
+SDL_DisplayID PrimaryDisplay()
+{
+    const char* driver=SDL_GetCurrentVideoDriver();
+    if (driver && SDL_strcmp(driver,"x11")==0)
+        if (const auto primary=LinuxIdentity::X11PrimaryDisplay()) return primary;
+    return SDL_GetPrimaryDisplay();
+}
 void ShutdownMonitorDiscovery() { LinuxIdentity::ShutdownWaylandDiscovery(); }
 void SetProcessActive(bool) {} // No privileged process priority changes on Linux.
 void OrderDisplayModes(DisplayInfo&) {} // Linux has no Win32 driver-order ordinal.

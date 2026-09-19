@@ -45,6 +45,7 @@ inline DisplaySelection SelectDisplay(const Platform::DisplayCatalog& catalog,
             }
         }
     }
+    if (requested && result.fallback != DisplayFallback::None) return result;
     if (!result.index) {
         if (result.fallback == DisplayFallback::None)
             result.fallback = DisplayFallback::MissingPrimary;
@@ -86,6 +87,7 @@ inline DisplaySelection SelectMonitor(const Platform::DisplayCatalog& catalog,
     if (!match) return fallback;
     auto selected = SelectDisplay(catalog, match, size, refresh);
     if (selected.fallback != DisplayFallback::None) selected.exclusiveMode.reset();
+    else if (selected.target) selected.target->identity = preference.identity;
     return selected;
 }
 

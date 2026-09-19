@@ -2,6 +2,7 @@
 # Run only against a new, disposable Xorg dummy server; never use the host DISPLAY.
 set -euo pipefail
 identity_binary=${2:-}
+recovery_binary=${4:-}
 game_binary=${3:-}
 if [[ -n "$game_binary" ]]; then game_binary=$(realpath "$game_binary"); fi
 test_binary=$(realpath "${1:?Usage: $0 /path/to/Carnivores2SDLX11ModeLeakTest}")
@@ -67,6 +68,9 @@ if [[ -n "$game_binary" ]]; then
     [[ ! -e "$scratch/list/config.cfg" ]]
     [[ ! -e "$scratch/list/trophy00.sav" && ! -e "$scratch/list/trophy00.sab" ]]
     printf 'Asset-free display listing produced two copyable tokens without config/profile writes\n'
+fi
+if [[ -n "$recovery_binary" ]]; then
+    CARNIVORES_TEST_DISPLAY_RECOVERY=1 timeout 60 "$recovery_binary"
 fi
 timeout 60 "$test_binary" 0 20
 timeout 60 "$test_binary" 1 20

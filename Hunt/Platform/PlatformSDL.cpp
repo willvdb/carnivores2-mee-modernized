@@ -1,6 +1,7 @@
 #include "Platform.h"
 #include "LegacyKeyboardSDL.h"
 #include "PlatformSDLInternal.h"
+#include "WindowCoordinates.h"
 #include "../Debug/Log.h"
 #include <algorithm>
 #include <memory>
@@ -63,7 +64,8 @@ WindowDisplay MapWindowDisplay(const std::vector<NativeDisplay>& displays, SDL_D
             match = &display;
         }
     }
-    if (match) return {match->id, target, mode};
+    if (match && (!target->identity || (match->identity && EqualDisplayIdentity(*target->identity, *match->identity))))
+        return {match->id, target, mode};
     return {primary, std::nullopt, std::nullopt};
 }
 
@@ -107,6 +109,7 @@ Platform::SDLInput::Keyboard keyboard;
 bool quitRequested = false;
 bool altGrLayout = false;
 bool wayland = false;
+SDL_DisplayID occupiedDisplay = 0;
 std::optional<Platform::Event> pendingKey;
 
 Platform::Display ReadDisplay(SDL_DisplayID id)
@@ -155,7 +158,7 @@ void RequestCoreContext()
 SDL_Rect DesktopBounds()
 {
     SDL_Rect bounds{0,0,800,600};
-    Check(SDL_GetDisplayBounds(SDL_GetPrimaryDisplay(), &bounds), "SDL_GetDisplayBounds");
+    Check(SDL_GetDisplayBounds(Platform::SDLCompatibility::PrimaryDisplay(), &bounds), "SDL_GetDisplayBounds");
     return bounds;
 }
 void CenterWindow(Platform::Size size, std::optional<SDL_Rect> targetBounds = std::nullopt)
@@ -194,6 +197,7 @@ bool InitializeApplication()
     SDL_SetHint(SDL_HINT_WINDOWS_CLOSE_ON_ALT_F4, "0"); // Old SYSKEY handler swallows it.
     // Preserve exclusive focus loss without SDL's additional minimize policy.
     SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");
+    occupiedDisplay = 0;
     quitRequested = false;
     pendingKey.reset();
     keyboard.ClearDown();
@@ -247,7 +251,7 @@ void SetProcessActive(bool active) { SDLCompatibility::SetProcessActive(active);
 DisplayCatalog QueryDisplayCatalog()
 {
     DisplayCatalog catalog;
-    const auto primary = SDL_GetPrimaryDisplay();
+    const auto primary = SDLCompatibility::PrimaryDisplay();
     int count = 0;
     const std::unique_ptr<SDL_DisplayID, decltype(&SDL_free)> displays(SDL_GetDisplays(&count), SDL_free);
     if (displays) {
@@ -265,7 +269,7 @@ DisplayInfo QueryDisplayInfo()
 {
     // Share discovery with the catalog, but query only the authoritative primary
     // display as before (also preserving the old failure fallback).
-    auto info = ProjectDisplayInfo(ReadDisplay(SDL_GetPrimaryDisplay()), {800, 600});
+    auto info = ProjectDisplayInfo(ReadDisplay(SDLCompatibility::PrimaryDisplay()), {800, 600});
     // Only the legacy projection gets the Windows driver-order ordinal shim.
     SDLCompatibility::OrderDisplayModes(info);
     return info;
@@ -312,6 +316,35 @@ PumpResult PumpOneEvent(int& quitCode, Event* output)
     if (count == 0) return PumpResult::Idle;
     const auto windowID = gameWindow ? SDL_GetWindowID(gameWindow) : 0;
     Event event;
+#ifndef _WIN32
+    switch (native.type) {
+    case SDL_EVENT_DISPLAY_ADDED:
+    case SDL_EVENT_DISPLAY_REMOVED:
+    case SDL_EVENT_DISPLAY_MOVED:
+    case SDL_EVENT_DISPLAY_ORIENTATION:
+    case SDL_EVENT_DISPLAY_DESKTOP_MODE_CHANGED:
+    case SDL_EVENT_DISPLAY_CURRENT_MODE_CHANGED:
+    case SDL_EVENT_DISPLAY_CONTENT_SCALE_CHANGED:
+        event.type = EventType::DisplayChanged;
+        event.occupiedDisplayRemoved = native.type == SDL_EVENT_DISPLAY_REMOVED &&
+                                       native.display.displayID == occupiedDisplay;
+        break;
+    case SDL_EVENT_WINDOW_DISPLAY_CHANGED:
+        if (native.window.windowID == windowID) {
+            event.type = EventType::WindowChanged;
+        }
+        break;
+    case SDL_EVENT_WINDOW_RESIZED:
+    case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+    case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
+    case SDL_EVENT_WINDOW_MOVED:
+    case SDL_EVENT_WINDOW_MINIMIZED:
+    case SDL_EVENT_WINDOW_RESTORED:
+        if (native.window.windowID == windowID) event.type = EventType::WindowChanged;
+        break;
+    default: break;
+    }
+#endif
     if (native.type == SDL_EVENT_KEYMAP_CHANGED) altGrLayout = HasAltGrLayout();
     if (native.type == SDL_EVENT_QUIT ||
         (native.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && native.window.windowID == windowID)) {
@@ -361,7 +394,14 @@ void WarpPointerInClient(Point point)
         // The engine calls this after reading a frame and on capture/re-entry.
         // Do not issue advisory Wayland warps or synthesize absolute motion.
         SDL_GetRelativeMouseState(nullptr, nullptr);
-    } else if (gameWindow) SDL_WarpMouseInWindow(gameWindow, static_cast<float>(point.x), static_cast<float>(point.y));
+    } else if (gameWindow) {
+        Size logical{}, pixels{};
+        SDL_GetWindowSize(gameWindow, &logical.width, &logical.height);
+        SDL_GetWindowSizeInPixels(gameWindow, &pixels.width, &pixels.height);
+        if (logical.width <= 0 || logical.height <= 0 || pixels.width <= 0 || pixels.height <= 0) return;
+        const auto position = Coordinates::Convert({static_cast<float>(point.x), static_cast<float>(point.y)}, pixels, logical);
+        SDL_WarpMouseInWindow(gameWindow, position.x, position.y);
+    }
 }
 Point PointerInClient()
 {
@@ -373,15 +413,35 @@ Point PointerInClient()
 #else
     SDL_GetMouseState(&x, &y); // Window-relative; Wayland has no global pointer query.
 #endif
+    Size logical{}, pixels{};
+    if (gameWindow) {
+        SDL_GetWindowSize(gameWindow, &logical.width, &logical.height);
+        SDL_GetWindowSizeInPixels(gameWindow, &pixels.width, &pixels.height);
+        const auto point = Coordinates::Convert({x - wx, y - wy}, logical, pixels);
+        return {Coordinates::Integer(point.x), Coordinates::Integer(point.y)};
+    }
     return {static_cast<std::int32_t>(x) - wx, static_cast<std::int32_t>(y) - wy};
 }
 MouseDelta ReadMouseLookDelta(Point center)
 {
-    if (wayland)
-        return SDLDetails::ReadWaylandMouseLook(gameWindow && SDL_GetWindowRelativeMouseMode(gameWindow),
+    if (wayland) {
+        const auto delta = SDLDetails::ReadWaylandMouseLook(gameWindow && SDL_GetWindowRelativeMouseMode(gameWindow),
             gameWindow && (SDL_GetWindowFlags(gameWindow) & SDL_WINDOW_INPUT_FOCUS));
+        Size logical{}, pixels{};
+        if (gameWindow) {
+            SDL_GetWindowSize(gameWindow, &logical.width, &logical.height);
+            SDL_GetWindowSizeInPixels(gameWindow, &pixels.width, &pixels.height);
+        }
+        return Coordinates::Convert(delta, logical, pixels);
+    }
+    if (gameWindow) {
+        Size logical{}, pixels{};
+        if (!SDL_GetWindowSize(gameWindow, &logical.width, &logical.height) ||
+            !SDL_GetWindowSizeInPixels(gameWindow, &pixels.width, &pixels.height) ||
+            logical.width <= 0 || logical.height <= 0 || pixels.width <= 0 || pixels.height <= 0) return {};
+    }
     const auto point = PointerInClient();
-    return {static_cast<float>(point.x - center.x), static_cast<float>(point.y - center.y)};
+    return {static_cast<float>(point.x) - center.x, static_cast<float>(point.y) - center.y};
 }
 void LoadArrowCursor() { arrowCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_DEFAULT); }
 void HideArrowCursor()
@@ -411,23 +471,63 @@ Size ClientSize()
     if (gameWindow) SDL_GetWindowSizeInPixels(gameWindow, &width, &height);
     return {width, height};
 }
+WindowState QueryWindowState()
+{
+    WindowState result;
+    if (!gameWindow) return result;
+    SDL_GetWindowSize(gameWindow, &result.logical.width, &result.logical.height);
+    SDL_GetWindowSizeInPixels(gameWindow, &result.pixels.width, &result.pixels.height);
+    result.minimized = (SDL_GetWindowFlags(gameWindow) & SDL_WINDOW_MINIMIZED) != 0;
+    if (wayland) {
+        // Global window positions do not exist in this protocol. SDL's occupied
+        // output is the compositor's placement report, never a requested target.
+        SDL_Rect bounds{};
+        result.reachable = SDL_GetDisplayBounds(SDL_GetDisplayForWindow(gameWindow), &bounds);
+    } else {
+        int x=0, y=0, count=0;
+        SDL_GetWindowPosition(gameWindow, &x, &y);
+        const std::unique_ptr<SDL_DisplayID, decltype(&SDL_free)> ids(SDL_GetDisplays(&count), SDL_free);
+        if (ids) for (int i=0; i<count; ++i) {
+            SDL_Rect bounds{};
+            if (SDL_GetDisplayBounds(ids.get()[i], &bounds) &&
+                std::int64_t(x) < std::int64_t(bounds.x) + bounds.w &&
+                std::int64_t(y) < std::int64_t(bounds.y) + bounds.h &&
+                std::int64_t(x) + result.logical.width > bounds.x &&
+                std::int64_t(y) + result.logical.height > bounds.y) result.reachable = true;
+        }
+    }
+    occupiedDisplay = SDL_GetDisplayForWindow(gameWindow);
+    return result;
+}
 void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
                          std::optional<DisplayMode> exclusiveMode, std::optional<DisplayTarget> target)
 {
     if (!gameWindow) return;
-    SDLDetails::WindowDisplay mapped{SDL_GetPrimaryDisplay(), std::nullopt, exclusiveMode};
+    SDLDetails::WindowDisplay mapped{SDLCompatibility::PrimaryDisplay(), std::nullopt, exclusiveMode};
     if (target) {
         // Resolve BEFORE leaving fullscreen: the caller's snapshot can describe
         // the current exclusive rectangle. Native IDs stay within this call.
         std::vector<SDLDetails::NativeDisplay> nativeDisplays;
         int count = 0;
         const std::unique_ptr<SDL_DisplayID, decltype(&SDL_free)> ids(SDL_GetDisplays(&count), SDL_free);
+        DisplayCatalog mappingCatalog;
         if (ids) for (int i = 0; i < count; ++i) {
+            Display display;
             SDL_Rect bounds{};
             if (SDL_GetDisplayBounds(ids.get()[i], &bounds))
-                nativeDisplays.push_back({ids.get()[i], {{bounds.x, bounds.y}, {bounds.w, bounds.h}}});
+                display.bounds = {{bounds.x, bounds.y}, {bounds.w, bounds.h}};
+            mappingCatalog.displays.push_back(std::move(display));
         }
-        mapped = SDLDetails::MapWindowDisplay(nativeDisplays, SDL_GetPrimaryDisplay(), target, exclusiveMode);
+#ifndef _WIN32
+        if (target->identity) SDLCompatibility::DiscoverMonitorIdentities(mappingCatalog, ids.get(), count);
+#else
+        target->identity.reset(); // Native Windows compatibility remains rectangle-based.
+#endif
+        if (ids) for (int i = 0; i < count; ++i) {
+            const auto& display = mappingCatalog.displays[i];
+            if (display.bounds) nativeDisplays.push_back({ids.get()[i], *display.bounds, display.identity});
+        }
+        mapped = SDLDetails::MapWindowDisplay(nativeDisplays, SDLCompatibility::PrimaryDisplay(), target, exclusiveMode);
         if (!mapped.target)
             LOG_WARN("SDL display target (%d,%d %dx%d) %s; using primary display and automatic refresh",
                      target->bounds.origin.x, target->bounds.origin.y,
@@ -444,7 +544,7 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
     Check(SDL_SyncWindow(gameWindow), "SDL leave fullscreen sync");
 #endif
     if (mapped.target) {
-        targetBounds = SDLDetails::RefreshWindowDisplayBounds(mapped);
+        targetBounds = SDLDetails::RefreshWindowDisplayBounds(mapped, SDL_GetDisplayBounds, SDLCompatibility::PrimaryDisplay);
         if (!targetBounds)
             LOG_WARN("SDL display target disappeared during restoration; using primary display and automatic refresh");
     }
@@ -509,7 +609,7 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
             applied = applyAutomatic(mapped.id);
         }
         if (!applied && mapped.target) {
-            if (!SDLDetails::RefreshWindowDisplayBounds(mapped)) {
+            if (!SDLDetails::RefreshWindowDisplayBounds(mapped, SDL_GetDisplayBounds, SDLCompatibility::PrimaryDisplay)) {
                 LOG_WARN("SDL display target disappeared during exclusive application; using primary display and automatic refresh");
                 Check(SDL_SetWindowFullscreen(gameWindow, false), "SDL leave disappeared target");
                 Check(SDL_SyncWindow(gameWindow), "SDL disappeared target sync");
@@ -555,6 +655,7 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
         CenterWindow({size.width > 0 && size.width <= bounds.w ? size.width : bounds.w,
                       size.height > 0 && size.height <= bounds.h ? size.height : bounds.h}, targetBounds);
     } else CenterWindow(size, targetBounds);
+    occupiedDisplay = SDL_GetDisplayForWindow(gameWindow);
     const bool synchronized = SDL_SyncWindow(gameWindow);
     Check(synchronized, "SDL_SyncWindow");
     Check(SDL_ShowWindow(gameWindow), "SDL_ShowWindow");

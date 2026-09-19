@@ -163,7 +163,7 @@ TEST(DisplayPersistence, UnsupportedDiscoveryAndNoPrimaryUseBackendDefaultAutoma
     EXPECT_FALSE(selected.exclusiveMode);
 }
 
-TEST(DisplayPersistence, DefaultAndSessionRequestsPreserveEarlierPolicy)
+TEST(DisplayPersistence, DefaultKeepsRefreshAndMissingSessionUsesAutomatic)
 {
     auto catalog = Catalog();
     GameDisplay::MonitorPreference preference;
@@ -173,7 +173,7 @@ TEST(DisplayPersistence, DefaultAndSessionRequestsPreserveEarlierPolicy)
     preference = {GameDisplay::MonitorPreferenceKind::SessionIndex, 900, {}};
     selected = GameDisplay::SelectMonitor(catalog, preference, {800, 600}, {144, 1});
     EXPECT_EQ(selected.fallback, GameDisplay::DisplayFallback::IndexOutOfRange);
-    EXPECT_TRUE(selected.exclusiveMode); // Existing 4d out-of-range semantics.
+    EXPECT_FALSE(selected.exclusiveMode); // A vanished session target cannot transfer its rate.
 }
 
 TEST(DisplayIdentityAssociation, RequiresUniqueFullRectangleOnBothSides)

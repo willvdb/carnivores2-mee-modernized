@@ -15,6 +15,7 @@ HWND GameWindow()
 }
 
 namespace Platform::SDLCompatibility {
+SDL_DisplayID PrimaryDisplay() { return SDL_GetPrimaryDisplay(); }
 void DiscoverMonitorIdentities(DisplayCatalog& catalog, const SDL_DisplayID*, int)
 {
     const auto* driver = SDL_GetCurrentVideoDriver();

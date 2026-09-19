@@ -5,7 +5,8 @@
 namespace GameDisplay {
 // Engine-owned presentation state. Zero dimensions preserve the pre-profile
 // unspecified startup size; this is NOT a new persisted record or profile ABI.
-// After application, size follows valid actual client dimensions as before.
+// Linux keeps requested size here; WinW/H hold effective drawable pixels.
+// Windows retains its existing applied-client-size compatibility behavior.
 struct Configuration {
     Platform::Size size{};
     Platform::WindowMode mode = Platform::WindowMode::Exclusive;
