@@ -1,7 +1,7 @@
 #define INITGUID
 #include "Hunt.h"
 #include "Platform/Platform.h"
-#include "Game/RefreshSelection.h"
+#include "Game/DisplaySelection.h"
 #include "Renderer/CPUText.h"
 #ifdef _gl
 #include "Renderer/GLRenderer.h"
@@ -314,15 +314,36 @@ void SetVideoMode(int W, int H)
   const auto mode = FULLSCREEN ? Platform::WindowMode::Exclusive :
                     BORDERLESS ? Platform::WindowMode::Borderless : Platform::WindowMode::Windowed;
   std::optional<Platform::DisplayMode> exclusiveMode;
-  if (mode == Platform::WindowMode::Exclusive && Platform::HasRefresh(PreferredRefresh) &&
-      Platform::HasGameWindow()) {
-    exclusiveMode = GameDisplay::SelectPrimaryRefreshMode(
-        Platform::QueryDisplayCatalog(), {W, H}, PreferredRefresh);
-    if (!exclusiveMode)
-      LOG_WARN("Exclusive %dx%d refresh %u/%u unavailable on primary display; using automatic refresh",
+  std::optional<Platform::DisplayTarget> target;
+  const bool wantsRefresh = mode == Platform::WindowMode::Exclusive && Platform::HasRefresh(PreferredRefresh);
+  if ((RequestedDisplayIndex || wantsRefresh) && Platform::HasGameWindow()) {
+    // One snapshot for presentation AND refresh selection. ResolutionList and
+    // OptRes keep their primary/default compatibility projection unchanged.
+    const auto catalog = Platform::QueryDisplayCatalog();
+    const auto selected = GameDisplay::SelectDisplay(catalog, RequestedDisplayIndex, {W, H},
+        wantsRefresh ? PreferredRefresh : Platform::RefreshRate{});
+    target = selected.target;
+    exclusiveMode = selected.exclusiveMode;
+    if (RequestedDisplayIndex) {
+      if (selected.fallback != GameDisplay::DisplayFallback::None)
+        LOG_WARN("Runtime display %u: %s; using primary/default display%s",
+                 *RequestedDisplayIndex, GameDisplay::DisplayFallbackReason(selected.fallback),
+                 selected.fallback == GameDisplay::DisplayFallback::AmbiguousBounds ? " and automatic refresh" : "");
+      if (selected.index) {
+        LOG_INFO("Runtime display %u resolved to %s catalog index %zu",
+                 *RequestedDisplayIndex, selected.index == catalog.primaryDisplay ? "primary" : "secondary",
+                 *selected.index);
+        const auto& bounds = catalog.displays[*selected.index].bounds;
+        if (bounds)
+          LOG_INFO("Runtime display bounds: (%d,%d) %dx%d", bounds->origin.x, bounds->origin.y,
+                   bounds->size.width, bounds->size.height);
+      } else LOG_WARN("Runtime display: catalog has no usable primary entry; using backend default fallback");
+    }
+    if (wantsRefresh && !exclusiveMode && selected.fallback != GameDisplay::DisplayFallback::AmbiguousBounds)
+      LOG_WARN("Exclusive %dx%d refresh %u/%u unavailable on selected display; using automatic refresh",
                W, H, PreferredRefresh.numerator, PreferredRefresh.denominator);
   }
-  Platform::ConfigureGameWindow(mode, {W, H}, {VideoCX, VideoCY}, exclusiveMode);
+  Platform::ConfigureGameWindow(mode, {W, H}, {VideoCX, VideoCY}, exclusiveMode, target);
 
   // Sync WinW/WinH and all derived values to the ACTUAL client area the OS
   // gave us. AdjustWindowRect predicts the frame chrome, but the real chrome
@@ -374,6 +395,5 @@ void SetVideoMode(int W, int H)
   LoDetailSky =(W>400);
   Platform::HideArrowCursor();
 }
-
 
 

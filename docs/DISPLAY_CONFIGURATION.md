@@ -1,5 +1,9 @@
 # Display configuration, discovery and selection
 
+The sections below record each milestone's boundary. For current one-session
+monitor targeting, see [Phase 4d](#phase-4d-explicit-runtime-display-targeting).
+Earlier primary-only descriptions describe their respective earlier phases.
+
 ## Phase 4a: dimension-first resolution selection
 
 This compatibility seam is based on `port/linux-bringup` at
@@ -610,3 +614,328 @@ Correction logs and runtime evidence are in `/tmp/carnivores-refresh-layering/`.
 Physical-Windows refresh acceptance remains separate from Wine and hosted CI;
 the checks listed above still apply. The prior standalone SDL/X11 teardown
 leak record is unchanged and no suppression has been introduced.
+
+## Phase 4d: explicit runtime display targeting
+
+Branch: `port/display-targeting`. Exact base:
+`ba556538ac97cfe8ec3035bed46740ce70d13737` (integrated Phase 4c).
+Main was verified against that SHA before starting and again when resuming.
+This milestone does not merge or rewrite main.
+
+### Command line and deliberately ephemeral identity
+
+```text
+-display=0
+-display=1
+/display=2
+-display=1 -fullscreen -res=800x600 -refresh=120
+```
+
+`-display=N` and `/display=N` select the zero-based entry in the current owned
+`DisplayCatalog::displays` snapshot. The option name is case-insensitive.
+The value is decimal digits only, with checked uint32 overflow; leading zeroes
+are accepted. Negative/plus signs, empty values, floats, whitespace, fractions,
+and trailing text are rejected. Repeated options use the **last occurrence**.
+A malformed last occurrence clears any earlier display request, warns, and
+uses primary/default placement. Recognized malformed options are consumed
+before legacy substring-based hunt/session argument processing.
+
+An out-of-range index or selected display without positive usable bounds also
+warns and uses primary/default placement. Duplicate full bounds are ambiguous
+and use primary/default with automatic refresh. Neither syntactic nor catalog
+validation changes the requested resolution or aborts startup. Omission retains
+the existing primary behavior; index zero is not assumed to be primary.
+
+**These indices are ephemeral, not persistent monitor identities.** Enumeration
+order can change between launches, reboots, reconnects, driver changes, topology
+changes, and even successive snapshots within one session. The runtime request
+is re-evaluated against a fresh snapshot when applying a game video mode. It
+does not promise to follow the same physical monitor after a topology change.
+
+There is no display-selector config key, profile field, remembered monitor, or
+remembered window position. No coordinates, SDL IDs, HMONITORs, device names,
+enumeration numbers, EDID, or monitor serial numbers are serialized. The existing
+`resolution`, `display_mode`, and `refresh_rate` keys retain their behavior.
+Persistent monitor selection needs a separate identity and fallback design in
+a later milestone; serializing this runtime index would not provide one.
+
+### Engine selection and owned portable values
+
+The parsing state is only `std::optional<std::uint32_t> RequestedDisplayIndex`.
+After platform initialization, `SetVideoMode` queries **one owned catalog per
+operation** when there is a display request or an explicit exclusive-refresh
+preference. [DisplaySelection.h](../Hunt/Game/DisplaySelection.h) resolves the
+effective display and eligible refresh mode together from that snapshot.
+
+Default/fallback selection uses `primaryDisplay` only when it references a valid
+entry. An explicit entry is usable only when its positive bounds match
+**exactly one display in that same snapshot**. Compare the complete rectangle:
+signed X/Y origin, width, and height. Equal dimensions at different origins are
+distinct targets. A unique explicit entry can be selected even if the catalog
+has no primary metadata. Otherwise missing or invalid primary metadata passes
+no target or selected mode, retaining the backend's established safe default path.
+
+Two or more matches produce `AmbiguousBounds`: keep the valid primary index if
+available, clear the portable target and selected exclusive mode, and skip
+refresh selection entirely. Even a primary that supports the requested explicit
+refresh uses automatic. The original session index and refresh preference remain
+available for the next video-mode application. With no explicit display request,
+primary bounds need not be unique and normal primary refresh selection is unchanged.
+
+The portable API receives owned values:
+
+```cpp
+struct DisplayTarget { DisplayBounds bounds; };
+void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
+    std::optional<DisplayMode> exclusiveMode = std::nullopt,
+    std::optional<DisplayTarget> target = std::nullopt);
+```
+
+The engine copies the selected entry's bounds and optional eligible mode before
+the snapshot goes away. Its index is used only for selection and diagnostics;
+it never crosses this API. Bounds preserve signed origins and the complete
+rectangle. Each backend independently requires exactly one matching rectangle
+in its current native topology, with no normalization or assumption that primary
+starts at `(0,0)`. Zero matches mean disappearance; two or more mean ambiguity.
+Both fall back to primary/default with automatic refresh. This second uniqueness
+check rejects a target that becomes duplicated after the engine's snapshot.
+SDL IDs, HMONITORs, DEVMODEs, device-name pointers, HWNDs, and other native
+handles remain private to backend implementation. Platform sources do not
+include Game policy; the Phase 4c source-boundary CTest remains enabled.
+
+No stateful display manager was introduced. With no override and automatic
+refresh, no new catalog query or target-remapping operation occurs. Primary
+window centering, automatic exclusive selection, and loading-window behavior
+retain their existing paths. An explicit primary refresh still uses primary.
+The loading splash is not moved to a secondary: the target takes effect at
+game video-mode application, without startup reordering.
+
+### Resolution and refresh compatibility
+
+`ResolutionList[128]` still comes from the primary/default compatibility
+projection, **even when presentation targets a secondary display**. The saved
+`OptRes` ordinal and the Windows Menu's resolution ordering must retain their
+existing interpretation. A session-only display choice changes presentation
+location, not the serialized list identity. Use `-res=WxH` for an explicit size.
+An unavailable exclusive size uses the selected backend/display's existing
+fallback; it does not rebuild the legacy list from that display's modes.
+
+Refresh eligibility remains engine policy: exact width and height, at least
+16 bpp, exact rational refresh **value**, and first eligible backend-order mode.
+Lookup uses the effective presentation display, including primary after an
+out-of-range or missing-bounds fallback. Ambiguity bypasses lookup and always
+uses automatic refresh. A primary-only timing is never borrowed for a secondary.
+Unsupported refresh passes automatic on the same target; there is no
+nearest/highest-rate selection. A disappeared or ambiguous target discards its
+selected mode before primary automatic fallback.
+
+Alt+Enter retains `RequestedDisplayIndex` and `PreferredRefresh`. Each entry
+resolves a new owned snapshot; each exclusive re-entry re-evaluates the eligible
+target-specific refresh. Secondary exclusive -> windowed -> exclusive therefore
+keeps the requested target when the topology remains unchanged.
+
+### SDL window and fullscreen mechanisms
+
+Explicit windowed presentation centers the existing decorated outer rectangle
+within target bounds while retaining the requested **client** size, including
+negative desktop coordinates. Borderless preserves the existing per-axis rule:
+a positive requested dimension that fits is retained; otherwise that dimension
+uses the target desktop dimension. The resulting window is centered there.
+Borderless is not redefined to always fill the monitor.
+
+For exclusive mode, bounds are remapped before leaving the previous fullscreen
+state, since the snapshot may describe that state's changed dimensions. After
+restoration, the backend refreshes the bounds using the resolved native ID.
+It moves the window while windowed, synchronizes that move, sets the native
+fullscreen mode, and enters fullscreen. This ordering was checked against the
+checksum-pinned SDL **3.2.28**, including
+[`SDL_video.c`](https://github.com/libsdl-org/SDL/blob/release-3.2.28/src/video/SDL_video.c)
+and [`SDL_x11window.c`](https://github.com/libsdl-org/SDL/blob/release-3.2.28/src/video/x11/SDL_x11window.c).
+The selected mode's display ID determines exclusive targeting; window position
+does not choose the user's target.
+
+Automatic lookup calls the target's `SDL_GetClosestFullscreenDisplayMode` with
+refresh **0**, then requires exact dimensions and the same native display ID.
+Explicit-mode remapping enumerates only that target's modes and matches the
+caller-selected dimensions, depth, and rational rate. A missing native timing
+uses automatic on the same display. An unavailable exact resolution or failed
+native application retains the desktop-popup fallback on the intended target.
+No merely close resolution is accepted.
+
+If bounds match zero or multiple native displays, `MapWindowDisplay` returns
+primary with both target and explicit mode cleared. The backend distinguishes
+"disappeared" from "matches multiple displays" in its warning,
+completes the old fullscreen transition, and centers on primary before automatic
+application. A target disappearing later in the operation gets one primary
+automatic attempt. It never substitutes an arbitrary secondary. This handles
+the discovery/application race; no ongoing hotplug or drag-to-monitor policy
+is added.
+
+### Native Win32 targeting and restoration
+
+The backend requires exactly one full `MONITORINFOEXA::rcMonitor` rectangle
+match and owns a copy of that device name internally. `MapDisplayTarget` returns
+no device for zero or multiple matches. The latter logs "matches multiple
+displays" rather than disappearance; both clear explicit refresh and use the
+established primary/default path. Neither matching secondary receives the selected
+mode. Previously changed devices are still restored before another application,
+including this fallback. Windowed placement retains
+`AdjustWindowRect` client-size calculation; borderless retains the same per-axis
+sizing rule. Both center within the selected rectangle, including negative
+origins, instead of using primary `SM_CXSCREEN`/`SM_CYSCREEN` dimensions.
+
+An explicit mapped exclusive target uses `ChangeDisplaySettingsExA` with that
+device name. No explicit target retains the original `ChangeDisplaySettingsA`
+default-device path. The 32-bpp then 16-bpp attempt order, exact integer-refresh
+conversion, and automatic retry after refresh rejection remain. Fractional
+rates are never rounded. Failure to apply a mode retains the existing popup
+failure path; it does not move to another available secondary.
+
+The backend records an owned device name only after a successful targeted mode
+change. Leaving exclusive and shutdown restore **that device** using null
+DEVMODE and flags zero, consistent with the
+[ChangeDisplaySettingsExA contract](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-changedisplaysettingsexa).
+It clears the record after successful restoration, retains it after failure for
+a shutdown retry, and clears a stale record if the device is no longer attached.
+A failed restore of an attached device stops another mode application rather
+than losing its restoration record. No native state is exposed or persisted.
+
+### Failure behavior and diagnostics
+
+| Situation | Effective behavior |
+| --- | --- |
+| No display override | Existing primary/default path. |
+| Unique valid explicit secondary | Presentation and refresh lookup use that entry. |
+| Malformed argument | Consumed; warning; prior request cleared; primary fallback. |
+| Out-of-range index | Warning; primary fallback; resolution unchanged. |
+| No primary metadata | Existing backend default fallback, unless an explicit unique usable entry was selected. |
+| Selected entry lacks usable bounds | Warning; primary fallback. |
+| Duplicate full bounds in engine snapshot or native remapping | Ambiguity warning; primary/default fallback; clear target and selected mode; automatic refresh even if primary supports the request. Never choose the first matching secondary. |
+| Target disappears before application | Warning; primary fallback; discard selected refresh and use automatic. |
+| Exact exclusive size unavailable | Existing desktop-popup fallback on target where feasible. |
+| Dimensions supported, requested refresh unavailable | Automatic refresh on target. |
+| Native mode application fails | Existing failure path; no arbitrary display substitution. |
+
+Explicit requests log the requested runtime index, effective primary/secondary
+catalog index, selected bounds, and any fallback reason. Normal launches do not
+gain full catalog dumps or additional display-selection logging.
+
+### Validation and dependency disposition — 18 September 2026
+
+Parser tests cover zero, one, large valid integers, overflow, malformed values,
+case-insensitive slash/dash forms, last-wins semantics, malformed-option
+isolation, and untouched unrelated arguments without physical monitor counts.
+Synthetic engine catalogs cover nonzero primary indices, missing primary/bounds,
+negative origins, owned results after catalog destruction, target-only refresh,
+low-color rejection, and a timing supported only by primary. The ambiguity
+correction adds two identical secondary rectangles with a distinct primary:
+selecting either secondary clears target and mode, even with the requested rate
+available on primary. Missing/invalid primary metadata keeps backend-default
+fallback. Duplicate primary bounds reject explicit targeting but leave the
+no-override path unchanged. Changing any rectangle component restores uniqueness,
+and the retained session request can succeed on a later snapshot.
+
+SDL helpers test full-rectangle matching, missing targets, target-scoped native
+mode mapping, mode disappearance without monitor substitution, primary fallback,
+and automatic refresh zero with exact size enforcement. Win32 pure helpers test
+rectangle matching, device-name ownership, successful/failed targeted restore
+bookkeeping, and the original default path. Hosted tests need no physical second
+monitor. The dependency regression additionally uses disposable virtual X11
+outputs in Linux CI.
+
+Both native-remapping regressions first select a unique negative-origin target
+through the production engine helper, then duplicate its bounds in synthetic
+native topology. SDL returns primary with target and mode cleared; Win32 returns
+no device. Swapping the matching secondaries' enumeration order cannot change
+the result. Existing exact-match, zero-match, different-origin/equal-size, and
+restoration tests remain; SDL also preserves normal primary refresh in a duplicate
+topology when no target was requested. These are production-helper tests, not
+physical monitor-count assumptions or physical hotplug acceptance.
+
+| Earlier follow-up validation at `a3bcb033` | Result |
+| --- | --- |
+| GCC Debug/Release, patched bundled SDL 3.2.28 | Both game builds; 302 GoogleTests plus boundary guard pass (13 CTest checks); opt-in X11 regression skipped in ordinary CTest. |
+| Clang, patched bundled SDL, `-Wall -Wextra` | Game build and the same 13 checks pass; opt-in regression skipped. |
+| GCC/Clang portable tests, `-Wall -Wextra -Werror`, ASan/UBSan/LSan | 49/49 each, leak detection enabled. |
+| SDL backend translation unit, GCC/Clang | `-Wall -Wextra -Werror` passes. |
+| Fully instrumented bundled SDL + engine | Build passes; full CTest has 12 passes, one known dummy-driver UBSan failure, and one opt-in skip. |
+| Virtual X11 full game matrix | 13 scenarios, normal exits, expected placement/refresh, Alt+Enter, and restored desktop modes. |
+| Sanitized secondary supported/unsupported refresh hunts | Both exit 0 after Alt+Enter out/back, with ASan/UBSan/LSan enabled. |
+
+Duplicate-bounds review correction: Linux GCC Debug/Release and Clang builds
+pass **308 GoogleTests** plus the boundary guard (13 CTest passes and the opt-in
+X11 skip). GCC/Clang portable strict-warning sanitizer tests pass **53/53** each;
+both compilers also accept the SDL backend with `-Wall -Wextra -Werror`.
+MSVC x64 under Wine passes **60/60** platform tests, including the Win32 ambiguity
+regression, plus the boundary guard. The fully instrumented bundled SDL/engine
+build still has the same one dummy-driver UBSan failure, 12 CTest passes, and one
+opt-in skip; its six synthetic SDL target-remapping tests pass independently with
+ASan/UBSan/LSan. The existing X11 mode-leak/restoration regression also passes
+with sanitizers: 20 fullscreen/windowed cycles on each virtual display, zero
+outstanding SDL allocations, and both desktop modes restored.
+These results do not claim a clean full sanitizer suite or
+physical Windows acceptance. Final-SHA hosted matrix results are recorded in the
+branch report. Correction logs are under `/tmp/carnivores-display-ambiguity/`.
+
+All golden serialization fixtures remain unchanged. `.sav` is **1,660 bytes**,
+`.sab` **7,176 bytes**, `OptRes` remains the same signed ordinal, and all **68
+keybinding bytes** remain unchanged in runtime profile checks. No extension
+block, format version, persistent display selector, Menu code, Menu UI, monitor
+dropdown, or refresh dropdown is added.
+
+Work paused when the separate SDL-only fullscreen leak was isolated. The user
+authorized its separate fix, then resumed Phase 4d. The reviewed dependency
+commit from `fix/sdl-x11-mode-leak` is included as a distinct cherry-pick, with
+the source version/checksum unchanged. See [SDL_X11_MODE_LEAK.md](SDL_X11_MODE_LEAK.md):
+32 bytes/four allocations after two fullscreen cycles became zero after 20
+cycles per virtual display. `CARNIVORES_SYSTEM_SDL3=ON` does not patch installed
+SDL and can still expose the unfixed dependency behavior.
+
+Two separately reproduced dependency issues remain documented, without
+suppression: the X11 initialization/teardown leak (50,016 bytes/912 allocations
+per observed cycle), and SDL 3.2.28's zero-mode dummy-driver null-source,
+zero-length memcpy UBSan error. The latter reproduces in unmodified SDL alone
+and prevents claiming an entirely clean fully instrumented CTest suite.
+No further lower-phase engine defect was discovered in this follow-up.
+Unrelated legacy warnings were neither fixed nor suppressed.
+
+### Physical acceptance limits and deferred work
+
+Earlier Phase 4d validation on Allosaurus's real three-display Hyprland/Xwayland
+session exercised primary placement, secondary windowed/borderless placement,
+oversize borderless fallback, and invalid/repeated arguments. All exposed origins
+were nonnegative; negative-origin placement remains synthetically tested only.
+Physical exclusive targeting is **not accepted** in that session: an independent
+SDL-only program also requested a secondary but presented on primary after a
+failed SDL synchronization. This is recorded as an SDL/compositor limitation.
+No direct-Wayland acceptance is claimed.
+
+The controlled native Linux Xorg dummy/Openbox setup exposes primary 1920x1080
+at `(0,0)` and secondary 1280x1024 at `(1920,0)`. Full hunts exercise secondary
+800x600 exclusive with automatic, supported **40000000/663168** rational refresh,
+and unsupported **999/1** falling to automatic on that secondary; unsupported
+777x555 uses its desktop popup. Alt+Enter retains the target and refresh request.
+Injected stale-mode and stale-bounds probes exercise same-target automatic and
+primary-automatic fallback respectively, with desktop restoration. These are
+controlled race probes, not physical cable hotplug acceptance.
+
+Hosted Windows CI covers native GL and SDL GL x86/x64 Debug/Release, x86 SOFT,
+and Menu; Linux CI covers Debug/Release and the virtual mode-leak/restoration
+test. The final branch report records the exact tip and hosted run. Hosted CI
+does **not** establish physical Windows multi-monitor acceptance. Still check:
+
+- Native Win32 and SDL Windows windowed/borderless on secondary monitors,
+  including negative coordinates and a primary not at catalog index zero.
+- Supported size/refresh, unsupported refresh remaining on target, unavailable
+  size using target popup, and native application rejection.
+- Alt+Enter, focus loss/re-entry, normal shutdown, and independent restoration
+  of a changed secondary. Native fractional refresh must never be rounded.
+- Target disappearance between selection/application and named-device restore
+  failure/retry where the physical setup permits them.
+
+Persistent identity/fallback design, monitor-selection UI, remembered monitor
+or position, hotplug handling, automatic window-follow-monitor policy, DPI,
+direct-Wayland policy, always-full-monitor borderless, VRR, vsync, frame limiting,
+and the other excluded subsystems remain deferred. Runtime evidence stays under
+`/tmp/carnivores-display-targeting/` and `/tmp/carnivores-display-targeting-followup/`;
+no proprietary assets or copied profiles are committed.

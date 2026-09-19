@@ -364,7 +364,7 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     FetchContent_MakeAvailable(googletest)
 
     add_executable(Carnivores2PlatformTests tests/test_platform_policies.cpp tests/test_display_catalog.cpp
-        tests/test_refresh_policy.cpp)
+        tests/test_refresh_policy.cpp tests/test_display_targeting.cpp)
     target_link_libraries(Carnivores2PlatformTests PRIVATE gtest_main)
     if(WIN32)
         target_sources(Carnivores2PlatformTests PRIVATE tests/test_platform_win32.cpp Hunt/Platform/PlatformWin32.cpp)
@@ -383,6 +383,15 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
             Hunt/Platform/PlatformSDL.cpp ${SDL_COMPAT_SRC})
         target_link_libraries(Carnivores2SDLTests PRIVATE gtest_main SDL3::SDL3 $<$<BOOL:${WIN32}>:user32>)
         add_test(NAME Carnivores2Tests.SDL COMMAND Carnivores2SDLTests)
+        if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+            # This changes real display modes. Opt in only on a disposable X11
+            # server; ordinary asset-free runs skip it (see the dependency note).
+            add_executable(Carnivores2SDLX11ModeLeakTest tests/sdl_x11_fullscreen_leak.cpp)
+            target_link_libraries(Carnivores2SDLX11ModeLeakTest PRIVATE SDL3::SDL3)
+            add_test(NAME Carnivores2Tests.SDLX11ModeLeak COMMAND Carnivores2SDLX11ModeLeakTest)
+            set_tests_properties(Carnivores2Tests.SDLX11ModeLeak PROPERTIES
+                SKIP_RETURN_CODE 77 TIMEOUT 120)
+        endif()
         if(TARGET SDL3::SDL3-shared)
             add_custom_command(TARGET Carnivores2SDLTests POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
