@@ -1,5 +1,7 @@
 # Linux display behavior and direct Wayland gameplay (Phase 4g)
 
+Current Linux opt-in serial identity support is documented in [Phase 4h](LINUX_DISPLAY_IDENTITY.md). Earlier unsupported-identity descriptions below are historical.
+
 The game supports an interactive direct Wayland route on compositors offering
 relative pointer and pointer constraints, alongside the existing SDL X11 route.
 Native Wayland is selected with `SDL_VIDEODRIVER=wayland`; `SDL_VIDEODRIVER=x11`

@@ -210,6 +210,7 @@ void ShutdownApplication()
     SetMouseCapture(false);
     if (arrowCursor) { SDL_DestroyCursor(arrowCursor); arrowCursor = nullptr; }
     if (gameWindow) { SDL_DestroyWindow(gameWindow); gameWindow = nullptr; }
+    SDLCompatibility::ShutdownMonitorDiscovery();
     SDL_Quit();
     LOG_INFO("SDL application shutdown completed");
 }
@@ -256,7 +257,7 @@ DisplayCatalog QueryDisplayCatalog()
             catalog.displays.push_back(ReadDisplay(id));
         }
     }
-    SDLCompatibility::DiscoverMonitorIdentities(catalog);
+    SDLCompatibility::DiscoverMonitorIdentities(catalog, displays.get(), count);
     return catalog;
 }
 

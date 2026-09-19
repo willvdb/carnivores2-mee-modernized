@@ -1,6 +1,6 @@
 # Phase 3c: native x86_64 Linux OpenGL bring-up
 
-**Current display support:** Phase 4g adds interactive direct Wayland input,
+**Current display support:** [Phase 4h](LINUX_DISPLAY_IDENTITY.md) adds opt-in serial-backed monitor preferences on supported Linux backends. Phase 4g adds interactive direct Wayland input,
 confirmed Linux fullscreen outcomes and compositor-aware fallback. See
 [Linux display behavior](LINUX_DISPLAY_BEHAVIOR.md) for launch choices and the
 current acceptance matrix. The Phase 3c validation record below is historical.

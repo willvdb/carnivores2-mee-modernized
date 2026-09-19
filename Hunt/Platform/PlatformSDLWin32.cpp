@@ -15,11 +15,12 @@ HWND GameWindow()
 }
 
 namespace Platform::SDLCompatibility {
-void DiscoverMonitorIdentities(DisplayCatalog& catalog)
+void DiscoverMonitorIdentities(DisplayCatalog& catalog, const SDL_DisplayID*, int)
 {
     const auto* driver = SDL_GetCurrentVideoDriver();
     if (driver && SDL_strcmp(driver, "windows") == 0) Win32Details::DiscoverMonitorIdentities(catalog);
 }
+void ShutdownMonitorDiscovery() {}
 void SetProcessActive(bool active)
 {
     // SDL has thread priority, not the legacy process-wide priority operation.

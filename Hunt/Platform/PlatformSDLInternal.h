@@ -61,8 +61,9 @@ bool FindAutomaticDisplayMode(SDL_DisplayID display, Size size, SDL_DisplayMode&
 
 // Private backend bridge for genuinely deferred Windows compatibility.
 namespace Platform::SDLCompatibility {
+void ShutdownMonitorDiscovery();
 void SetProcessActive(bool active);
 std::uint8_t LayoutKey(const SDL_KeyboardEvent& event, std::uint8_t fallback);
 void OrderDisplayModes(DisplayInfo& info);
-void DiscoverMonitorIdentities(DisplayCatalog& catalog);
+void DiscoverMonitorIdentities(DisplayCatalog& catalog, const SDL_DisplayID* ids, int count);
 }

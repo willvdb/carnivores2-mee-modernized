@@ -251,8 +251,10 @@ protected:
 
 TEST_F(SDLDisplayCatalog, NonWindowsDriverDoesNotBorrowHostMonitorIdentity)
 {
-    if (SDL_strcmp(SDL_GetCurrentVideoDriver(), "windows") == 0)
-        GTEST_SKIP() << "Actual Windows discovery is covered separately";
+    if (SDL_strcmp(SDL_GetCurrentVideoDriver(), "windows") == 0 ||
+        SDL_strcmp(SDL_GetCurrentVideoDriver(), "x11") == 0 ||
+        SDL_strcmp(SDL_GetCurrentVideoDriver(), "wayland") == 0)
+        GTEST_SKIP() << "Native discovery is covered separately";
     const auto catalog = Platform::QueryDisplayCatalog();
     ASSERT_FALSE(catalog.displays.empty());
     for (const auto& display : catalog.displays) EXPECT_FALSE(display.identity);

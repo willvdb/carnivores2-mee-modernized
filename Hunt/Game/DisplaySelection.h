@@ -66,7 +66,9 @@ inline DisplaySelection SelectMonitor(const Platform::DisplayCatalog& catalog,
     if (preference.kind == MonitorPreferenceKind::SessionIndex) return SelectDisplay(catalog, preference.index, size, refresh);
     auto fallback = SelectDisplay(catalog, std::nullopt, size);
     fallback.fallback = DisplayFallback::MissingIdentity;
-    if (preference.identity.version != 1 || preference.identity.domain != "win-monitor-interface") {
+    if (preference.identity.version != 1 || (preference.identity.domain != "win-monitor-interface" &&
+        preference.identity.domain != "linux-x11-edid-serial" &&
+        preference.identity.domain != "linux-wayland-wlr-serial")) {
         fallback.fallback = DisplayFallback::UnsupportedIdentity;
         return fallback;
     }

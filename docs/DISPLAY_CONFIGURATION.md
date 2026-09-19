@@ -1,5 +1,7 @@
 # Display configuration, discovery and selection
 
+Current Linux opt-in serial identity support is documented in [Phase 4h](LINUX_DISPLAY_IDENTITY.md). Earlier unsupported-identity descriptions below are historical.
+
 The sections below record each milestone's boundary. Current opt-in persistence
 and consolidated engine state are described in [Phase 4e](#phase-4e-opt-in-registered-display-identity)
 and [Phase 4f](#phase-4f-one-engine-configuration-with-legacy-projections).

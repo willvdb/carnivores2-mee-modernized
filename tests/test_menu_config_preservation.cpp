@@ -25,6 +25,8 @@ TEST(MenuConfigPreservation, ModernIdentityRefreshUnknownKeysAndCommentsSurviveR
     const std::string retained =
         "# user display preference\n"
         "display_identity v1:win-monitor-interface:00610062 # registered path\n"
+        "display_identity v1:linux-x11-edid-serial:10ac3412012a5600000000 # native EDID\n"
+        "display_identity v1:linux-wayland-wlr-serial:00014100014200025332 # compositor metadata\n"
         "refresh_rate 60000/1001 # exact\n"
         "future_key preserve me\n"
         "display_identity v2:future-domain:abcd # unknown version remains\n";

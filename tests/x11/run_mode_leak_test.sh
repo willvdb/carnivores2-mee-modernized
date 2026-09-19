@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Run only against a new, disposable Xorg dummy server; never use the host DISPLAY.
 set -euo pipefail
+identity_binary=${2:-}
+game_binary=${3:-}
+if [[ -n "$game_binary" ]]; then game_binary=$(realpath "$game_binary"); fi
 test_binary=$(realpath "${1:?Usage: $0 /path/to/Carnivores2SDLX11ModeLeakTest}")
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 scratch=$(mktemp -d)
@@ -54,6 +57,17 @@ for ((i=0; i<100; ++i)); do
 done
 [[ "$topology" == *"DUMMY1 connected 1280x1024+1920+0"* ]]
 xrandr --listmonitors
+if [[ -n "$identity_binary" ]]; then
+    CARNIVORES_TEST_X11_IDENTITY=1 timeout 30 "$identity_binary"
+fi
+if [[ -n "$game_binary" ]]; then
+    mkdir "$scratch/list"
+    (cd "$scratch/list" && "$game_binary" -list-displays > listing.log)
+    [[ $(grep -c '^  display_identity v1:linux-x11-edid-serial:' "$scratch/list/listing.log") == 2 ]]
+    [[ ! -e "$scratch/list/config.cfg" ]]
+    [[ ! -e "$scratch/list/trophy00.sav" && ! -e "$scratch/list/trophy00.sab" ]]
+    printf 'Asset-free display listing produced two copyable tokens without config/profile writes\n'
+fi
 timeout 60 "$test_binary" 0 20
 timeout 60 "$test_binary" 1 20
 # Verify the server's state too, independently of SDL's cached desktop mode.

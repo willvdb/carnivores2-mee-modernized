@@ -1699,6 +1699,7 @@ int RunGame()
             "x" + std::to_string(display.bounds->size.height);
         line += display.identity ? "\n  display_identity " + GameDisplay::IdentityToken(*display.identity)
                                  : "\n  persistent identity unavailable (session selection only)";
+        if (!display.identity && !display.identityStatus.empty()) line += ": " + display.identityStatus;
         line += "\n";
         PrintLog(line.c_str());
         std::fputs(line.c_str(), stdout);

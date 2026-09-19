@@ -172,6 +172,8 @@ if(CARNIVORES_PLATFORM STREQUAL "SDL3")
         set(SDL_COMPAT_SRC Hunt/Platform/PlatformSDLWin32.cpp)
     else()
         set(SDL_COMPAT_SRC Hunt/Platform/PlatformSDLLinux.cpp)
+        include(cmake/LinuxDisplayIdentity.cmake)
+        set(SDL_IDENTITY_LIBRARY CarnivoresLinuxDisplayIdentity)
     endif()
     set(PLATFORM_SRC Hunt/Platform/PlatformSDL.cpp ${SDL_COMPAT_SRC}
         Hunt/Platform/LegacyKeyboardSDL.cpp Hunt/Platform/EntrySDL.cpp)
@@ -332,7 +334,7 @@ if(RENDERER)
 
     if(CARNIVORES_PLATFORM STREQUAL "SDL3")
         target_compile_definitions(Carnivores1 PRIVATE CARNIVORES_SDL3)
-        target_link_libraries(Carnivores1 PRIVATE SDL3::SDL3)
+        target_link_libraries(Carnivores1 PRIVATE SDL3::SDL3 ${SDL_IDENTITY_LIBRARY})
         if(TARGET SDL3::SDL3-shared)
             add_custom_command(TARGET Carnivores1 POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -370,7 +372,7 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     add_test(NAME Carnivores2Tests.MenuConfig COMMAND Carnivores2MenuConfigTests)
 
     add_executable(Carnivores2PlatformTests tests/test_platform_policies.cpp tests/test_display_catalog.cpp
-        tests/test_refresh_policy.cpp tests/test_display_targeting.cpp tests/test_display_persistence.cpp tests/test_display_configuration.cpp)
+        tests/test_refresh_policy.cpp tests/test_display_targeting.cpp tests/test_display_persistence.cpp tests/test_display_configuration.cpp tests/test_display_identity_linux.cpp)
     target_link_libraries(Carnivores2PlatformTests PRIVATE gtest_main)
     if(WIN32)
         target_sources(Carnivores2PlatformTests PRIVATE tests/test_platform_win32.cpp Hunt/Platform/PlatformWin32.cpp)
@@ -387,9 +389,23 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
             $<$<NOT:$<BOOL:${WIN32}>>:tests/test_platform_sdl_linux.cpp>
             Hunt/Platform/LegacyKeyboardSDL.cpp
             Hunt/Platform/PlatformSDL.cpp ${SDL_COMPAT_SRC})
-        target_link_libraries(Carnivores2SDLTests PRIVATE gtest_main SDL3::SDL3 $<$<BOOL:${WIN32}>:user32>)
+        target_link_libraries(Carnivores2SDLTests PRIVATE gtest_main SDL3::SDL3 ${SDL_IDENTITY_LIBRARY} $<$<BOOL:${WIN32}>:user32>)
         add_test(NAME Carnivores2Tests.SDL COMMAND Carnivores2SDLTests)
         if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+            add_executable(Carnivores2WaylandIdentityTests tests/test_display_identity_wayland.cpp
+                "${CMAKE_CURRENT_BINARY_DIR}/wlr-output-management-server.h"
+                "${CMAKE_CURRENT_BINARY_DIR}/xdg-output-server.h")
+            target_include_directories(Carnivores2WaylandIdentityTests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+            get_target_property(identity_definitions CarnivoresLinuxDisplayIdentity COMPILE_DEFINITIONS)
+            target_compile_definitions(Carnivores2WaylandIdentityTests PRIVATE ${identity_definitions})
+            target_link_libraries(Carnivores2WaylandIdentityTests PRIVATE gtest_main CarnivoresLinuxDisplayIdentity PkgConfig::WAYLAND_SERVER)
+            add_test(NAME Carnivores2Tests.WaylandIdentity COMMAND Carnivores2WaylandIdentityTests)
+            set_tests_properties(Carnivores2Tests.WaylandIdentity PROPERTIES TIMEOUT 10)
+            add_executable(Carnivores2SDLX11IdentityTest tests/sdl_x11_identity.cpp
+                Hunt/Platform/LegacyKeyboardSDL.cpp Hunt/Platform/PlatformSDL.cpp ${SDL_COMPAT_SRC})
+            target_link_libraries(Carnivores2SDLX11IdentityTest PRIVATE SDL3::SDL3 ${SDL_IDENTITY_LIBRARY})
+            add_test(NAME Carnivores2Tests.X11Identity COMMAND Carnivores2SDLX11IdentityTest)
+            set_tests_properties(Carnivores2Tests.X11Identity PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 30)
             # This changes real display modes. Opt in only on a disposable X11
             # server; ordinary asset-free runs skip it (see the dependency note).
             add_executable(Carnivores2SDLX11ModeLeakTest tests/sdl_x11_fullscreen_leak.cpp)
@@ -399,7 +415,7 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
                 SKIP_RETURN_CODE 77 TIMEOUT 120)
             add_executable(Carnivores2SDLWaylandPresentationTest tests/sdl_wayland_presentation.cpp
                 Hunt/Platform/LegacyKeyboardSDL.cpp Hunt/Platform/PlatformSDL.cpp ${SDL_COMPAT_SRC})
-            target_link_libraries(Carnivores2SDLWaylandPresentationTest PRIVATE SDL3::SDL3)
+            target_link_libraries(Carnivores2SDLWaylandPresentationTest PRIVATE SDL3::SDL3 ${SDL_IDENTITY_LIBRARY})
             add_test(NAME Carnivores2Tests.SDLWaylandPresentation COMMAND Carnivores2SDLWaylandPresentationTest)
             set_tests_properties(Carnivores2Tests.SDLWaylandPresentation PROPERTIES
                 SKIP_RETURN_CODE 77 TIMEOUT 60)

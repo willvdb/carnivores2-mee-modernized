@@ -1,9 +1,17 @@
 #include "PlatformSDLInternal.h"
 #include "LegacyKeyboardSDL.h"
+#include "DisplayIdentityLinuxNative.h"
 
 namespace Platform::SDLCompatibility {
-// Pinned SDL exposes no defensible persistent Linux output identity.
-void DiscoverMonitorIdentities(DisplayCatalog&) {}
+void DiscoverMonitorIdentities(DisplayCatalog& catalog, const SDL_DisplayID* ids, int count)
+{
+    for (auto& display : catalog.displays) display.identityStatus = "backend has no supported native identity contract";
+    const char* driver = SDL_GetCurrentVideoDriver();
+    if (!driver || !ids || count < 0 || static_cast<std::size_t>(count) != catalog.displays.size()) return;
+    if (SDL_strcmp(driver, "x11") == 0) LinuxIdentity::DiscoverX11(catalog, ids, count);
+    if (SDL_strcmp(driver, "wayland") == 0) LinuxIdentity::DiscoverWayland(catalog, ids, count);
+}
+void ShutdownMonitorDiscovery() { LinuxIdentity::ShutdownWaylandDiscovery(); }
 void SetProcessActive(bool) {} // No privileged process priority changes on Linux.
 void OrderDisplayModes(DisplayInfo&) {} // Linux has no Win32 driver-order ordinal.
 std::uint8_t LayoutKey(const SDL_KeyboardEvent& event, std::uint8_t fallback)

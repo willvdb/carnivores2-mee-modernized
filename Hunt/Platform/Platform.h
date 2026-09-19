@@ -58,7 +58,8 @@ constexpr bool EqualDisplayBounds(DisplayBounds a, DisplayBounds b)
     return a.origin.x == b.origin.x && a.origin.y == b.origin.y &&
         a.size.width == b.size.width && a.size.height == b.size.height;
 }
-// An owned OS registration identity, not a physical monitor serial number.
+// An owned domain-specific identity: Windows OS registration or validated Linux
+// serial metadata. Each domain documents its own stability/uniqueness limits.
 // Version/domain are explicit; value is an opaque lowercase hex encoding.
 struct DisplayIdentity {
     std::uint32_t version = 1;
@@ -75,6 +76,7 @@ struct Display {
     std::optional<DisplayMode> currentMode;
     std::vector<DisplayMode> modes; // Raw backend order, all refresh/depth variants.
     std::optional<DisplayIdentity> identity; // Missing/ambiguous/unsupported stays absent.
+    std::string identityStatus; // Owned discovery capability/rejection reason, when known.
 };
 // An index into this snapshot's displays vector, NOT a persistent identity or
 // a promise of stable ordering between queries. Never serialize it.
