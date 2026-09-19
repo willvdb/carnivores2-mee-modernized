@@ -4,6 +4,7 @@
 
 #include "Hunt.h"
 #include "Platform/System.h"
+#include "Session/Session.h"
 #include "Game/ResolutionSelection.h"
 #include "Game/RefreshPreference.h"
 #include "Game/DisplayPreference.h"
@@ -41,9 +42,10 @@ void ProcessCommandLine()
   bool hasRequestedResolution = false;
   bool hasRequestedMode = false;
 
-  for (const auto& argument : Platform::Arguments())
+  const auto& arguments = Platform::Arguments();
+  for (std::size_t i = EngineSession::Active() ? 1 : 0; i < arguments.size(); ++i)
   {
-    const char* s = argument.c_str();
+    const char* s = arguments[i].c_str();
     const auto displayArgument = GameDisplay::ApplyMonitorArgument(s, DisplayConfiguration.monitor);
     if (displayArgument != GameDisplay::DisplayArgument::Unrelated) {
       if (displayArgument == GameDisplay::DisplayArgument::Invalid) {

@@ -366,6 +366,29 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(FETCHCONTENT_QUIET OFF)
     FetchContent_MakeAvailable(googletest)
 
+    # Actual startup-adjacent production code, with only graphics/audio doubled.
+    add_executable(Carnivores2SessionTests tests/test_engine_session.cpp tests/session_production_source.cpp
+        Hunt/Game/Trophy.cpp Hunt/Game/CommandLine.cpp Hunt/Loaders/Resources.cpp
+        Hunt/Core/StateDefs.cpp Hunt/Debug/Log.cpp Hunt/Renderer/GLPerf.cpp deps/glad/glad.c)
+    target_include_directories(Carnivores2SessionTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Hunt ${CMAKE_CURRENT_SOURCE_DIR}/deps)
+    target_compile_definitions(Carnivores2SessionTests PRIVATE _gl GL_PERF_HOOKS)
+    target_link_libraries(Carnivores2SessionTests PRIVATE gtest_main CarnivoresPlatformMemory)
+    if(MSVC)
+        target_compile_options(Carnivores2SessionTests PRIVATE /Gy)
+        target_link_options(Carnivores2SessionTests PRIVATE /OPT:REF /INCREMENTAL:NO)
+        target_link_libraries(Carnivores2SessionTests PRIVATE winmm)
+    else()
+        target_compile_options(Carnivores2SessionTests PRIVATE -ffunction-sections -fdata-sections)
+        target_link_options(Carnivores2SessionTests PRIVATE -Wl,--gc-sections)
+    endif()
+    add_test(NAME Carnivores2Tests.Session COMMAND Carnivores2SessionTests)
+    if(TARGET Carnivores1)
+        find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
+        add_test(NAME Carnivores2Tests.SessionStartup COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_session_startup.py" $<TARGET_FILE:Carnivores1>)
+    endif()
+
+
     include(tests/extract_menu_config.cmake)
     add_executable(Carnivores2MenuConfigTests tests/test_menu_config_preservation.cpp)
     target_include_directories(Carnivores2MenuConfigTests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")

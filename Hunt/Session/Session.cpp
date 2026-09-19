@@ -44,6 +44,12 @@ void Components(const fs::path& path) {
     Require(!path.empty(), "empty session path");
     for (const auto& part : path.relative_path()) {
         const auto text = part.string();
+#ifdef _WIN32
+        const auto device = Fold(text.substr(0, text.find('.')));
+        Require(device != "con" && device != "prn" && device != "aux" && device != "nul" &&
+                !(device.size() == 4 && (device.substr(0,3) == "com" || device.substr(0,3) == "lpt") &&
+                  device[3] >= '0' && device[3] <= '9'), "Windows device path rejected");
+#endif
         Require(!text.empty() && text != "." && text != ".." &&
                 text.find(':') == std::string::npos && text.back() != '.' && text.back() != ' ',
                 "unsafe session path component");
@@ -127,7 +133,9 @@ Startup Initialize(const std::vector<std::string>& arguments, const std::string&
         for (std::size_t i = 0; i < arguments.size(); ++i) {
             const auto& arg = arguments[i];
             const auto lower = Fold(arg);
-            if (i == 0 || lower.find("session-") == std::string::npos) { legacy.push_back(arg); continue; }
+            const auto prefix = lower.find_first_not_of("-/");
+            const bool reserved = prefix != 0 && prefix != std::string::npos && lower.compare(prefix, 7, "session") == 0;
+            if (i == 0 || !reserved) { legacy.push_back(arg); continue; }
             active = true; // malformed attempted session launches fail closed too
             const auto equal = arg.find('=');
             const auto key = arg.substr(0, equal);
@@ -183,6 +191,9 @@ Startup Initialize(const std::vector<std::string>& arguments, const std::string&
             const auto size = room ? LegacyProfile::RoomSize : LegacyProfile::SaveSize;
             const auto original = Bytes(source / name, size);
             Require(Profile(original.data(), original.size(), room), "invalid session profile or registration");
+            Require(!fs::equivalent(source / name, baseline / name) &&
+                    !fs::equivalent(source / name, root / "state" / name) &&
+                    !fs::equivalent(baseline / name, root / "state" / name), "aliased session profile rejected");
             Require(Bytes(baseline / name, size) == original && Bytes(root / "state" / name, size) == original,
                     "source, baseline and session state differ");
         }
