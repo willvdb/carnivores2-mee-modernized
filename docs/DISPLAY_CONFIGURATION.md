@@ -1139,3 +1139,10 @@ The checkpoint records exact SHA/CI evidence and limitations. Physical Windows
 and Hyprland/Xwayland exclusive acceptance remain outstanding. The existing
 SDL dummy-driver zero-length memcpy UBSan failure and independent real-X11
 initialization/teardown leak remain unsuppressed dependency limitations.
+
+## Phase 4g: Linux behavior and direct Wayland
+
+[Linux display behavior](LINUX_DISPLAY_BEHAVIOR.md) documents settled-state
+confirmation, output-aware fallback, Wayland relative mouse-look and the tested
+virtual/nested acceptance matrix. Existing selection/persistence/configuration
+contracts above remain; physical/compositor limits are explicitly retained.

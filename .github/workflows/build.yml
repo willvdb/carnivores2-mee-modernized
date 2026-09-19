@@ -54,7 +54,7 @@ jobs:
         sudo apt-get install -y ninja-build pkg-config libfreetype6-dev libfontconfig1-dev fonts-liberation \
           libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev \
           libwayland-dev libxkbcommon-dev libegl1-mesa-dev libgl1-mesa-dev libdecor-0-dev \
-          xserver-xorg-video-dummy x11-xserver-utils x11-utils openbox
+          xserver-xorg-video-dummy x11-xserver-utils x11-utils openbox weston
 
     # Build the real GL executable against the same pinned SDL as Windows.
     # Synthetic assets cover the loaders; no proprietary HUNTDAT is downloaded.
@@ -69,3 +69,6 @@ jobs:
 
     - name: SDL X11 fullscreen allocation and desktop restoration regression
       run: bash tests/x11/run_mode_leak_test.sh build/${{ matrix.preset }}/Carnivores2SDLX11ModeLeakTest
+    - name: Wayland production presentation regression
+      if: runner.os == 'Linux'
+      run: bash tests/wayland/run_presentation_test.sh build/${{ matrix.preset }}/Carnivores2SDLWaylandPresentationTest build/${{ matrix.preset }}/Carnivores2SDLWaylandDisconnectTest

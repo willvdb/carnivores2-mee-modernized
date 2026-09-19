@@ -14,6 +14,27 @@ MouseDelta ReadWaylandMouseLook(bool captured, bool focused, MouseStateQuery que
     return captured && focused ? delta : MouseDelta{};
 }
 
+FullscreenResult EnterFullscreen(SDL_Window* window, const SDL_DisplayMode& mode, bool emulated,
+                                 const FullscreenAPI& api)
+{
+    FullscreenResult result;
+    result.requested = api.setMode(window, &mode) && api.setFullscreen(window, true);
+    if (result.requested) result.synchronized = api.sync(window);
+    result.fullscreen = (api.flags(window) & SDL_WINDOW_FULLSCREEN) != 0;
+    result.display = api.display(window);
+    const bool pixelsValid = api.pixels(window, &result.pixels.width, &result.pixels.height);
+    if (const auto* current = api.currentMode(result.display)) result.currentMode = CopyDisplayMode(*current);
+    result.confirmed = result.requested && result.synchronized && result.fullscreen && pixelsValid &&
+        result.display == mode.displayID && result.pixels.width == mode.w && result.pixels.height == mode.h;
+    if (!emulated) {
+        const auto expected = CopyDisplayMode(mode);
+        result.confirmed = result.confirmed && result.currentMode &&
+            result.currentMode->size.width == expected.size.width && result.currentMode->size.height == expected.size.height &&
+            (!HasRefresh(expected.refresh) || EqualRefresh(result.currentMode->refresh, expected.refresh));
+    }
+    return result;
+}
+
 WindowDisplay MapWindowDisplay(const std::vector<NativeDisplay>& displays, SDL_DisplayID primary,
                                std::optional<DisplayTarget> target, std::optional<DisplayMode> mode)
 {
@@ -126,6 +147,7 @@ void CenterWindow(Platform::Size size, std::optional<SDL_Rect> targetBounds = st
     int top=0, left=0, bottom=0, right=0;
     SDL_GetWindowBordersSize(gameWindow, &top, &left, &bottom, &right);
     Check(SDL_SetWindowSize(gameWindow, size.width, size.height), "SDL_SetWindowSize");
+    if (wayland) return; // Normal Wayland toplevel placement belongs to the compositor.
     Check(SDL_SetWindowPosition(gameWindow,
         bounds.x + (bounds.w - size.width - left - right) / 2 + left,
         bounds.y + (bounds.h - size.height - top - bottom) / 2 + top), "SDL_SetWindowPosition");
@@ -352,7 +374,12 @@ void HideArrowCursor()
 void ShowCursorOnExit() { Check(SDL_ShowCursor(), "SDL_ShowCursor"); }
 void RestoreDesktopMode()
 {
-    if (gameWindow) Check(SDL_SetWindowFullscreen(gameWindow, false), "SDL_SetWindowFullscreen(false)");
+    if (gameWindow) {
+        Check(SDL_SetWindowFullscreen(gameWindow, false), "SDL_SetWindowFullscreen(false)");
+#ifndef _WIN32
+        Check(SDL_SyncWindow(gameWindow), "SDL desktop restoration sync");
+#endif
+    }
 }
 void ShowLoadingWindow(Size size)
 {
@@ -394,7 +421,11 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
     std::optional<SDL_Rect> targetBounds;
     // A lost or ambiguous target also needs to finish leaving the old display
     // before primary fallback. The normal no-override path is unchanged.
+#ifdef _WIN32
     if (target) Check(SDL_SyncWindow(gameWindow), "SDL leave targeted fullscreen sync");
+#else
+    Check(SDL_SyncWindow(gameWindow), "SDL leave fullscreen sync");
+#endif
     if (mapped.target) {
         SDL_Rect bounds{};
         if (SDL_GetDisplayBounds(mapped.id, &bounds)) {
@@ -414,10 +445,23 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
         // a desktop-sized popup when the exact mode cannot be applied.
         SDL_DisplayMode closest{};
         const auto display = target ? mapped.id : SDL_GetPrimaryDisplay();
-        const auto applyAutomatic = [&](SDL_DisplayID id) {
-            return SDLDetails::FindAutomaticDisplayMode(id, size, closest) &&
-                SDL_SetWindowFullscreenMode(gameWindow, &closest) && SDL_SetWindowFullscreen(gameWindow, true);
+        const auto applyMode = [&](const SDL_DisplayMode& nativeMode) {
+#ifdef _WIN32
+            return SDL_SetWindowFullscreenMode(gameWindow, &nativeMode) && SDL_SetWindowFullscreen(gameWindow, true);
+#else
+            const auto actual = SDLDetails::EnterFullscreen(gameWindow, nativeMode, wayland);
+            if (!actual.confirmed)
+                LOG_WARN("SDL fullscreen unconfirmed: requested display=%u %dx%d; accepted=%d sync=%d actual fullscreen=%d display=%u pixels=%dx%d (%s)",
+                         nativeMode.displayID, nativeMode.w, nativeMode.h, actual.requested, actual.synchronized,
+                         actual.fullscreen, actual.display, actual.pixels.width, actual.pixels.height, SDL_GetError());
+            return actual.confirmed;
+#endif
         };
+        const auto applyAutomatic = [&](SDL_DisplayID id) {
+            return SDLDetails::FindAutomaticDisplayMode(id, size, closest) && applyMode(closest);
+        };
+        if (wayland)
+            LOG_INFO("Wayland fullscreen uses compositor scaling; physical output mode and refresh remain compositor-controlled");
         if (targetBounds) {
             // SDL 3.2.28: position while windowed, then set the native mode (its
             // displayID is authoritative), then enter fullscreen. Synchronize
@@ -439,11 +483,10 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
                 // SDL 3.2.28 copies the mode in SetWindowFullscreenMode. Keep
                 // the single enumeration allocation alive through application;
                 // no SDL mode pointer is retained by the engine.
-                applied = SDL_SetWindowFullscreenMode(gameWindow, selected) &&
-                    SDL_SetWindowFullscreen(gameWindow, true);
+                applied = applyMode(*selected);
                 if (applied)
-                    LOG_INFO("SDL exclusive %dx%d refresh %u/%u applied", size.width, size.height,
-                             refresh.numerator, refresh.denominator);
+                    LOG_INFO("SDL %s %dx%d reported refresh %u/%u confirmed", wayland ? "emulated fullscreen" : "exclusive",
+                             size.width, size.height, refresh.numerator, refresh.denominator);
                 else
                     LOG_WARN("SDL exclusive refresh %u/%u application failed: %s",
                              refresh.numerator, refresh.denominator, SDL_GetError());
@@ -470,18 +513,62 @@ void ConfigureGameWindow(WindowMode mode, Size size, Point videoCenter,
             }
         }
         if (!applied) {
+#ifdef _WIN32
             LOG_WARN("SDL exclusive %dx%d unavailable; using desktop popup: %s", size.width, size.height, SDL_GetError());
             SDL_SetWindowFullscreen(gameWindow, false);
             const auto bounds = targetBounds ? *targetBounds : DesktopBounds();
             CenterWindow({bounds.w, bounds.h}, targetBounds);
+#else
+            LOG_WARN("SDL exclusive %dx%d unavailable or unconfirmed; restoring before fallback: %s", size.width, size.height, SDL_GetError());
+            Check(SDL_SetWindowFullscreen(gameWindow, false), "SDL fallback leave fullscreen");
+            Check(SDL_SyncWindow(gameWindow), "SDL fallback restoration sync");
+            if (wayland) {
+                // A popup cannot target a Wayland output. Request the target's
+                // desktop-size fullscreen once; no physical mode/refresh change.
+                const auto* desktop = SDL_GetDesktopDisplayMode(target ? mapped.id : SDL_GetPrimaryDisplay());
+                applied = desktop && applyMode(*desktop);
+                if (applied) LOG_INFO("Wayland fallback: target desktop-size fullscreen confirmed");
+                else {
+                    LOG_WARN("Wayland fullscreen fallback unconfirmed; using compositor-placed window");
+                    Check(SDL_SetWindowFullscreen(gameWindow, false), "SDL fallback windowed");
+                    Check(SDL_SyncWindow(gameWindow), "SDL fallback windowed sync");
+                    Check(SDL_SetWindowBordered(gameWindow, true), "SDL fallback window border");
+                    CenterWindow(size);
+                }
+            } else {
+                LOG_INFO("SDL fallback: desktop popup (placement subject to window manager)");
+                const auto bounds = targetBounds ? *targetBounds : DesktopBounds();
+                CenterWindow({bounds.w, bounds.h}, targetBounds);
+            }
+#endif
         }
     } else if (mode == WindowMode::Borderless) {
         const auto bounds = targetBounds ? *targetBounds : DesktopBounds();
         CenterWindow({size.width > 0 && size.width <= bounds.w ? size.width : bounds.w,
                       size.height > 0 && size.height <= bounds.h ? size.height : bounds.h}, targetBounds);
     } else CenterWindow(size, targetBounds);
-    Check(SDL_SyncWindow(gameWindow), "SDL_SyncWindow");
+    const bool synchronized = SDL_SyncWindow(gameWindow);
+    Check(synchronized, "SDL_SyncWindow");
     Check(SDL_ShowWindow(gameWindow), "SDL_ShowWindow");
+#ifndef _WIN32
+    const auto actualDisplay = SDL_GetDisplayForWindow(gameWindow);
+    const auto requestedDisplay = target ? mapped.id : SDL_GetPrimaryDisplay();
+    const auto pixels = ClientSize();
+    LOG_INFO("SDL presentation: requested mode=%d display=%u; sync=%d actual fullscreen=%d display=%u pixels=%dx%d",
+             static_cast<int>(mode), requestedDisplay, synchronized,
+             (SDL_GetWindowFlags(gameWindow) & SDL_WINDOW_FULLSCREEN) != 0, actualDisplay, pixels.width, pixels.height);
+    if (const auto* reported = SDL_GetCurrentDisplayMode(actualDisplay)) {
+        const auto current = SDLDetails::CopyDisplayMode(*reported);
+        LOG_INFO("SDL reported display mode: %dx%d refresh=%u/%u%s", current.size.width, current.size.height,
+                 current.refresh.numerator, current.refresh.denominator,
+                 wayland ? " (emulated mode; physical scanout is compositor-controlled)" : "");
+    }
+    if (actualDisplay != requestedDisplay)
+        LOG_WARN("SDL requested display %u was not reached; actual display=%u%s", requestedDisplay, actualDisplay,
+                 wayland ? " (normal Wayland window placement is compositor-controlled)" : " (window manager rejected or redirected placement)");
+    else if (wayland && mode != WindowMode::Exclusive)
+        LOG_INFO("Wayland window placement is compositor-controlled; session display selection cannot place normal/borderless windows");
+#endif
 #ifdef _WIN32
     if (mode != WindowMode::Windowed && targetBounds) WarpPointerInClient(videoCenter);
     else if (mode != WindowMode::Windowed)

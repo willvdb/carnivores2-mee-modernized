@@ -397,6 +397,17 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
             add_test(NAME Carnivores2Tests.SDLX11ModeLeak COMMAND Carnivores2SDLX11ModeLeakTest)
             set_tests_properties(Carnivores2Tests.SDLX11ModeLeak PROPERTIES
                 SKIP_RETURN_CODE 77 TIMEOUT 120)
+            add_executable(Carnivores2SDLWaylandPresentationTest tests/sdl_wayland_presentation.cpp
+                Hunt/Platform/LegacyKeyboardSDL.cpp Hunt/Platform/PlatformSDL.cpp ${SDL_COMPAT_SRC})
+            target_link_libraries(Carnivores2SDLWaylandPresentationTest PRIVATE SDL3::SDL3)
+            add_test(NAME Carnivores2Tests.SDLWaylandPresentation COMMAND Carnivores2SDLWaylandPresentationTest)
+            set_tests_properties(Carnivores2Tests.SDLWaylandPresentation PROPERTIES
+                SKIP_RETURN_CODE 77 TIMEOUT 60)
+            add_executable(Carnivores2SDLWaylandDisconnectTest tests/sdl_wayland_disconnect.cpp)
+            target_link_libraries(Carnivores2SDLWaylandDisconnectTest PRIVATE SDL3::SDL3)
+            add_test(NAME Carnivores2Tests.SDLWaylandDisconnect COMMAND Carnivores2SDLWaylandDisconnectTest)
+            set_tests_properties(Carnivores2Tests.SDLWaylandDisconnect PROPERTIES
+                SKIP_RETURN_CODE 77 TIMEOUT 15)
         endif()
         if(TARGET SDL3::SDL3-shared)
             add_custom_command(TARGET Carnivores2SDLTests POST_BUILD

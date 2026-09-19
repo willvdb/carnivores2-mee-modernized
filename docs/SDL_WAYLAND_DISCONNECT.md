@@ -38,3 +38,8 @@ This is not recovery from a crashed compositor or a deadline for a live server
 that stops replying. It prevents spinning after a reported connection failure.
 SDL's ordinary disconnect/quit path remains responsible for application exit.
 No sanitizer suppression or unrelated vendor cleanup is included.
+
+Fully instrumented fault tests return from sync/flush, but standalone Wayland GL
+initialization/teardown reports third-party lifetime allocations in this local
+stack; see the display acceptance record. These are unsuppressed and are not
+claimed fixed by the two-loop correction.

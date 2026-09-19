@@ -8,6 +8,27 @@ using MouseStateQuery = SDL_MouseButtonFlags (SDLCALL *)(float*, float*);
 MouseDelta ReadWaylandMouseLook(bool captured, bool focused,
                                MouseStateQuery query = SDL_GetRelativeMouseState);
 
+// Injectable native operations exercise asynchronous/rejected compositor replies.
+struct FullscreenAPI {
+    decltype(&SDL_SetWindowFullscreenMode) setMode = SDL_SetWindowFullscreenMode;
+    decltype(&SDL_SetWindowFullscreen) setFullscreen = SDL_SetWindowFullscreen;
+    decltype(&SDL_SyncWindow) sync = SDL_SyncWindow;
+    decltype(&SDL_GetWindowFlags) flags = SDL_GetWindowFlags;
+    decltype(&SDL_GetDisplayForWindow) display = SDL_GetDisplayForWindow;
+    decltype(&SDL_GetWindowSizeInPixels) pixels = SDL_GetWindowSizeInPixels;
+    decltype(&SDL_GetCurrentDisplayMode) currentMode = SDL_GetCurrentDisplayMode;
+};
+struct FullscreenResult {
+    bool requested = false, synchronized = false, fullscreen = false, confirmed = false;
+    SDL_DisplayID display = 0;
+    Size pixels{};
+    std::optional<DisplayMode> currentMode;
+};
+// Linux confirmation of SDL-reported state, not proof of physical scanout.
+// Wayland modes are emulated: verify output/render size, never claim a refresh switch.
+FullscreenResult EnterFullscreen(SDL_Window* window, const SDL_DisplayMode& mode, bool emulated,
+                                 const FullscreenAPI& api = {});
+
 struct NativeDisplay { SDL_DisplayID id; DisplayBounds bounds; };
 struct WindowDisplay {
     SDL_DisplayID id;
