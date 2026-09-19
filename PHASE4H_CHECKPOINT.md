@@ -105,3 +105,11 @@ explicit; no 4i work is included.
 Final code/branch SHA and GitHub CI links will be placed in
 `/tmp/carnivores-phase4h/FINAL_CI_HANDOFF.md` after the pushed commit is known;
 this avoids a self-referential commit hash in its own versioned report.
+
+## Final self-review correction
+
+Implementation commit `a64aef51455699045013d5ee9e974681c4702e9e` is followed by a
+small deadline guard: the prepare-read loop also checks its deadline while
+handling already-pending queue events. All six native protocol regressions and
+strict GCC/Clang platform compilation pass after this correction. The final CI
+must use the corrected tip, not the initial implementation's run 35417370929.

@@ -29,7 +29,10 @@ bool Roundtrip(wl_display* display, wl_event_queue* queue, Clock::time_point dea
     while (!done && success) {
         if (Clock::now() >= deadline) { success = false; break; }
         while (wl_display_prepare_read_queue(display, queue) != 0) {
-            if (wl_display_dispatch_queue_pending(display, queue) < 0) { success = false; break; }
+            if (Clock::now() >= deadline || wl_display_dispatch_queue_pending(display, queue) < 0) {
+                success = false;
+                break;
+            }
         }
         if (!success) break;
         // prepare_read succeeded: always pair it with read_events or cancel_read.
