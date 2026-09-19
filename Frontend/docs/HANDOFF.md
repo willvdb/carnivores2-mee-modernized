@@ -7,25 +7,33 @@ refresh. Native files remain authoritative and are never rewritten by this code.
 
 ## Branch and concurrency boundary
 
-* Branch: `frontend/backend-foundation` in its own worktree at
-  `/home/willvdb/code/games/carnivores2-frontend`.
-* Base: `ba556538ac97cfe8ec3035bed46740ce70d13737`, latest fetched safe `main`
-  when the frontend branch was created.
-* During work, `origin/main` advanced to
-  `a2cfec8` (display-targeting follow-up). This branch retains its original base;
-  no engine branch was rebased, merged, rewritten or checked out by this task.
+* Published branch: `frontend/backend-foundation`. The original frontend worktree
+  at `/home/willvdb/code/games/carnivores2-frontend` was left at `800e104`.
+  The focused review used `/home/willvdb/code/games/carnivores2-frontend-review`
+  on local branch `frontend/backend-foundation-review`, pushed to the published
+  frontend branch without changing anyone else's checkout.
+* Original base: `ba556538ac97cfe8ec3035bed46740ce70d13737`; pre-review head:
+  `800e104f51c284b622fd306588c143fde83aa63c`.
+* Current main synchronized into this branch:
+  `a2cfec8ef3590c6c8d56d16c7a69e4c0e5327f5a`, via merge `fd85a10`.
+  Fetches before implementation and synchronization confirmed the same remote
+  heads. No rebase or force push: the published frontend stack was preserved,
+  including the SHAs in the existing frontend checkout. Main was not updated.
 * Initial open PR list was empty. Active/recent branch diffs, worktrees and
   commits identified `port/display-targeting` and `fix/sdl-x11-mode-leak` as active
   engine work. Remote status/PR overlap was rechecked before implementation phases
   and before delivery; no frontend overlap was found.
-* All branch changes are additive under **`Frontend/`**. No existing engine, Menu,
-  codec, root build/CI or test files changed. The original shared worktree and its
+* All frontend changes are under **`Frontend/`**. Outside it, the merged tree is
+  byte-identical to current main: recent engine work was retained in full, with
+  no conflicts. No existing engine, Menu, codec, root build/CI or test files were
+  edited by this pass. The original shared worktree and its
   untracked game logs were left alone. Use a merge-base comparison such as
   `git diff origin/main...frontend/backend-foundation`, not a two-tip comparison
   that also shows engine work landed after this branch's base.
 
 The final delivery head and complete commit SHAs are recorded in the response;
-`git log --oneline ba556538..frontend/backend-foundation` reproduces the sequence.
+`git log --first-parent --oneline ba556538..origin/frontend/backend-foundation`
+reproduces the frontend sequence, including the main synchronization merge.
 Implementation commits, in order:
 
 1. `b8de3d4` docs: define hunter state and portable frontend boundaries
@@ -38,6 +46,71 @@ Implementation commits, in order:
 8. `3fd3642` frontend: reject content changes during revision inventory
 9. `4cf2d40` frontend: report unknown profile companions before managed import
 10. Delivery documentation and local audit replay tool follow these commits.
+
+## Focused review follow-up
+
+The three fixes are separate commits, preserving the original stack:
+
+1. `c66e473` frontend: separate content recognition from engine evidence
+2. `e06b721` frontend: preserve managed ownership across managed relocations
+3. `d72a1f9` frontend: retain engine evidence reviews across relocations
+4. `fd85a10` Merge current main into frontend backend foundation
+5. This follow-up handoff documentation follows validation.
+
+Coherent content without a bundled engine now registers and projects catalogs;
+engine absence remains an advisory diagnostic and separate capability. Existing
+script/menu/non-trophy MAP/RSC checks remain in force. Recognition does not
+certify that a map decodes or an expedition can run. HUNTDAT fingerprinting is
+unchanged; presentation-only versus semantic revision remains future design work.
+
+Managed registration persists `managed_root: {path, path_flavor}` independently
+of installation location. Explicit moves within that existing canonical root
+preserve management; outside it relinquish management; registered installs stay
+registered. Missing/foreign/retargeted roots and older records lacking context
+fail conservatively without guessed ownership. No reconciliation command exists
+yet for these cases. Root locators are not portable machine/filesystem identities.
+
+Relocation still requires exact content equality. Different destination engine
+evidence, including engine removal/addition, appends `engine_relocation_reviews`
+with `status: required`, both evidence sets, both locations and time. Original
+`engine_evidence` stays intact. Pending reviews survive refresh and later moves,
+even back to matching engine bytes; they block candidate argv. Accepting a new
+engine baseline is deferred. All process launches remain disabled.
+
+Post-merge validation:
+
+* **55/55 tests** under GCC 16.2.1 Debug and Clang 22.1.8 ASan/UBSan, with leak
+  detection and halt-on-error enabled; no skips or sanitizer findings. The
+  original 34 tests are retained; 21 tests cover the review findings.
+* Standalone `Frontend/` configure/build, `c2-frontend` CLI help target, Python
+  3.14.7 byte-compilation and `git diff --check`: passed.
+* All 19 edition reports exactly match the previous local corpus replay.
+  All 26 discovered partial audit roots still fail coherent recognition.
+* Nine packaged native files again round-trip exactly through the real codec.
+  Read-only Genesis inspection retains the 344-file, 768,073,101-byte revision
+  below and all catalog counts. Dry run remains blocked and simulated return
+  reports unchanged state. All 11 checked native files retain identical hashes;
+  the previous smoke-test store also remains byte-identical.
+* All 22 files changed on main since the original base were inspected for scope;
+  local/remote engine branch comparisons and current worktree status have no
+  frontend overlap. Open PR lists were empty at both checks. Engine tests were
+  not rerun: their files are exactly current main, and this is a standalone target.
+
+Follow-up artifacts are local, not redistributed content:
+`/tmp/carnivores-frontend-review-gcc-tests.log`,
+`/tmp/carnivores-frontend-review-clang-tests.log`,
+`/tmp/carnivores-frontend-review-corpus.json`,
+`/tmp/carnivores-frontend-review-native-report.json`, and
+`/tmp/carnivores-frontend-review-overlap.json`.
+
+Changed follow-up files: `README.md`, `docs/STATE_MODEL.md`, `docs/HANDOFF.md`,
+`lodge/discovery.py`, `lodge/store.py`, `lodge/launch.py`,
+`tests/test_discovery.py`, `tests/test_launch.py`, and new
+`tests/test_relocation.py`, all under `Frontend/`.
+
+Ready for human review toward merging the foundation. No merge to main, session
+adapter, process launch or UI work is part of this pass. Native Windows frontend
+execution is still unvalidated; path-flavor rules have portable unit coverage.
 
 ## Added files
 
@@ -58,7 +131,7 @@ Implementation commits, in order:
 
 ## Validation and demonstrated behavior
 
-**34 focused Python tests passed**, with the actual C++ codec helper supplied by
+Initial implementation: **34 focused Python tests passed**, with the actual C++ codec helper supplied by
 CTest. No existing tests were changed or weakened. The engine test suite was not
 rebuilt because no engine/build inputs changed; the new target is standalone.
 
