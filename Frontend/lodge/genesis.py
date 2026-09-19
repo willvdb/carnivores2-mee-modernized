@@ -54,7 +54,7 @@ def observer_policy(revision, catalog, slot, selection, score):
             'capabilities': {'genesis_policy': 'structurally-validated',
                 'modern_engine_compatibility': 'unknown', 'engine_process_executed': False,
                 'observer_session_launched': False, 'hunt_save_round_trip_validated': False},
-            'diagnostics': [{'code': 'engine-session-seam-required'},
+            'diagnostics': [{'code': 'experimental-native-validation-required'},
                             {'code': 'engine-build-not-certified'},
                             {'code': 'progression-semantics-unverified'}]}
 

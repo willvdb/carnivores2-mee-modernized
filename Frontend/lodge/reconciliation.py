@@ -18,11 +18,17 @@ def reconcile_locked(store, root, journal, probe=None):
     entries, blobs, decoded = [], {}, {}
     try:
         if journal['schema_version'] == 2:
-            from .native_observer import native_pins
+            from .native_observer import CAPABILITY, execution_spec, native_pins, supported_contract
             current, _ = native_pins(store, pins['association_id'], pins['selection'], probe, pins['codec'])
             from .sessions import executable_evidence
-            if executable_evidence(journal['execution']['executable']['path']) != journal['execution']['executable']:
+            spec = journal['execution']
+            evidence = executable_evidence(spec['executable']['path'])
+            if evidence != spec['executable']:
                 diagnostics.append({'code': 'selected-engine-changed-on-return'})
+            # Recovery validates evidence without executing any engine query.
+            expected = execution_spec(root, pins, evidence, CAPABILITY, spec.get('timeout_seconds'))
+            if expected != spec or not supported_contract(spec.get('contract')) or spec.get('shell') is not False:
+                diagnostics.append({'code': 'native-execution-evidence-changed-on-return'})
         else:
             current, _ = snapshot_pins(store, pins['association_id'], pins['selection'], probe, pins['codec'])
         if current != pins:

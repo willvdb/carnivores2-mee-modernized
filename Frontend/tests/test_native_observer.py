@@ -129,11 +129,13 @@ class NativeObserverTests(unittest.TestCase):
             self.launch(synthetic)
 
     def test_changed_spec_baseline_config_and_engine_trust_block_spawn(self):
-        for mutation in ('argv', 'baseline', 'config', 'output'):
+        for mutation in ('argv', 'contract-type', 'baseline', 'config', 'output'):
             with self.subTest(mutation=mutation):
                 j = self.prepare(); root = session_root(self.store,j['id'])
                 if mutation == 'argv':
                     j['execution']['argv'].append('-debug'); persist(root,j)
+                elif mutation == 'contract-type':
+                    j['execution']['contract']['version'] = True; persist(root,j)
                 elif mutation == 'baseline':
                     (root/'baseline/trophy00.sav').write_bytes(b'changed')
                 elif mutation == 'config':
@@ -171,6 +173,37 @@ class NativeObserverTests(unittest.TestCase):
         result = reconcile_session(self.store,j['id'])
         self.assertEqual(result['state'], 'quarantined')
         self.assertIn('selected-engine-changed-on-return', [d['code'] for d in result['diagnostics']])
+
+    def test_returned_and_partial_inspecting_recovery_is_candidate_only(self):
+        from lodge.session_io import transition, write_blobs
+        for partial in (False, True):
+            with self.subTest(partial=partial):
+                j = self.prepare(); j = self.launch(j)
+                root = session_root(self.store,j['id'])
+                if partial:
+                    transition(root,j,'inspecting')
+                    entries, blobs = capture(root/'work/state')
+                    j['return_capture'] = entries; persist(root,j)
+                    write_blobs(root/'returned', {'trophy00.sav':blobs['trophy00.sav']})
+                with patch('lodge.native_observer.query_contract', side_effect=AssertionError('recovery never executes engine')):
+                    recovered = recover_session(self.store,j['id'])
+                self.assertEqual(recovered['state'], 'candidate', recovered['diagnostics'])
+                self.assertEqual(capture(root/'returned')[0], j['baseline_members'])
+                self.assertEqual(recovered['reconciliation']['promotion'], 'deferred')
+
+    def test_native_execution_evidence_drift_on_return_is_quarantined(self):
+        for field, value in (('contract', {**CAPABILITY, 'version':99}),
+                             ('contract', {**CAPABILITY, 'version':True}), ('shell', 0),
+                             ('argv', ['/unexpected']),
+                             ('cwd', '/unexpected'), ('config_sha256', '0'*64)):
+            with self.subTest(field=field):
+                j=self.prepare(); j=self.launch(j)
+                j['execution'][field] = value
+                persist(session_root(self.store,j['id']), j)
+                with patch('lodge.native_observer.query_contract', side_effect=AssertionError('no query on return')):
+                    result=recover_session(self.store,j['id'])
+                self.assertEqual(result['state'], 'quarantined')
+                self.assertIn('native-execution-evidence-changed-on-return', [d['code'] for d in result['diagnostics']])
 
     def test_unknown_or_mismatched_journal_version_rejected(self):
         from lodge.session_io import validate_journal

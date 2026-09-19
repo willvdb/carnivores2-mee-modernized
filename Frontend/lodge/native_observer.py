@@ -36,6 +36,13 @@ def trusted_engine(engine, digest, experimental):
     return evidence
 
 
+def supported_contract(value):
+    # Keep JSON booleans distinct from numeric fields in both query and journals.
+    return (isinstance(value, dict) and value == CAPABILITY
+            and type(value.get('version')) is int
+            and type(value.get('performance_capture')) is bool)
+
+
 def query_contract(evidence):
     """Only call after explicit binary trust; capability text is not certification."""
     with tempfile.TemporaryDirectory(prefix='c2-contract-') as directory:
@@ -54,9 +61,7 @@ def query_contract(evidence):
         value = json.loads(response, object_pairs_hook=_unique_object)
     except (ValueError, UnicodeError) as error:
         raise FrontendError('invalid engine capability response') from error
-    # Exact encoded types too: JSON true is not version 1.
-    if (value != CAPABILITY or type(value.get('version')) is not int
-            or type(value.get('performance_capture')) is not bool):
+    if not supported_contract(value):
         raise FrontendError('unsupported engine session contract')
     if executable_evidence(evidence['path']) != evidence:
         raise FrontendError('engine changed during capability query')
@@ -176,7 +181,7 @@ def preflight_native(store, root, journal, probe, authorization):
         raise FrontendError('native identity/content/policy/source pins changed')
     # Re-query only the same explicitly trusted, unchanged binary.
     expected = execution_spec(root, pins, evidence, query_contract(evidence), spec.get('timeout_seconds'))
-    if expected != spec:
+    if expected != spec or not supported_contract(spec.get('contract')) or spec.get('shell') is not False:
         raise FrontendError('native execution specification changed')
     for directory in (root / 'baseline', root / 'work/state'):
         entries, _ = capture(directory)
