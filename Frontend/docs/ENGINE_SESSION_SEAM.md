@@ -1,5 +1,11 @@
 # Engine session seam required before native launch
 
+Current follow-up: [NATIVE_OBSERVER.md](NATIVE_OBSERVER.md) adds an explicitly gated
+native adapter with schema-2 journals against the implemented
+[engine session v1 contract](../../docs/ENGINE_SESSION.md). Schema-1 synthetic
+behavior and candidate-only authority remain. Historical missing-seam statements
+below describe the prerequisite milestone, not current engine capability.
+
 Inspected main: `7ab7d47c77c5968ae1e501a1dd2cdfaf406edceb`. This document describes
 observed behavior and a proposed bounded contract; it does not implement an
 engine interface or depend on unmerged display branches.

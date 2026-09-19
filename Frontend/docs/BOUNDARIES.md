@@ -1,5 +1,11 @@
 # Portable frontend boundary
 
+Current follow-up: [NATIVE_OBSERVER.md](NATIVE_OBSERVER.md) adds an explicitly gated
+native adapter with schema-2 journals against the implemented
+[engine session v1 contract](../../docs/ENGINE_SESSION.md). Schema-1 synthetic
+behavior and candidate-only authority remain. Historical missing-seam statements
+below describe the prerequisite milestone, not current engine capability.
+
 The optional `Frontend/` project is independently configured and run. Root CMake,
 engine, legacy Win32 Menu and their build/test behavior remain independent. A
 Python standard-library CLI proves orchestration; a standalone C++17 inspector

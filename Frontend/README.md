@@ -2,11 +2,12 @@
 
 An optional, independent frontend CLI for universal hunters and isolated
 expedition associations. It does not change the engine or Win32 Menu, select a
-GUI toolkit, write native saves, or execute hunts. The lodge and full-screen
+GUI toolkit, synthesize native profiles, or enable general hunt launching. The lodge and full-screen
 Expedition Console are presentation layers to build on this backend later.
 An opt-in synthetic session runner now exercises real child processes against
-disposable state copies. A pinned Genesis observer policy remains blocked from
-native engine execution pending an explicit engine session seam.
+disposable state copies. A separate [experimental native observer](docs/NATIVE_OBSERVER.md) now uses the
+versioned engine session contract with explicit executable/hash trust. General
+native launch and authoritative promotion remain disabled.
 
 ## Build and test
 
@@ -100,7 +101,7 @@ See [SESSION_MODEL.md](docs/SESSION_MODEL.md) for journal/state/authority contra
 Only a readable, unchanged **managed personal** association qualifies. A managed
 copy declared `unknown` or `bundled-example` remains ineligible; do not relabel
 packaged profiles as personal progression. Tests create their own synthetic data.
-The runner accepts a fixed, reviewed Python fixture and enumerated scenarios,
+The synthetic runner accepts a fixed, reviewed Python fixture and enumerated scenarios,
 not arbitrary executables, shell commands or game binaries.
 
 ```sh
@@ -130,9 +131,17 @@ stays authoritative, schema 1 is unchanged, and there is **no promotion**. No
 session directory is automatically deleted. An intermediate launching/running
 journal becomes `interrupted` on recovery: no PID signal, relaunch or potentially
 live state capture. A stale store lock requires manual owner/child verification,
-as with existing manifest recovery. All real-engine capability flags remain
-unvalidated, including `process_launch_allowed: false`; the distinct
+as with existing manifest recovery. In schema-1 synthetic sessions, real-engine
+capability flags remain unvalidated, including `process_launch_allowed: false`; the distinct
 `synthetic_process_launch_allowed` field authorizes only this fixture.
+
+## Experimental native observer
+
+[Native observer validation](docs/NATIVE_OBSERVER.md) documents the separate
+`native-observer prepare` / `run` commands, required trust gate, schema-2 workspace,
+900-second developer validation limit and candidate-only return. Static planning
+and existing schema-1 synthetic sessions retain their own capabilities. No real
+Genesis acceptance is implied by the asset-free native process tests.
 
 ## State safety and lifecycle
 

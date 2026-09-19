@@ -1,5 +1,11 @@
 # Hunter and expedition state, schema 1
 
+Current follow-up: [NATIVE_OBSERVER.md](NATIVE_OBSERVER.md) adds an explicitly gated
+native adapter with schema-2 journals against the implemented
+[engine session v1 contract](../../docs/ENGINE_SESSION.md). Schema-1 synthetic
+behavior and candidate-only authority remain. Historical missing-seam statements
+below describe the prerequisite milestone, not current engine capability.
+
 Session follow-up: [SESSION_MODEL.md](SESSION_MODEL.md) defines a separate version-1
 journal, independent disposable working copies and durable reconciliation
 candidates. The association schema, original import provenance and authority do

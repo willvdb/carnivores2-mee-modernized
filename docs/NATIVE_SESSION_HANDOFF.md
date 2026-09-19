@@ -1,52 +1,180 @@
-# Native session isolation checkpoint
+# Native session isolation handoff
 
-Task branch: `codex/native-session-isolation`, independent worktree.
-Starting local main: `a2cfec8ef3590c6c8d56d16c7a69e4c0e5327f5a`.
-Fetched main/base: `08c219fdb877a1fe30ce431eef8ac7b38a4987b3`.
-Prerequisite: `46252588a76db705ed7b7148041f4f91c44897b5` (local and remote).
-Normal no-conflict merge: `1219fc54e5c4a2c1cebc9ad55e006e7e2c0ae7e3`.
-Original main worktree's untracked carnivor.log/render.log retained untouched.
+## Branch and integration
 
-## Implementation checklist
+Task branch: `codex/native-session-isolation`, independent worktree at
+`/home/willvdb/code/games/carnivores2-native-session`.
+
+- Starting local main: `a2cfec8ef3590c6c8d56d16c7a69e4c0e5327f5a`.
+- Fetched main/base: `08c219fdb877a1fe30ce431eef8ac7b38a4987b3`.
+- Prerequisite frontend branch, local and remote:
+  `46252588a76db705ed7b7148041f4f91c44897b5`.
+- Normal no-conflict merge preserving that history:
+  `1219fc54e5c4a2c1cebc9ad55e006e7e2c0ae7e3`.
+- Final implementation checkpoint:
+  `5f19cbb6a5afd018525ab6bfcb939d054f2c824b`; following changes document delivery.
+
+Only the task branch was pushed. No main, engine-development or existing frontend
+branch was modified, rebased or force-pushed. Original main worktree still has
+its untouched untracked `carnivor.log` and `render.log`.
+
+## Completed checkpoints and decisions
 
 - [x] Read repository/portability/frontend/display contracts and trace write sites.
-- [x] Integrate prerequisite preserving its history.
-- [x] Versioned pre-startup policy, strict arguments and independent state/config/output.
-- [x] Production file routing, strict profile loads and sticky I/O exit failures.
-- [x] Production-path regression harness and actual Linux engine build.
-- [x] Standalone frontend Linux/Windows CI with mandatory codec probe.
-- [ ] Optional explicitly gated native observer, only after required checks pass.
-- [ ] Distinct self-review, final tests and draft PR.
+- [x] Integrate prerequisite preserving history.
+- [x] Versioned pre-startup policy and strict argument consumption.
+- [x] Independent state/config/output, safe roots and complete baseline validation.
+- [x] Production file routing, strict profile loads, sticky I/O exit failures.
+- [x] Production regression harness and actual Linux engine build.
+- [x] Standalone frontend Linux/Windows CI with mandatory real codec probe.
+- [x] Separate explicitly trusted native observer adapter and schema-2 recovery.
+- [x] Distinct self-review, read-only independent review, fixes and affected retests.
 
-V1 conservative decisions: existing complete SAV/SAB pair required; no substitute
-profile or missing companion synthesis. Cwd remains read-only content context.
-Absolute existing workspace has state/, config/, output/; no links or shared
-file hardlinks. Explicit independent source and baseline roots are mandatory.
-Output directory starts empty; performance captures disabled. This is a trusted
-engine's I/O contract, not containment of hostile binaries/concurrent writers or
-third-party driver/library behavior. No disk format or display-policy change.
+Interface/layout: [ENGINE_SESSION.md](ENGINE_SESSION.md).
+Experimental frontend commands, asset-free smoke and human native prerequisites:
+[Native observer](../Frontend/docs/NATIVE_OBSERVER.md).
 
-## Required checkpoint
+V1 requires existing complete 1660-byte SAV / 7176-byte SAB pairs, independent and
+byte-identical in source, baseline and work/state. No missing companion synthesis,
+substitute profile or malformed-baseline repair. Cwd remains read-only content
+context. Configuration is only work/config/config.cfg, engine files only work/output;
+performance captures, multiplayer and legacy Windows audio DLL selection are
+disabled. Original format/keybinding bytes and legacy display/config precedence
+are preserved. This is trusted engine I/O isolation, not an OS sandbox, hostile
+filesystem race defense, pair transaction or containment of driver/library writes.
 
-Interface and layout: [ENGINE_SESSION.md](ENGINE_SESSION.md).
-Baseline: actual GCC Linux Debug engine with pinned SDL built; 17 runnable CTest
-checks passed, 5 existing opt-in display checks skipped. Frontend: 90 tests passed,
-zero skips with the production probe.
+Native preparation/run each require the explicitly selected reviewed executable,
+its trusted hash, supported queried contract and experimental gate. Existing exact
+Genesis content/policy gates remain. Schema 2 pins config and execution evidence;
+schema 1 keeps the fixed synthetic fixture. Native timeout defaults to 900 seconds
+(range 30..3600), not the synthetic five seconds. Returned state stays candidate-only;
+no promotion, source synchronization or ownership/progression inference exists.
+Interrupted journals never trigger a PID signal or automatic relaunch. Return and
+recovery revalidate native execution evidence without executing the engine.
 
-After routing: actual engine built; 24 CTest entries, 19 passed and the same five
-opt-in display checks skipped. Includes 22 production C++ session tests and six
-Python actual-engine startup tests (five run, Windows-junction case platform-skipped).
-Clang ASan/UBSan with leak detection: session production harness and existing core
-suite pass. Frontend's same 90 tests pass with an ASan/UBSan production C++ probe;
-this does not instrument Python process logic. Logs are /tmp/c2-session-*.log and
-/tmp/c2-frontend-sanitizer-*.log. Windows CI definitions added; results pending.
+## Validation actually run
 
-The production tests inventory source/content/baseline fixtures, exercise real
-profile/config/log/screenshot code, and hash before/after inventories including
-the copied actual executable in subprocess tests. No original user profile or
-assets selected. Actual engine subprocesses ran only capability/invalid-startup
-and forced platform-failure checks against synthetic files; no Genesis hunt.
+Baseline before implementation: actual GCC Linux Debug engine with pinned SDL
+built; 17 runnable CTest entries passed, five existing opt-in display entries
+skipped. Frontend baseline: 90 tests passed, no skips, with the real probe.
 
-Required work is implemented and reasonably validated. Continue with the narrowly
-scoped experimental observer adapter, retaining synthetic schema-1 behavior and
-candidate-only authority. A separate read-only engine review is in progress.
+Final local commands, all successful:
+
+```sh
+cmake --preset linux-x64-sdl-gl-debug
+cmake --build --preset linux-x64-sdl-gl-debug --parallel 12
+ctest --preset linux-x64-sdl-gl-debug
+
+cmake -S Frontend -B /tmp/c2-native-frontend -DCMAKE_BUILD_TYPE=Debug
+cmake --build /tmp/c2-native-frontend --parallel 6
+ctest --test-dir /tmp/c2-native-frontend --output-on-failure
+python3 -m compileall -q Frontend
+git diff --check
+```
+
+Engine: 24 CTest entries, 19 passed and five opt-in skips. The 16 GoogleTest
+executables run **400 tests**, including **24 production session tests**. The
+actual-engine Python startup/termination suite has seven tests: six passed and
+one Windows-only junction case skipped on Linux. Other entries cover the platform
+boundary and pinned SDL patch chain. The five local opt-in skips are X11Identity,
+SDLX11ModeLeak, DisplayRecoveryRuntime, SDLWaylandPresentation and SDLWaylandDisconnect.
+Local openbox/weston are absent; their virtual display scripts were run successfully
+by hosted Linux CI instead. No physical monitor/interactive acceptance was attempted.
+
+Frontend: **105 tests passed, no local skips**, with real C++ codec probe and a
+separate compiled native fixture using production Session/Files APIs. Existing
+90 synthetic/discovery/policy tests remain. Probe-dependent tests cannot silently
+skip through the CTest runner; the native fixture is mandatory too.
+
+Sanitizers used Clang ASan + UBSan, leak detection and halt-on-error:
+
+```sh
+cmake -S . -B /tmp/c2-session-sanitized -G Ninja \
+  -DRENDERER=GL -DCARNIVORES_PLATFORM=SDL3 -DCARNIVORES_SYSTEM_SDL3=ON \
+  -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+  '-DCMAKE_C_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all' \
+  '-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all'
+cmake --build /tmp/c2-session-sanitized --parallel 6 \
+  --target Carnivores1 Carnivores2Tests Carnivores2SessionTests Carnivores2SessionExitProbe
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 \
+  ctest --test-dir /tmp/c2-session-sanitized \
+  -R '^Carnivores2Tests(\.Session|\.SessionStartup)?$' --output-on-failure
+
+cmake -S Frontend -B /tmp/c2-native-frontend-sanitized -G Ninja \
+  -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++ \
+  '-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all'
+cmake --build /tmp/c2-native-frontend-sanitized --parallel 6
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 \
+  ctest --test-dir /tmp/c2-native-frontend-sanitized --output-on-failure
+```
+
+Sanitized engine checks passed: 142 core + 24 production session GoogleTests,
+plus the actual instrumented engine's earliest startup and production exit probe
+(six Python cases run, Windows junction skipped). All 105 frontend cases also
+passed using instrumented C++ probe/native child. Python orchestration itself is
+not sanitizer-instrumented. No full graphics hunt was sanitized; immediate fatal
+termination intentionally skips global destruction after explicit shutdown.
+
+Hosted GitHub Actions at `4d47648361d601f20690b61b0a1e0e6f9769ec43`:
+[engine/menu/platform matrix](https://github.com/willvdb/carnivores2-mee-modernized/actions/runs/35464043715)
+and [standalone frontend](https://github.com/willvdb/carnivores2-mee-modernized/actions/runs/35464043717)
+both completed successfully. Engine matrix retained all ten Windows jobs (x86/x64,
+Win32/SDL, Debug/Release, software and menu) and two Linux jobs, including existing
+X11/Wayland regression scripts. Frontend passed Linux and Windows; Windows retains
+one existing case-sensitive-filesystem skip, with no codec-dependent skips.
+The final recovery/screenshot test follow-up has been pushed for another CI run;
+its result is reported in the draft PR/final delivery rather than presumed here.
+
+Logs are in the build trees' Testing/Temporary/LastTest.log and
+`/tmp/c2-session-*.log`, `/tmp/c2-native-adapter-tests.log`,
+`/tmp/c2-frontend-sanitizer-tests.log`.
+
+## Review findings fixed and retained limits
+
+Separate read-only review and self-review found and fixed:
+
+- Fatal shutdown must use immediate `_Exit` after closing logs/services; `exit`
+  could deadlock during MEM_DEBUG global destruction after allocation failure.
+  A real production subprocess exit probe checks clean=0, I/O=3, fatal/early=1,
+  closed logs and an atexit sentinel.
+- Malformed option values now have independent tests, not only duplicate-option
+  rejection. Slot 7 has a real trophy read/write regression.
+- MSVC needs an exact production-body extraction harness instead of unresolved
+  entire gameplay translation units. CMake regeneration tracks the originals;
+  graphics/audio are doubled, I/O/config/trophy/screenshot functions are not.
+- Windows rooted paths without a drive are not `is_absolute()`; project validation
+  now rejects every root path. Windows TEMP short aliases use canonical fixtures.
+- Windows case-insensitive discovery tests exercise real native behavior while
+  retaining path-escape assertions.
+- Native return/recovery now reconstructs the pinned spec, rejects capability
+  type drift, quarantines changed evidence and never executes a query on recovery.
+  Partial returned-copy recovery is covered and remains candidate-only.
+- The Windows screenshot regression now calls the real production screenshot
+  function with only GPU readback doubled.
+
+Final write audit: trophy/config/screenshot/render/debug outputs use the routed
+Platform APIs; structured logs use routed text APIs with flush/close checks;
+GLPerf file-opening paths are disabled before initialization. Shader and script
+streams are read-only. RunGame establishes policy before platform/log/config
+startup; Win32 entry setup only assigns instance/procedure. Module/cwd config
+fallbacks are confined to legacy mode. No disk/network layouts, display policy,
+keybinding codecs, renderer or menu implementation were redesigned.
+
+Tests compare source/content/baseline inventories and bytes, and the actual-engine
+subprocess suite hashes copied engine-directory files and config sentinels before
+and after. Fixtures deliberately expose old cwd/module fallback behavior. No user
+assets or existing personal profiles were selected. No proprietary files added.
+
+An actual asset-free **native fixture process** ran through production session I/O
+and frontend candidate reconciliation. Actual game binaries ran capability,
+invalid-startup and platform-failure paths only. The fixture explicitly doubles
+the Genesis policy and keeps its real synthetic content hash; the unmodified
+policy rejects that hash. **No actual Genesis hunt/world entry was validated.**
+
+Next human step: review the draft diff, then supply the already-owned exact pinned
+Genesis content and an eligible existing complete managed snapshot to the separate
+gated native command. Use disposable session copies, observe world entry/observer
+controls and clean exit on Windows and Linux, and verify original hashes. Keep
+results candidate-only. Review native save-pair coherence and real audio/display
+behavior before considering any broader launch gate. General launch/promotion
+remain disabled pending that consequential acceptance decision.

@@ -26,6 +26,9 @@ The stack was subsequently accepted and integrated into `main`. Native
 interactive Windows acceptance completed successfully on 2026-09-18, closing
 the Phase 3b gate that had held this stacked merge.
 
+Opt-in isolated launches are now documented in [ENGINE_SESSION.md](ENGINE_SESSION.md).
+The cwd/module writable behavior described below applies to legacy launches.
+
 ## Build and launch
 
 Use x86_64 Linux, a C++17 GCC/Clang toolchain, CMake 3.21+, Ninja, pkg-config,

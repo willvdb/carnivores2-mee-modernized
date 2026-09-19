@@ -1,5 +1,11 @@
 # Session lifecycle, journal schema 1
 
+Current follow-up: [NATIVE_OBSERVER.md](NATIVE_OBSERVER.md) adds an explicitly gated
+native adapter with schema-2 journals against the implemented
+[engine session v1 contract](../../docs/ENGINE_SESSION.md). Schema-1 synthetic
+behavior and candidate-only authority remain. Historical missing-seam statements
+below describe the prerequisite milestone, not current engine capability.
+
 This bounded backend proves a controlled synthetic child lifecycle. The pinned
 Genesis/current-MEE observer policy describes intent; it does not authorize an
 engine binary. Native execution remains blocked pending the engine session seam.

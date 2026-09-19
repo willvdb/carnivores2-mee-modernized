@@ -1,5 +1,11 @@
 # Genesis session lifecycle handoff
 
+Current follow-up: [NATIVE_OBSERVER.md](NATIVE_OBSERVER.md) adds an explicitly gated
+native adapter with schema-2 journals against the implemented
+[engine session v1 contract](../../docs/ENGINE_SESSION.md). Schema-1 synthetic
+behavior and candidate-only authority remain. Historical missing-seam statements
+below describe the prerequisite milestone, not current engine capability.
+
 Branch: `frontend/genesis-session-adapter`.
 Base main: `7ab7d47c77c5968ae1e501a1dd2cdfaf406edceb` (merged foundation PR #10).
 The branch was created in an independent worktree. No engine branch was merged,
