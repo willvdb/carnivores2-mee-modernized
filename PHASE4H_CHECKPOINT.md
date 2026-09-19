@@ -5,7 +5,7 @@ Branch: `port/linux-display-persistence`. Exact accepted base:
 `857063ad77c6c6c9239d8ae67fc62d60215b7e90`; verified local and GitHub ref.
 Main and all predecessor/frontend worktrees remain untouched.
 
-## Design in progress
+## Implemented design
 
 Support serial-backed native X11 EDID and direct Wayland wlr-output-management
 v3 make/model/serial. Keep separate explicit domains; no backend translation.
@@ -36,9 +36,9 @@ https://xorg.freedesktop.org/archive/current/doc/randrproto/randrproto.txt;
 https://gitlab.freedesktop.org/emersion/libdisplay-info/-/blob/main/edid.c.
 
 Evidence and commands: `/tmp/carnivores-phase4h`. Dependency sources copied into
-its own deps directory; no predecessor build tree is mutated. Next: implement,
-validate synthetic/native fixtures, commit/push and obtain final exact-head CI,
-then supervisor review. Physical reboot/replug, Windows physical acceptance and
+its own deps directory; no predecessor build tree is mutated. Implementation and
+local validation are complete; corrected exact-head CI and supervisor review
+remain required. Physical reboot/replug, Windows physical acceptance and
 inherited unsuppressed sanitizer limits remain pending. Never advance to 4i.
 
 
@@ -46,7 +46,7 @@ inherited unsuppressed sanitizer limits remain pending. Never advance to 4i.
 
 Prerequisite commit `b59d43a`: exact SDL native mapping properties/backport,
 checksum guards and isolated dependency documentation. Functional implementation
-currently staged for the next focused commit; final exact-head CI remains required.
+is committed as `a64aef5`; final corrected exact-head CI remains required.
 
 GCC Debug/Release, Clang Debug and installed SDL 3.4.16 Debug full builds/CTest
 pass: 15 active suites, 4 opt-in runtime skips (19 total). Native platform source
@@ -74,7 +74,7 @@ late-head cleanup/recovery. A negative-control build that discards the timed-out
 queue fails the late-head regression with a protocol error and failed recovery;
 the production reader retains the queue and passes. Evidence `negative/`.
 
-Remaining work: final commit/push, exact-SHA 12-job CI and independent
+Remaining work: corrected exact-SHA 12-job CI and independent
 supervisor review. Physical reboot/replug and inherited platform limitations stay
 explicit; no 4i work is included.
 
@@ -113,3 +113,23 @@ small deadline guard: the prepare-read loop also checks its deadline while
 handling already-pending queue events. All six native protocol regressions and
 strict GCC/Clang platform compilation pass after this correction. The final CI
 must use the corrected tip, not the initial implementation's run 35417370929.
+
+
+## Windows CI patch-chain correction
+
+CI at `6c9c1dc` exposed a Windows SDL configure failure: Windows CMake writes
+CRLF after the inherited X11 correction, while the next mapping patch hashed
+raw bytes against the expected LF source. Reproduced with official Windows
+CMake 3.31.6 in a disposable Wine prefix. Canonicalizing only CRLF to LF before
+whole-source hashing fixes both chained patches and repeated configuration; all
+other content remains guarded by the exact expected hashes. Runtime C/C++
+changes are not involved.
+
+New `Carnivores2Tests.SDLPatchChain` exercises LF/CRLF, two consecutive patch
+passes and rejection of deliberately altered source. Both native Linux CMake
+and actual Windows CMake pass from pristine checksum-verified SDL 3.2.28 and
+from the combined patched source (`patch-chain-{pristine-,}{native,windows}.log`).
+Final local GCC Debug rebuild/CTest passes 16 active suites plus 4 documented
+opt-in skips, 20 total (`ctest-patchio.log`). System SDL remains 19 total because
+it is not patched. Failed predecessor CI runs are superseded only after the
+corrective revision receives its own full 12-job run.

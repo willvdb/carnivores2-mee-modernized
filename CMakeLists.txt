@@ -383,6 +383,12 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
         "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}" -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_platform_boundary.cmake")
 
     if(CARNIVORES_PLATFORM STREQUAL "SDL3")
+        if(NOT CARNIVORES_SYSTEM_SDL3)
+            add_test(NAME Carnivores2Tests.SDLPatchChain COMMAND ${CMAKE_COMMAND}
+                "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}" "-DINPUT_ROOT=${sdl3_SOURCE_DIR}"
+                "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/sdl-patch-fixture"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_sdl_patch_chain.cmake")
+        endif()
         add_executable(Carnivores2SDLTests tests/test_legacy_keyboard_sdl.cpp
             tests/test_platform_display_sdl.cpp
             tests/test_platform_sdl.cpp $<$<BOOL:${WIN32}>:tests/test_platform_sdl_win32.cpp>

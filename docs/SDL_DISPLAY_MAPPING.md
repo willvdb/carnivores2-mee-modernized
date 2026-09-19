@@ -18,10 +18,15 @@ only validated metadata into the portable catalog. No SDL layout/ABI assumptions
 new runtime symbol, ordering, window or mode behavior are introduced.
 
 The source patch verifies whole-file hashes before and after every replacement.
+Reads canonicalize CRLF to LF before hashing and replacement because Windows
+CMake writes CRLF. No other source-content differences are accepted. The patch
+chain regression checks both newline forms, repeated application and deliberate
+source alteration; pristine pinned source was also checked with Linux and actual
+Windows CMake.
 The existing X11 ownership patch recognizes the exact combined patched hash so
 subsequent configurations remain idempotent; it accepts no arbitrary source.
 Its fullscreen correction remains independent. The Wayland disconnect correction
-touches a different source file and remains unchanged. Windows compiles neither
+touches a different source file; its behavior remains unchanged. Windows compiles neither
 native backend. Both initial and subsequent configure passes are tested locally.
 
 Installed SDL is never patched. Current system SDL's public Wayland property can
