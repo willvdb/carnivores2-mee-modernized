@@ -92,8 +92,9 @@ escaping and indentation are reviewable independently of checkout line endings.
 | 0A compatibility contract and golden corpus | Reviewed and merged in PR #16 |
 | 0B core, private representation, encoders, SHA, CLI/tests | Reviewed and merged in PR #16 |
 | 1A.1 pure manifest/schema validation | Reviewed and merged in PR #17 |
-| 1A.2 read-only filesystem/store/CLI integration | In progress; not independently approved |
-| 1B history/current-generation + profiles | Pending |
+| 1A.2 read-only filesystem/store/CLI integration | Reviewed and merged in PR #18; overall 1A complete |
+| 1B.1 current-generation/capture read | In progress; independent review pending |
+| 1B.2 profile inspection | Pending |
 | 2A discovery/reference/fingerprint observation | Pending |
 | 2B catalog | Pending |
 | 2C Genesis planning | Pending |
@@ -441,3 +442,34 @@ A further focused review correction normalizes an empty post-tilde-expansion
 path to `.` (empty Windows USERPROFILE), with isolated constructor oracles for
 `~` and the current username. Linux's store gate passed again in 8.59 seconds;
 Windows reruns and independent final-head approval remain required.
+
+## Store merge and generation-read checkpoint
+
+PR #18 was independently reviewed at final head
+`76a8341598db3134417e73a28330fe8d892f40ef` and merged as
+`20239c17cbfbce6fbae74e13743c32c109845845`, tree
+`b4cdd27a91c1ea5e11d129d4c995a6ecee636725`. Overall 1A is complete.
+This supersedes historical pending 1A.2 statements without changing their record.
+The reviewer inspected the full diff and resolved all findings. Original Python,
+old tests/goldens, engine, Menu and workflows remained untouched. All 28 final
+push/PR checks passed. Actual MSVC Windows job 106058685869, run 35503272487,
+passed 11/11 CTests in 255.13 seconds (backend 171.45 seconds). Reviewer Linux
+verification at preceding head `8a3991ae48f438c552d1b6c44c740a954c8a7d67`
+passed 11/11 in 129.32 seconds, including all 154 Python tests in 68.207 seconds
+without skips; final empty-home correction passed store/golden/stack 3/3 in
+10.12 seconds. Independent 600 exact-output/no-write and 10 POSIX-resolution
+cases had zero mismatches. Native ASan/UBSan passed 10/10 in 149.49 seconds;
+expanded store sanitizer verification passed in 26.15 seconds. Live UNC share
+access remains untested; pure UNC spelling/ancestry and actual Windows junction,
+extended local path and Greek-case lifetime tests passed.
+
+Branch `frontend/cpp-generation-read` starts exactly at that merge. Slice 1B is
+split into 1B.1 current-generation resolution/history inspection and 1B.2 profile
+inspection. Only 1B.1 is in progress. Its direct `resolve_generation` dependency
+brings the exact read-only `session_io.capture` and safe-path prerequisites
+forward from 3A. Capture writes, atomic publication, locks and all remaining 3A
+work stay deferred. This dependency split does not authorize profile decoding,
+discovery, execution, mutations, acceptance or GUI work. Capture will retain
+complete entries and opaque bytes, compare them with Python equality, and never
+fall back from the authoritative current generation. Independent review and
+actual final-head Windows CI remain gates; implementation evidence is not approval.
