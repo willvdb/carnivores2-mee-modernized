@@ -16,7 +16,9 @@ license and weapon, returning candidate evidence through `native-hunt`; schema-1
 
 ## Build and test
 
-Requires Python 3.10+, CMake 3.20+, and a C++17 compiler. No Python packages or
+The Python reference runtime requires Python 3.10+; the complete native migration
+verification suite is pinned to CPython 3.12 / Unicode 15.0.0 (including its
+generated Unicode-table oracle). Builds require CMake 3.20+ and a C++17 compiler. No Python packages or
 network downloads are required. From the repository root:
 
 ```sh

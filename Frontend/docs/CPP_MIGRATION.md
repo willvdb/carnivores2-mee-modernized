@@ -89,9 +89,10 @@ escaping and indentation are reviewable independently of checkout line endings.
 
 | Slice | Status |
 | --- | --- |
-| 0A compatibility contract and golden corpus | Implemented, awaiting review |
-| 0B core, private representation, encoders, SHA, CLI/tests | Implemented, awaiting review |
-| 1A manifest read/validation | Pending |
+| 0A compatibility contract and golden corpus | Reviewed and merged in PR #16 |
+| 0B core, private representation, encoders, SHA, CLI/tests | Reviewed and merged in PR #16 |
+| 1A.1 pure manifest/schema validation | Implemented; awaiting independent review |
+| 1A.2 read-only filesystem/store/CLI integration | Pending |
 | 1B history/current-generation + profiles | Pending |
 | 2A discovery/reference/fingerprint observation | Pending |
 | 2B catalog | Pending |
@@ -251,3 +252,67 @@ encountered executables being truncated during synchronization, independently
 observed by the coordinator; the fresh `/tmp` build avoided that infrastructure
 failure. Windows rerun and final correction review remain required before merge
 or later slices; the correction commit's SHA belongs in subsequent evidence.
+
+## Foundation merge and manifest split
+
+Independent review cleared 0A/0B at correction commit
+`a36f5e605645052db422963f2a76b0af316c8667`, after implementation commit
+`42c2e0880134438a771e8b26ffc601ad691328bf` and fixture prerequisite
+`ac92f8a153313c25e1fd7cfc6fce66651ca74a0f`. PR #16 merged as
+`a08f1cc441375068fbe18c6cb9550708337a3bb4` (tree
+`0ea17f181a6bcd4d0ed257fb00e3e6037ac5dd02`). Reviewer validation passed
+7/7 CTests including all 154 Python tests in 70.19 seconds, 50,986 independent
+JSON differential cases with zero mismatches, and pinned vendor byte checks.
+All 28 GitHub push/PR checks passed, including MSVC Windows 7/7 CTests in
+143.40 seconds. This supersedes the earlier pending foundation gates above.
+
+Slice 1A is split to keep pure structural semantics reviewable independently
+from filesystem policy: 1A.1 decodes and validates manifests, including nested
+managed history and historical execution receipts, without consulting files
+or executing recorded binaries. 1A.2 will add read-only repository/store/CLI
+integration. Overall 1A is incomplete until both slices pass independent review.
+Generation snapshot resolution and profile inspection remain 1B. No production
+read API or backend CLI command is introduced by 1A.1.
+
+## Slice 1A.1 implementation (not independently approved)
+
+The private `manifest_schema` interface now decodes duplicate-key-rejecting
+lossless JSON and validates manifest versions 1/2 in memory. It ports the pure
+`store` identity/locator/engine-evidence/manifest checks and all nested
+`managed_state` history, member, provenance, head, ancestry, sequence, receipt,
+and historical execution checks. No recorded executable is queried and no
+snapshot path is opened. Unknown fields and accepted nonfinite metadata are
+retained; no schema upgrade or metadata projection replaces the decoded input.
+
+`schema_compat` provides exact arbitrary-integer/binary64/bool equality,
+iterative container equality including Python JSON NaN identity shortcuts,
+truthiness, Unicode 15.0.0 whitespace/casefold/contextual lowercase, and tagged
+pure POSIX/NT paths. Exact-type validation remains distinct from equality.
+The native host is consulted only for the Python-reference `Path` member checks.
+Unicode data, pinned generation instructions and its license are committed.
+See `native/src/SCHEMA_COMPATIBILITY.md` for source mappings and resource gates.
+
+The authored corpus invokes unchanged Python validators. It includes both host
+path outcomes, v1/v2 managed and referenced associations, G0/G1/G2, 9,106 field,
+type, deletion and targeted cases, plus 400 semantic-equality pairs and Unicode
+case probes. Exact JSON inputs are losslessly represented as prefix/middle/suffix
+deltas against four authored bases. The test-only binary stdin driver reports
+valid/invalid/resource/unexpected-diagnostic separately; accepted values export
+without dropping unknown data. The standalone production CLI remains help/version.
+
+Local Debug validation passed all 10 CTests in 122.62 seconds, including the
+unchanged 154 Python tests, 325 original golden cases, constrained stack
+regressions and the new schema/Unicode tests. ASan/UBSan passed all 9 native,
+compatibility and schema CTests in 117.31 seconds. Commands used fresh `/tmp`
+build directories; `ASAN_OPTIONS=detect_leaks=0` disables only unavailable
+LeakSanitizer under ptrace, with `UBSAN_OPTIONS=halt_on_error=1`. Full native
+verification uses CPython 3.12.14 / Unicode 15.0.0; the Python runtime's 3.10+
+contract is unchanged. The final expanded 9,106-case fixture corpus then passed the Debug oracle/native
+checks (2/2, 49.37 seconds) and ASan/UBSan native check (1/1, 83.70 seconds). Final published-SHA review
+and Windows CI remain required; this implementation does not self-approve.
+
+Slice 1A.2 must still implement filesystem-backed read/store/CLI behavior; 1B
+must resolve the authoritative current snapshot and inspect profile bytes. The
+existing parser depth/resource-policy and configurable Python integer/recursion
+differences remain pre-production-read gates, as does a change to the Unicode
+baseline. Pure structural acceptance does not assert filesystem trust or safety.
