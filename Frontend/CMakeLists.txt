@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(CarnivoresFrontend LANGUAGES CXX)
 # Deliberately standalone: configure with -S Frontend, no engine dependencies.
-add_library(c2_frontend_core STATIC native/src/core.cpp native/src/json_compat.cpp)
+add_library(c2_frontend_core STATIC native/src/core.cpp native/src/json_compat.cpp native/src/schema_compat.cpp native/src/manifest_schema.cpp)
 target_compile_features(c2_frontend_core PUBLIC cxx_std_17)
 target_include_directories(c2_frontend_core PUBLIC native/include PRIVATE native/src)
 target_include_directories(c2_frontend_core SYSTEM PRIVATE native/third_party)
@@ -28,6 +28,15 @@ add_custom_target(c2-frontend
   COMMENT "Show the optional frontend CLI")
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(c2-frontend-schema-tests native/tests/schema_tests.cpp)
+  target_link_libraries(c2-frontend-schema-tests PRIVATE c2_frontend_core)
+  target_include_directories(c2-frontend-schema-tests PRIVATE native/src)
+  add_test(NAME frontend-schema-unicode-oracle COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_schema_unicode.py" --check)
+  add_test(NAME frontend-schema-oracle COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_schema_fixtures.py" --check)
+  add_test(NAME frontend-native-schema COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_schema.py" "$<TARGET_FILE:c2-frontend-schema-tests>")
   add_executable(c2-frontend-native-tests native/tests/compatibility_tests.cpp)
   target_link_libraries(c2-frontend-native-tests PRIVATE c2_frontend_core)
   target_include_directories(c2-frontend-native-tests PRIVATE native/src)
