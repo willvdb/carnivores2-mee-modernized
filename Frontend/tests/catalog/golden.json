@@ -1,0 +1,979 @@
+[
+  {
+    "request": {
+      "op": "parse",
+      "bytes_hex": "",
+      "source": "opaque\u0000\ud800/\ud83e\udd96"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "source": "opaque\u0000\ud800/\ud83e\udd96",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tree": {
+          "name": "",
+          "line": 1,
+          "attributes": [],
+          "children": [],
+          "raw": []
+        },
+        "diagnostics": []
+      },
+      "json": "{\n  \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\",\n  \"sha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\n  \"tree\": {\n    \"name\": \"\",\n    \"line\": 1,\n    \"attributes\": [],\n    \"children\": [],\n    \"raw\": []\n  },\n  \"diagnostics\": []\n}\n"
+    }
+  },
+  {
+    "request": {
+      "op": "parse",
+      "bytes_hex": "2f2f636f6d6d656e740a23636f6d6d656e740d0a3b636f6d6d656e740a",
+      "source": "opaque\u0000\ud800/\ud83e\udd96"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "source": "opaque\u0000\ud800/\ud83e\udd96",
+        "sha256": "447052a2f99237a0811259538049630348ffe3cd5d34b4e7b78954bef6cd5271",
+        "tree": {
+          "name": "",
+          "line": 1,
+          "attributes": [],
+          "children": [],
+          "raw": []
+        },
+        "diagnostics": []
+      },
+      "json": "{\n  \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\",\n  \"sha256\": \"447052a2f99237a0811259538049630348ffe3cd5d34b4e7b78954bef6cd5271\",\n  \"tree\": {\n    \"name\": \"\",\n    \"line\": 1,\n    \"attributes\": [],\n    \"children\": [],\n    \"raw\": []\n  },\n  \"diagnostics\": []\n}\n"
+    }
+  },
+  {
+    "request": {
+      "op": "parse",
+      "bytes_hex": "612f2f6220632f2f640a783d312f2f320a793d32202f2f736b69700a",
+      "source": "opaque\u0000\ud800/\ud83e\udd96"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "source": "opaque\u0000\ud800/\ud83e\udd96",
+        "sha256": "ad2a7b61f8358c7af995f46123109636526e814516a70a1c89ddca762888d88c",
+        "tree": {
+          "name": "",
+          "line": 1,
+          "attributes": [
+            {
+              "key": "a//b c//d x",
+              "raw": "1//2",
+              "line": 1,
+              "source": "opaque\u0000\ud800/\ud83e\udd96"
+            },
+            {
+              "key": "y",
+              "raw": "2",
+              "line": 3,
+              "source": "opaque\u0000\ud800/\ud83e\udd96"
+            }
+          ],
+          "children": [],
+          "raw": []
+        },
+        "diagnostics": []
+      },
+      "json": "{\n  \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\",\n  \"sha256\": \"ad2a7b61f8358c7af995f46123109636526e814516a70a1c89ddca762888d88c\",\n  \"tree\": {\n    \"name\": \"\",\n    \"line\": 1,\n    \"attributes\": [\n      {\n        \"key\": \"a//b c//d x\",\n        \"raw\": \"1//2\",\n        \"line\": 1,\n        \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\"\n      },\n      {\n        \"key\": \"y\",\n        \"raw\": \"2\",\n        \"line\": 3,\n        \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\"\n      }\n    ],\n    \"children\": [],\n    \"raw\": []\n  },\n  \"diagnostics\": []\n}\n"
+    }
+  },
+  {
+    "request": {
+      "op": "parse",
+      "bytes_hex": "226d6174636865642071756f74652220276e65787427207b206e616d653d22412042220a207d",
+      "source": "opaque\u0000\ud800/\ud83e\udd96"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "source": "opaque\u0000\ud800/\ud83e\udd96",
+        "sha256": "f57049534ac53b4141b2d20bb5dc33d72e64659c797d555b4f04f00ad5e05438",
+        "tree": {
+          "name": "",
+          "line": 1,
+          "attributes": [],
+          "children": [
+            {
+              "name": "\"matched quote\" 'next'",
+              "line": 1,
+              "attributes": [
+                {
+                  "key": "name",
+                  "raw": "\"A B\"",
+                  "line": 1,
+                  "source": "opaque\u0000\ud800/\ud83e\udd96"
+                }
+              ],
+              "children": [],
+              "raw": []
+            }
+          ],
+          "raw": []
+        },
+        "diagnostics": []
+      },
+      "json": "{\n  \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\",\n  \"sha256\": \"f57049534ac53b4141b2d20bb5dc33d72e64659c797d555b4f04f00ad5e05438\",\n  \"tree\": {\n    \"name\": \"\",\n    \"line\": 1,\n    \"attributes\": [],\n    \"children\": [\n      {\n        \"name\": \"\\\"matched quote\\\" 'next'\",\n        \"line\": 1,\n        \"attributes\": [\n          {\n            \"key\": \"name\",\n            \"raw\": \"\\\"A B\\\"\",\n            \"line\": 1,\n            \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\"\n          }\n        ],\n        \"children\": [],\n        \"raw\": []\n      }\n    ],\n    \"raw\": []\n  },\n  \"diagnostics\": []\n}\n"
+    }
+  },
+  {
+    "request": {
+      "op": "parse",
+      "bytes_hex": "22756e6d6174636865640a276f746865720d71756f74650a227b783d337d0a",
+      "source": "opaque\u0000\ud800/\ud83e\udd96"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "source": "opaque\u0000\ud800/\ud83e\udd96",
+        "sha256": "2c7ea5bb9e2dfb8d10601024ed06a218a7a4f2186eb4fa0e9c89b2ff1ca1bee8",
+        "tree": {
+          "name": "",
+          "line": 1,
+          "attributes": [],
+          "children": [
+            {
+              "name": "unmatched other quote",
+              "line": 1,
+              "attributes": [
+                {
+                  "key": "x",
+                  "raw": "3",
+                  "line": 3,
+                  "source": "opaque\u0000\ud800/\ud83e\udd96"
+                }
+              ],
+              "children": [],
+              "raw": []
+            }
+          ],
+          "raw": []
+        },
+        "diagnostics": []
+      },
+      "json": "{\n  \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\",\n  \"sha256\": \"2c7ea5bb9e2dfb8d10601024ed06a218a7a4f2186eb4fa0e9c89b2ff1ca1bee8\",\n  \"tree\": {\n    \"name\": \"\",\n    \"line\": 1,\n    \"attributes\": [],\n    \"children\": [\n      {\n        \"name\": \"unmatched other quote\",\n        \"line\": 1,\n        \"attributes\": [\n          {\n            \"key\": \"x\",\n            \"raw\": \"3\",\n            \"line\": 3,\n            \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\"\n          }\n        ],\n        \"children\": [],\n        \"raw\": []\n      }\n    ],\n    \"raw\": []\n  },\n  \"diagnostics\": []\n}\n"
+    }
+  },
+  {
+    "request": {
+      "op": "parse",
+      "bytes_hex": "70656e64696e670a6f6e206e6578740d0a6c696e65207b20626172650a776f7264730a2061203d2062203d20630a3d0a7d",
+      "source": "opaque\u0000\ud800/\ud83e\udd96"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "source": "opaque\u0000\ud800/\ud83e\udd96",
+        "sha256": "4b09873446a1aa593d975ea442c0b5194353c076ef20a62e81d6a778e234293d",
+        "tree": {
+          "name": "",
+          "line": 1,
+          "attributes": [],
+          "children": [
+            {
+              "name": "pending on next line",
+              "line": 1,
+              "attributes": [
+                {
+                  "key": "bare words a",
+                  "raw": "b = c",
+                  "line": 3,
+                  "source": "opaque\u0000\ud800/\ud83e\udd96"
+                },
+                {
+                  "key": "",
+                  "raw": "",
+                  "line": 6,
+                  "source": "opaque\u0000\ud800/\ud83e\udd96"
+                }
+              ],
+              "children": [],
+              "raw": []
+            }
+          ],
+          "raw": []
+        },
+        "diagnostics": []
+      },
+      "json": "{\n  \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\",\n  \"sha256\": \"4b09873446a1aa593d975ea442c0b5194353c076ef20a62e81d6a778e234293d\",\n  \"tree\": {\n    \"name\": \"\",\n    \"line\": 1,\n    \"attributes\": [],\n    \"children\": [\n      {\n        \"name\": \"pending on next line\",\n        \"line\": 1,\n        \"attributes\": [\n          {\n            \"key\": \"bare words a\",\n            \"raw\": \"b = c\",\n            \"line\": 3,\n            \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\"\n          },\n          {\n            \"key\": \"\",\n            \"raw\": \"\",\n            \"line\": 6,\n            \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\"\n          }\n        ],\n        \"children\": [],\n        \"raw\": []\n      }\n    ],\n    \"raw\": []\n  },\n  \"diagnostics\": []\n}\n"
+    }
+  },
+  {
+    "request": {
+      "op": "parse",
+      "bytes_hex": "7d0a7d0a617b20627b20783d31",
+      "source": "opaque\u0000\ud800/\ud83e\udd96"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "source": "opaque\u0000\ud800/\ud83e\udd96",
+        "sha256": "81803c6f0738e53672500414c4dcdd5b091da40847d0a79ee04c8c0e96f48e0e",
+        "tree": {
+          "name": "",
+          "line": 1,
+          "attributes": [],
+          "children": [
+            {
+              "name": "a",
+              "line": 3,
+              "attributes": [],
+              "children": [
+                {
+                  "name": "b",
+                  "line": 3,
+                  "attributes": [
+                    {
+                      "key": "x",
+                      "raw": "1",
+                      "line": 3,
+                      "source": "opaque\u0000\ud800/\ud83e\udd96"
+                    }
+                  ],
+                  "children": [],
+                  "raw": []
+                }
+              ],
+              "raw": []
+            }
+          ],
+          "raw": []
+        },
+        "diagnostics": [
+          {
+            "code": "unmatched-brace",
+            "message": "Unmatched closing brace.",
+            "source": "opaque\u0000\ud800/\ud83e\udd96",
+            "line": 1
+          },
+          {
+            "code": "unmatched-brace",
+            "message": "Unmatched closing brace.",
+            "source": "opaque\u0000\ud800/\ud83e\udd96",
+            "line": 2
+          },
+          {
+            "code": "unclosed-block",
+            "message": "Unclosed script block.",
+            "source": "opaque\u0000\ud800/\ud83e\udd96"
+          }
+        ]
+      },
+      "json": "{\n  \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\",\n  \"sha256\": \"81803c6f0738e53672500414c4dcdd5b091da40847d0a79ee04c8c0e96f48e0e\",\n  \"tree\": {\n    \"name\": \"\",\n    \"line\": 1,\n    \"attributes\": [],\n    \"children\": [\n      {\n        \"name\": \"a\",\n        \"line\": 3,\n        \"attributes\": [],\n        \"children\": [\n          {\n            \"name\": \"b\",\n            \"line\": 3,\n            \"attributes\": [\n              {\n                \"key\": \"x\",\n                \"raw\": \"1\",\n                \"line\": 3,\n                \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\"\n              }\n            ],\n            \"children\": [],\n            \"raw\": []\n          }\n        ],\n        \"raw\": []\n      }\n    ],\n    \"raw\": []\n  },\n  \"diagnostics\": [\n    {\n      \"code\": \"unmatched-brace\",\n      \"message\": \"Unmatched closing brace.\",\n      \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\",\n      \"line\": 1\n    },\n    {\n      \"code\": \"unmatched-brace\",\n      \"message\": \"Unmatched closing brace.\",\n      \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\",\n      \"line\": 2\n    },\n    {\n      \"code\": \"unclosed-block\",\n      \"message\": \"Unclosed script block.\",\n      \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\"\n    }\n  ]\n}\n"
+    }
+  },
+  {
+    "request": {
+      "op": "parse",
+      "bytes_hex": "613d310d0a623d320d633d33",
+      "source": "opaque\u0000\ud800/\ud83e\udd96"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "source": "opaque\u0000\ud800/\ud83e\udd96",
+        "sha256": "946f8aca1d5634cbf1e1459210206da664dd36fea594eefb13c22b36f57e1b8f",
+        "tree": {
+          "name": "",
+          "line": 1,
+          "attributes": [
+            {
+              "key": "a",
+              "raw": "1",
+              "line": 1,
+              "source": "opaque\u0000\ud800/\ud83e\udd96"
+            },
+            {
+              "key": "b",
+              "raw": "2 c = 3",
+              "line": 2,
+              "source": "opaque\u0000\ud800/\ud83e\udd96"
+            }
+          ],
+          "children": [],
+          "raw": []
+        },
+        "diagnostics": []
+      },
+      "json": "{\n  \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\",\n  \"sha256\": \"946f8aca1d5634cbf1e1459210206da664dd36fea594eefb13c22b36f57e1b8f\",\n  \"tree\": {\n    \"name\": \"\",\n    \"line\": 1,\n    \"attributes\": [\n      {\n        \"key\": \"a\",\n        \"raw\": \"1\",\n        \"line\": 1,\n        \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\"\n      },\n      {\n        \"key\": \"b\",\n        \"raw\": \"2 c = 3\",\n        \"line\": 2,\n        \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\"\n      }\n    ],\n    \"children\": [],\n    \"raw\": []\n  },\n  \"diagnostics\": []\n}\n"
+    }
+  },
+  {
+    "request": {
+      "op": "parse",
+      "bytes_hex": "726f6f74202e2069676e6f726564207b20696e76616c6964207dff00",
+      "source": "opaque\u0000\ud800/\ud83e\udd96"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "source": "opaque\u0000\ud800/\ud83e\udd96",
+        "sha256": "fa52c5d05ef16ca1b77c37de01272af3148982ff1f487845597175d5bf825d7e",
+        "tree": {
+          "name": "",
+          "line": 1,
+          "attributes": [],
+          "children": [],
+          "raw": [
+            {
+              "raw": "root",
+              "line": 1,
+              "source": "opaque\u0000\ud800/\ud83e\udd96"
+            }
+          ]
+        },
+        "diagnostics": []
+      },
+      "json": "{\n  \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\",\n  \"sha256\": \"fa52c5d05ef16ca1b77c37de01272af3148982ff1f487845597175d5bf825d7e\",\n  \"tree\": {\n    \"name\": \"\",\n    \"line\": 1,\n    \"attributes\": [],\n    \"children\": [],\n    \"raw\": [\n      {\n        \"raw\": \"root\",\n        \"line\": 1,\n        \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\"\n      }\n    ]\n  },\n  \"diagnostics\": []\n}\n"
+    }
+  },
+  {
+    "request": {
+      "op": "parse",
+      "bytes_hex": "61207b202e20783d310a207d202e207d",
+      "source": "opaque\u0000\ud800/\ud83e\udd96"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "source": "opaque\u0000\ud800/\ud83e\udd96",
+        "sha256": "0a243230833c0f6a8e3796e252edf6f66296194ac3a0c2c8b5b40c47f9521a4d",
+        "tree": {
+          "name": "",
+          "line": 1,
+          "attributes": [],
+          "children": [
+            {
+              "name": "a",
+              "line": 1,
+              "attributes": [
+                {
+                  "key": ". x",
+                  "raw": "1",
+                  "line": 1,
+                  "source": "opaque\u0000\ud800/\ud83e\udd96"
+                }
+              ],
+              "children": [],
+              "raw": []
+            }
+          ],
+          "raw": []
+        },
+        "diagnostics": []
+      },
+      "json": "{\n  \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\",\n  \"sha256\": \"0a243230833c0f6a8e3796e252edf6f66296194ac3a0c2c8b5b40c47f9521a4d\",\n  \"tree\": {\n    \"name\": \"\",\n    \"line\": 1,\n    \"attributes\": [],\n    \"children\": [\n      {\n        \"name\": \"a\",\n        \"line\": 1,\n        \"attributes\": [\n          {\n            \"key\": \". x\",\n            \"raw\": \"1\",\n            \"line\": 1,\n            \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\"\n          }\n        ],\n        \"children\": [],\n        \"raw\": []\n      }\n    ],\n    \"raw\": []\n  },\n  \"diagnostics\": []\n}\n"
+    }
+  },
+  {
+    "request": {
+      "op": "parse",
+      "bytes_hex": "1c1d1e1f85a0206100623dff0a",
+      "source": "opaque\u0000\ud800/\ud83e\udd96"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "source": "opaque\u0000\ud800/\ud83e\udd96",
+        "sha256": "9c6aa3da40d6742ca10584766b8682f4ac4be65f06f24c38a924e12ba9b1261f",
+        "tree": {
+          "name": "",
+          "line": 1,
+          "attributes": [
+            {
+              "key": "a\u0000b",
+              "raw": "\u00ff",
+              "line": 1,
+              "source": "opaque\u0000\ud800/\ud83e\udd96"
+            }
+          ],
+          "children": [],
+          "raw": []
+        },
+        "diagnostics": []
+      },
+      "json": "{\n  \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\",\n  \"sha256\": \"9c6aa3da40d6742ca10584766b8682f4ac4be65f06f24c38a924e12ba9b1261f\",\n  \"tree\": {\n    \"name\": \"\",\n    \"line\": 1,\n    \"attributes\": [\n      {\n        \"key\": \"a\\u0000b\",\n        \"raw\": \"\\u00ff\",\n        \"line\": 1,\n        \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\"\n      }\n    ],\n    \"children\": [],\n    \"raw\": []\n  },\n  \"diagnostics\": []\n}\n"
+    }
+  },
+  {
+    "request": {
+      "op": "parse",
+      "bytes_hex": "22610d62223d27ff85a0270a",
+      "source": "opaque\u0000\ud800/\ud83e\udd96"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "source": "opaque\u0000\ud800/\ud83e\udd96",
+        "sha256": "511234c79f275d131daa65b07eee7d6b39f774da7c96186bc0fe64773aef605f",
+        "tree": {
+          "name": "",
+          "line": 1,
+          "attributes": [
+            {
+              "key": "\"a\rb\"",
+              "raw": "'\u00ff\u0085\u00a0'",
+              "line": 1,
+              "source": "opaque\u0000\ud800/\ud83e\udd96"
+            }
+          ],
+          "children": [],
+          "raw": []
+        },
+        "diagnostics": []
+      },
+      "json": "{\n  \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\",\n  \"sha256\": \"511234c79f275d131daa65b07eee7d6b39f774da7c96186bc0fe64773aef605f\",\n  \"tree\": {\n    \"name\": \"\",\n    \"line\": 1,\n    \"attributes\": [\n      {\n        \"key\": \"\\\"a\\rb\\\"\",\n        \"raw\": \"'\\u00ff\\u0085\\u00a0'\",\n        \"line\": 1,\n        \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\"\n      }\n    ],\n    \"children\": [],\n    \"raw\": []\n  },\n  \"diagnostics\": []\n}\n"
+    }
+  },
+  {
+    "request": {
+      "op": "parse",
+      "bytes_hex": "61203d2062207b2063203d2064207d",
+      "source": "opaque\u0000\ud800/\ud83e\udd96"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "source": "opaque\u0000\ud800/\ud83e\udd96",
+        "sha256": "e68790816d80dd13885cd780496088b4277258869dcd83213cd104699ed768fc",
+        "tree": {
+          "name": "",
+          "line": 1,
+          "attributes": [],
+          "children": [
+            {
+              "name": "a = b",
+              "line": 1,
+              "attributes": [
+                {
+                  "key": "c",
+                  "raw": "d",
+                  "line": 1,
+                  "source": "opaque\u0000\ud800/\ud83e\udd96"
+                }
+              ],
+              "children": [],
+              "raw": []
+            }
+          ],
+          "raw": []
+        },
+        "diagnostics": []
+      },
+      "json": "{\n  \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\",\n  \"sha256\": \"e68790816d80dd13885cd780496088b4277258869dcd83213cd104699ed768fc\",\n  \"tree\": {\n    \"name\": \"\",\n    \"line\": 1,\n    \"attributes\": [],\n    \"children\": [\n      {\n        \"name\": \"a = b\",\n        \"line\": 1,\n        \"attributes\": [\n          {\n            \"key\": \"c\",\n            \"raw\": \"d\",\n            \"line\": 1,\n            \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\"\n          }\n        ],\n        \"children\": [],\n        \"raw\": []\n      }\n    ],\n    \"raw\": []\n  },\n  \"diagnostics\": []\n}\n"
+    }
+  },
+  {
+    "request": {
+      "op": "parse",
+      "bytes_hex": "613d7b7d3d7d",
+      "source": "opaque\u0000\ud800/\ud83e\udd96"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "source": "opaque\u0000\ud800/\ud83e\udd96",
+        "sha256": "1ca413ca395208b9edca7c3a44117d7b87faf595bda0eb1eeca4a93f8119cd77",
+        "tree": {
+          "name": "",
+          "line": 1,
+          "attributes": [
+            {
+              "key": "",
+              "raw": "",
+              "line": 1,
+              "source": "opaque\u0000\ud800/\ud83e\udd96"
+            }
+          ],
+          "children": [
+            {
+              "name": "a =",
+              "line": 1,
+              "attributes": [],
+              "children": [],
+              "raw": []
+            }
+          ],
+          "raw": []
+        },
+        "diagnostics": [
+          {
+            "code": "unmatched-brace",
+            "message": "Unmatched closing brace.",
+            "source": "opaque\u0000\ud800/\ud83e\udd96",
+            "line": 1
+          }
+        ]
+      },
+      "json": "{\n  \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\",\n  \"sha256\": \"1ca413ca395208b9edca7c3a44117d7b87faf595bda0eb1eeca4a93f8119cd77\",\n  \"tree\": {\n    \"name\": \"\",\n    \"line\": 1,\n    \"attributes\": [\n      {\n        \"key\": \"\",\n        \"raw\": \"\",\n        \"line\": 1,\n        \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\"\n      }\n    ],\n    \"children\": [\n      {\n        \"name\": \"a =\",\n        \"line\": 1,\n        \"attributes\": [],\n        \"children\": [],\n        \"raw\": []\n      }\n    ],\n    \"raw\": []\n  },\n  \"diagnostics\": [\n    {\n      \"code\": \"unmatched-brace\",\n      \"message\": \"Unmatched closing brace.\",\n      \"source\": \"opaque\\u0000\\ud800/\\ud83e\\udd96\",\n      \"line\": 1\n    }\n  ]\n}\n"
+    }
+  },
+  {
+    "request": {
+      "op": "scalar",
+      "raw": ""
+    },
+    "expected": {
+      "ok": true,
+      "value": "",
+      "json": "\"\"\n"
+    }
+  },
+  {
+    "request": {
+      "op": "scalar",
+      "raw": "''"
+    },
+    "expected": {
+      "ok": true,
+      "value": "",
+      "json": "\"\"\n"
+    }
+  },
+  {
+    "request": {
+      "op": "scalar",
+      "raw": "\"123\""
+    },
+    "expected": {
+      "ok": true,
+      "value": "123",
+      "json": "\"123\"\n"
+    }
+  },
+  {
+    "request": {
+      "op": "scalar",
+      "raw": "'a\nb'"
+    },
+    "expected": {
+      "ok": true,
+      "value": "a\nb",
+      "json": "\"a\\nb\"\n"
+    }
+  },
+  {
+    "request": {
+      "op": "scalar",
+      "raw": "123"
+    },
+    "expected": {
+      "ok": true,
+      "value": 123,
+      "json": "123\n"
+    }
+  },
+  {
+    "request": {
+      "op": "scalar",
+      "raw": "+00001"
+    },
+    "expected": {
+      "ok": true,
+      "value": 1,
+      "json": "1\n"
+    }
+  },
+  {
+    "request": {
+      "op": "scalar",
+      "raw": "-0"
+    },
+    "expected": {
+      "ok": true,
+      "value": 0,
+      "json": "0\n"
+    }
+  },
+  {
+    "request": {
+      "op": "scalar",
+      "raw": "-00012"
+    },
+    "expected": {
+      "ok": true,
+      "value": -12,
+      "json": "-12\n"
+    }
+  },
+  {
+    "request": {
+      "op": "scalar",
+      "raw": "\u0661\u0662\uff13"
+    },
+    "expected": {
+      "ok": true,
+      "value": 123,
+      "json": "123\n"
+    }
+  },
+  {
+    "request": {
+      "op": "scalar",
+      "raw": "\ud835\udfce\ud835\udfd7"
+    },
+    "expected": {
+      "ok": true,
+      "value": 9,
+      "json": "9\n"
+    }
+  },
+  {
+    "request": {
+      "op": "scalar",
+      "raw": "\u00b2"
+    },
+    "expected": {
+      "ok": true,
+      "value": "\u00b2",
+      "json": "\"\\u00b2\"\n"
+    }
+  },
+  {
+    "request": {
+      "op": "scalar",
+      "raw": " 1"
+    },
+    "expected": {
+      "ok": true,
+      "value": " 1",
+      "json": "\" 1\"\n"
+    }
+  },
+  {
+    "request": {
+      "op": "scalar",
+      "raw": "1\n"
+    },
+    "expected": {
+      "ok": true,
+      "value": "1\n",
+      "json": "\"1\\n\"\n"
+    }
+  },
+  {
+    "request": {
+      "op": "scalar",
+      "raw": "+"
+    },
+    "expected": {
+      "ok": true,
+      "value": "+",
+      "json": "\"+\"\n"
+    }
+  },
+  {
+    "request": {
+      "op": "scalar",
+      "raw": "--1"
+    },
+    "expected": {
+      "ok": true,
+      "value": "--1",
+      "json": "\"--1\"\n"
+    }
+  },
+  {
+    "request": {
+      "op": "scalar",
+      "raw": "1_2"
+    },
+    "expected": {
+      "ok": true,
+      "value": "1_2",
+      "json": "\"1_2\"\n"
+    }
+  },
+  {
+    "request": {
+      "op": "scalar",
+      "raw": "'1\""
+    },
+    "expected": {
+      "ok": true,
+      "value": "'1\"",
+      "json": "\"'1\\\"\"\n"
+    }
+  },
+  {
+    "request": {
+      "op": "scalar",
+      "raw": "\udfff"
+    },
+    "expected": {
+      "ok": true,
+      "value": "\udfff",
+      "json": "\"\\udfff\"\n"
+    }
+  },
+  {
+    "request": {
+      "op": "blocks",
+      "bytes_hex": "53747261df657b204e414d453d66697273740a206e616d653d7365636f6e640a20783d2b303030370a20b53d390a2072617720746f6b656e730a206368696c647b7d207d20535452415353457b7d",
+      "source": "opaque/source",
+      "name": "strasse"
+    },
+    "expected": {
+      "ok": true,
+      "value": [
+        {
+          "name": "Stra\u00dfe",
+          "line": 1,
+          "attributes": [
+            {
+              "key": "NAME",
+              "raw": "first",
+              "line": 1,
+              "source": "opaque/source"
+            },
+            {
+              "key": "name",
+              "raw": "second",
+              "line": 2,
+              "source": "opaque/source"
+            },
+            {
+              "key": "x",
+              "raw": "+0007",
+              "line": 3,
+              "source": "opaque/source"
+            },
+            {
+              "key": "\u00b5",
+              "raw": "9",
+              "line": 4,
+              "source": "opaque/source"
+            }
+          ],
+          "children": [
+            {
+              "name": "raw tokens child",
+              "line": 5,
+              "attributes": [],
+              "children": [],
+              "raw": []
+            }
+          ],
+          "raw": []
+        },
+        {
+          "name": "STRASSE",
+          "line": 6,
+          "attributes": [],
+          "children": [],
+          "raw": []
+        }
+      ],
+      "json": "[\n  {\n    \"name\": \"Stra\\u00dfe\",\n    \"line\": 1,\n    \"attributes\": [\n      {\n        \"key\": \"NAME\",\n        \"raw\": \"first\",\n        \"line\": 1,\n        \"source\": \"opaque/source\"\n      },\n      {\n        \"key\": \"name\",\n        \"raw\": \"second\",\n        \"line\": 2,\n        \"source\": \"opaque/source\"\n      },\n      {\n        \"key\": \"x\",\n        \"raw\": \"+0007\",\n        \"line\": 3,\n        \"source\": \"opaque/source\"\n      },\n      {\n        \"key\": \"\\u00b5\",\n        \"raw\": \"9\",\n        \"line\": 4,\n        \"source\": \"opaque/source\"\n      }\n    ],\n    \"children\": [\n      {\n        \"name\": \"raw tokens child\",\n        \"line\": 5,\n        \"attributes\": [],\n        \"children\": [],\n        \"raw\": []\n      }\n    ],\n    \"raw\": []\n  },\n  {\n    \"name\": \"STRASSE\",\n    \"line\": 6,\n    \"attributes\": [],\n    \"children\": [],\n    \"raw\": []\n  }\n]\n"
+    }
+  },
+  {
+    "request": {
+      "op": "blocks",
+      "bytes_hex": "53747261df657b204e414d453d66697273740a206e616d653d7365636f6e640a20783d2b303030370a20b53d390a2072617720746f6b656e730a206368696c647b7d207d20535452415353457b7d",
+      "source": "opaque/source",
+      "name": "STRASSE"
+    },
+    "expected": {
+      "ok": true,
+      "value": [],
+      "json": "[]\n"
+    }
+  },
+  {
+    "request": {
+      "op": "blocks",
+      "bytes_hex": "53747261df657b204e414d453d66697273740a206e616d653d7365636f6e640a20783d2b303030370a20b53d390a2072617720746f6b656e730a206368696c647b7d207d20535452415353457b7d",
+      "source": "opaque/source",
+      "name": "Stra\u00dfe"
+    },
+    "expected": {
+      "ok": true,
+      "value": [],
+      "json": "[]\n"
+    }
+  },
+  {
+    "request": {
+      "op": "blocks",
+      "bytes_hex": "53747261df657b204e414d453d66697273740a206e616d653d7365636f6e640a20783d2b303030370a20b53d390a2072617720746f6b656e730a206368696c647b7d207d20535452415353457b7d",
+      "source": "opaque/source",
+      "name": "missing"
+    },
+    "expected": {
+      "ok": true,
+      "value": [],
+      "json": "[]\n"
+    }
+  },
+  {
+    "request": {
+      "op": "attribute",
+      "bytes_hex": "53747261df657b204e414d453d66697273740a206e616d653d7365636f6e640a20783d2b303030370a20b53d390a2072617720746f6b656e730a206368696c647b7d207d20535452415353457b7d",
+      "source": "opaque/source",
+      "node_path": [
+        0
+      ],
+      "key": "name"
+    },
+    "expected": {
+      "ok": true,
+      "value": null,
+      "json": "null\n"
+    }
+  },
+  {
+    "request": {
+      "op": "attribute",
+      "bytes_hex": "53747261df657b204e414d453d66697273740a206e616d653d7365636f6e640a20783d2b303030370a20b53d390a2072617720746f6b656e730a206368696c647b7d207d20535452415353457b7d",
+      "source": "opaque/source",
+      "node_path": [
+        0
+      ],
+      "key": "NAME"
+    },
+    "expected": {
+      "ok": true,
+      "value": null,
+      "json": "null\n"
+    }
+  },
+  {
+    "request": {
+      "op": "attribute",
+      "bytes_hex": "53747261df657b204e414d453d66697273740a206e616d653d7365636f6e640a20783d2b303030370a20b53d390a2072617720746f6b656e730a206368696c647b7d207d20535452415353457b7d",
+      "source": "opaque/source",
+      "node_path": [
+        0
+      ],
+      "key": "x"
+    },
+    "expected": {
+      "ok": true,
+      "value": 7,
+      "json": "7\n"
+    }
+  },
+  {
+    "request": {
+      "op": "attribute",
+      "bytes_hex": "53747261df657b204e414d453d66697273740a206e616d653d7365636f6e640a20783d2b303030370a20b53d390a2072617720746f6b656e730a206368696c647b7d207d20535452415353457b7d",
+      "source": "opaque/source",
+      "node_path": [
+        0
+      ],
+      "key": "\u03bc"
+    },
+    "expected": {
+      "ok": true,
+      "value": 9,
+      "json": "9\n"
+    }
+  },
+  {
+    "request": {
+      "op": "attribute",
+      "bytes_hex": "53747261df657b204e414d453d66697273740a206e616d653d7365636f6e640a20783d2b303030370a20b53d390a2072617720746f6b656e730a206368696c647b7d207d20535452415353457b7d",
+      "source": "opaque/source",
+      "node_path": [
+        0
+      ],
+      "key": "\u00b5"
+    },
+    "expected": {
+      "ok": true,
+      "value": null,
+      "json": "null\n"
+    }
+  },
+  {
+    "request": {
+      "op": "attribute",
+      "bytes_hex": "53747261df657b204e414d453d66697273740a206e616d653d7365636f6e640a20783d2b303030370a20b53d390a2072617720746f6b656e730a206368696c647b7d207d20535452415353457b7d",
+      "source": "opaque/source",
+      "node_path": [
+        0
+      ],
+      "key": "missing"
+    },
+    "expected": {
+      "ok": true,
+      "value": null,
+      "json": "null\n"
+    }
+  },
+  {
+    "request": {
+      "op": "typed",
+      "bytes_hex": "7d206f75746572207b206368696c64207b20783d310a207d2062617265207d207461696c207b",
+      "source": "opaque/source"
+    },
+    "expected": {
+      "ok": true,
+      "value": {
+        "source": "opaque/source",
+        "sha256": "7e6564baff5854ffb41eeae7ba8f89a4b116a91f20d05326e5c550b06f1608f5",
+        "tree": {
+          "name": "",
+          "line": 1,
+          "attributes": [],
+          "children": [
+            {
+              "name": "outer",
+              "line": 1,
+              "attributes": [],
+              "children": [
+                {
+                  "name": "child",
+                  "line": 1,
+                  "attributes": [
+                    {
+                      "key": "x",
+                      "raw": "1",
+                      "line": 1,
+                      "source": "opaque/source"
+                    }
+                  ],
+                  "children": [],
+                  "raw": []
+                }
+              ],
+              "raw": [
+                {
+                  "raw": "bare",
+                  "line": 2,
+                  "source": "opaque/source"
+                }
+              ]
+            },
+            {
+              "name": "tail",
+              "line": 2,
+              "attributes": [],
+              "children": [],
+              "raw": []
+            }
+          ],
+          "raw": []
+        },
+        "diagnostics": [
+          {
+            "code": "unmatched-brace",
+            "message": "Unmatched closing brace.",
+            "source": "opaque/source",
+            "line": 1
+          },
+          {
+            "code": "unclosed-block",
+            "message": "Unclosed script block.",
+            "source": "opaque/source"
+          }
+        ]
+      },
+      "json": "{\n  \"source\": \"opaque/source\",\n  \"sha256\": \"7e6564baff5854ffb41eeae7ba8f89a4b116a91f20d05326e5c550b06f1608f5\",\n  \"tree\": {\n    \"name\": \"\",\n    \"line\": 1,\n    \"attributes\": [],\n    \"children\": [\n      {\n        \"name\": \"outer\",\n        \"line\": 1,\n        \"attributes\": [],\n        \"children\": [\n          {\n            \"name\": \"child\",\n            \"line\": 1,\n            \"attributes\": [\n              {\n                \"key\": \"x\",\n                \"raw\": \"1\",\n                \"line\": 1,\n                \"source\": \"opaque/source\"\n              }\n            ],\n            \"children\": [],\n            \"raw\": []\n          }\n        ],\n        \"raw\": [\n          {\n            \"raw\": \"bare\",\n            \"line\": 2,\n            \"source\": \"opaque/source\"\n          }\n        ]\n      },\n      {\n        \"name\": \"tail\",\n        \"line\": 2,\n        \"attributes\": [],\n        \"children\": [],\n        \"raw\": []\n      }\n    ],\n    \"raw\": []\n  },\n  \"diagnostics\": [\n    {\n      \"code\": \"unmatched-brace\",\n      \"message\": \"Unmatched closing brace.\",\n      \"source\": \"opaque/source\",\n      \"line\": 1\n    },\n    {\n      \"code\": \"unclosed-block\",\n      \"message\": \"Unclosed script block.\",\n      \"source\": \"opaque/source\"\n    }\n  ]\n}\n"
+    }
+  }
+]
