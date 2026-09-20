@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import random
+import queue
 import subprocess
 import sys
 import tempfile
@@ -177,8 +178,7 @@ def main(base):
         tree(Path('\\\\?\\' + str(big)))
         check('resolve_reference', Path('\\\\?\\' + str(big)), 'HUNTDAT/large')
     active_writer(base / 'race')
-    membership_writer(base / 'membership-race')
-    metadata_writer(base / 'metadata-race')
+    synchronized_changes(base / 'synchronized-changes')
 
 
 def links(base):
@@ -248,69 +248,49 @@ def active_writer(root):
     tree(root)
 
 
-def membership_writer(root):
-    write(root, 'HUNTDAT/a', b'A' * (8 * 1024 * 1024))
-    expected = [oracle('fingerprint', root)]
-    member = write(root, 'HUNTDAT/b', b'B')
-    expected.append(oracle('fingerprint', root))
-    stop = threading.Event()
-    errors = []
-    def writer():
+def synchronized_changes(root):
+    global CASES
+    member = write(root, 'HUNTDAT/a', b'original')
+    def run(phase, mutation):
+        global CASES
+        p = subprocess.Popen([DRIVER], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        request = {'op': 'fingerprint_barrier', 'root': str(root), 'phase': phase}
+        ready = queue.Queue()
+        reader = threading.Thread(target=lambda: ready.put(p.stdout.readline()))
+        reader.start()
         try:
-            while not stop.is_set():
-                member.unlink(missing_ok=True)
-                temp = root / 'replacement'
-                temp.write_bytes(b'B')
-                os.replace(temp, member)
-        except Exception as e:
-            errors.append(e)
-    thread = threading.Thread(target=writer)
-    thread.start()
-    rejected = 0
-    try:
-        for _ in range(12):
-            result = native('fingerprint', root)
-            if result['ok']:
-                assert result['value'] in expected, result
-            else:
-                rejected += 1
-    finally:
-        stop.set()
-        thread.join(timeout=30)
-    assert not thread.is_alive() and not errors
-    assert rejected, 'membership changes did not exercise rejection'
-    tree(root)
-
-
-def metadata_writer(root):
-    p = write(root, 'HUNTDAT/a', b'M' * (8 * 1024 * 1024))
-    expected = oracle('fingerprint', root)
-    stop = threading.Event()
-    errors = []
-    def writer():
-        try:
-            i = 0
-            while not stop.is_set():
-                stamp = 1234567890000000000 + i * 1000000
-                os.utime(p, ns=(stamp, stamp))
-                i += 1
-        except Exception as e:
-            errors.append(e)
-    thread = threading.Thread(target=writer)
-    thread.start()
-    rejected = 0
-    try:
-        for _ in range(12):
-            result = native('fingerprint', root)
-            if result['ok']:
-                assert result['value'] == expected, result
-            else:
-                rejected += 1
-    finally:
-        stop.set()
-        thread.join(timeout=30)
-    assert not thread.is_alive() and not errors
-    assert rejected, 'metadata changes did not exercise rejection'
+            p.stdin.write((json.dumps(request) + '\n').encode())
+            p.stdin.flush()
+            assert ready.get(timeout=30) == b'{"ready":true}\n'
+            reader.join(timeout=5)
+            assert not reader.is_alive()
+            mutation()
+            out, err = p.communicate(b'continue\n', timeout=30)
+            assert p.returncode == 0, err
+            result = json.loads(out)
+            assert not result['ok'], (phase, result)
+        finally:
+            if p.poll() is None:
+                p.kill()
+            reader.join(timeout=5)
+            assert not reader.is_alive()
+            p.wait(timeout=5)
+            for stream in (p.stdin, p.stdout, p.stderr):
+                stream.close()
+        CASES += 1
+    # Metadata is changed after the hash and before its reference restat.
+    stamp = member.stat().st_mtime_ns + 2000000000
+    run('member_hashed', lambda: os.utime(member, ns=(stamp, stamp)))
+    run('initial_inventory', lambda: write(root, 'HUNTDAT/added', b'new'))
+    run('final_inventory', lambda: (root / 'HUNTDAT/added').unlink())
+    # Substitution after inventory never enters a blocking special-file read.
+    if os.name == 'posix':
+        def replace_fifo():
+            member.unlink()
+            os.mkfifo(member)
+        run('initial_inventory', replace_fifo)
+        member.unlink()
+        member.write_bytes(b'original')
     tree(root)
 
 

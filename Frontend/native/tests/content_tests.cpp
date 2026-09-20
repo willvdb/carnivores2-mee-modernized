@@ -25,6 +25,21 @@ static Value run(const Value& request) {
         return v;
     }
     if (op == U"content_inventory") return content_internal::inventory_value(content_internal::content_inventory(root));
+    if (op == U"fingerprint_barrier") {
+        const auto& wanted = request.at(U"phase").string;
+        bool waited = false;
+        auto payload = content_internal::fingerprint_payload(root, [&](content_internal::FingerprintPhase phase) {
+            const auto name = phase == content_internal::FingerprintPhase::initial_inventory ? U"initial_inventory" :
+                phase == content_internal::FingerprintPhase::member_hashed ? U"member_hashed" : U"final_inventory";
+            if (!waited && wanted == name) {
+                waited = true; std::cout << "{\"ready\":true}\n" << std::flush;
+                std::string continuation;
+                if (!std::getline(std::cin, continuation)) throw ContentError("missing test continuation");
+            }
+        });
+        if (!waited) throw ContentError("test phase not reached");
+        return string({payload.begin(), payload.end()});
+    }
     if (op == U"hash_file" || op == U"fingerprint_payload") {
         auto s = op == U"hash_file" ? content_internal::hash_file(root) : content_internal::fingerprint_payload(root);
         return string({s.begin(), s.end()});

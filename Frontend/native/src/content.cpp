@@ -339,17 +339,21 @@ Value inventory_value(const std::vector<Member>& members) {
     for (const auto& m : members) { auto row = array(); row.array = {string(m.relative), number(m.size), number(m.modified), number(m.inode)}; out.array.push_back(std::move(row)); }
     return out;
 }
-std::string fingerprint_payload(const fs::path& root) {
+std::string fingerprint_payload(const fs::path& root, const std::function<void(FingerprintPhase)>& phase) {
     auto content = resolved_path(root, U"HUNTDAT");
     auto before = content_inventory(content); auto entries = array();
+    if (phase) phase(FingerprintPhase::initial_inventory);
     for (const auto& member : before) {
         auto path = content / native_units(member.relative);
-        auto digest = hash_file(path); auto after = stat_path(path);
+        auto digest = hash_file(path);
+        if (phase) phase(FingerprintPhase::member_hashed);
+        auto after = stat_path(path);
         if (member.size != after.size || member.modified != after.modified || member.inode != after.inode)
             throw ContentError("content changed while hashing: " + compat::compact(string(member.relative)));
         auto entry = array(); entry.array = {string(member.relative), number(member.size), string(ascii(digest))};
         entries.array.push_back(std::move(entry));
     }
+    if (phase) phase(FingerprintPhase::final_inventory);
     if (before != content_inventory(content)) throw ContentError("content inventory changed while hashing; close content updaters");
     return compat::ContentFingerprintV1(entries);
 }
