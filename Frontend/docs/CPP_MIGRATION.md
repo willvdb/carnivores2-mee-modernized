@@ -1004,3 +1004,55 @@ diagnostics additionally passed an isolated active-writer rerun and Python synta
 compilation. Production, native driver, CMake, original tests and workflows are
 unchanged. Actual Windows diagnosis is pending this narrowly instrumented head;
 this is not a claimed Windows fix or a reason to bypass the platform gate.
+
+### Windows writer correction: bounded replacement retry
+
+Diagnostic head `65209441aaa5589a7d3b21642caf997f0f6792bf` established the
+actual cause in Windows PR job 106076473458, run 35510132713: the writer raised
+`PermissionError`, errno 13, winerror 5 (`ERROR_ACCESS_DENIED`) at
+`os.replace(replacement, HUNTDAT/a)`, after two completed replacements. It had
+already exited (`alive=False`, join 0.0 seconds); every observation after the
+first saw no new replacements and the run had zero detected rejections. This
+was a stopped mutation workload, not evidence of a hung writer. The content
+test failed in 70.89 seconds; 30/31 CTests passed in 307.23 seconds, including
+all fifteen named Windows content/profile/capture capabilities without skips.
+No successful fingerprint mismatch was reported. The diagnostic checkpoint
+correctly retained the failing assertion and did not approve that head.
+
+Correction local `b786aa75623c500c613035097f56b0c2d265198a`, remote object
+`cca648ab5e0895ba1c16244d8a8496807f5757a0`, tree
+`c8fa2272b537e9b8f8fae364d6f3ad9639437740`, changes only the authored test
+writer. The exact observed Windows error 5 may be retried only from os.replace,
+using the same completed replacement file, a two-second per-replacement deadline
+and a stop-cancellable two-millisecond wait. Persistent denial remains fatal;
+all other error codes, non-Windows errors and write_bytes failures remain fatal.
+No reader handle/share flag, metadata/stability check, hash, format, timeout,
+Windows skip, or production behavior changes. The precise lower-level source of
+the transient Windows denial is not established by that exception alone.
+
+The harness now additionally requires multiple completed replacements, a measured
+replacement-count increase during an observation, and an actual hash/inventory
+change rejection. Every successful race result must still equal the complete
+expected A or B fingerprint. Original alive/error/rejection assertions and all
+diagnostics remain. Small synthetic checks on every host prove retry/success,
+non-Windows error 5 rejection, Windows error 32/2/no-code rejection, deadline
+failure and cancellation. These are harness-policy checks, never claimed as
+actual Win32 evidence. Actual corrected Windows execution remains required.
+
+The affected Linux Debug gate passed all unchanged 282 authored content cases
+plus those harness checks. Its sustained writer completed 4,873 replacements,
+advanced during all sixteen observations and produced sixteen actual detected
+change rejections, no writer errors, and bounded clean termination. Log:
+`/tmp/c2-reference-fingerprint-writer-fix-debug.log`. Production/native-driver/
+CMake bytes remain exactly those already reviewed and fully tested; the original
+Python implementation/tests/goldens, engine, Shared codecs, Menu and workflows
+are untouched. This correction and its verification ledger are bundled into one
+non-force branch update; final-head actual MSVC and independent review remain
+gates, with no merge or self-approval.
+
+The same affected 282-case gate also passed against the existing ASan/UBSan
+production build with only unavailable LSan disabled. Its writer completed
+8,863 replacements with overlap in all sixteen observations and sixteen detected
+change rejections, no writer errors and bounded clean termination. Log:
+`/tmp/c2-reference-fingerprint-writer-fix-asan.log`. Both correction verification
+sessions were fully awaited before this bundled checkpoint.
