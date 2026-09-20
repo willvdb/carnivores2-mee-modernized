@@ -343,3 +343,54 @@ resolution, writes, locks, discovery, execution, and acceptance remain later
 slices. Earlier foundation-only descriptions are chronological evidence, not
 the current branch scope. Resource-policy resolution is a prerequisite of this
 slice, not permission to change the persistent format.
+
+## Slice 1A.2 read-only implementation (review pending)
+
+The standalone public `store.hpp` adds `Store` and an immutable, opaque owned
+`Manifest`. Native store paths use `std::filesystem::path`; typed hunter and
+expedition summaries use `std::u32string`, preserving escaped surrogate code
+points as well as supplementary characters. Unknown nested metadata remains
+in the private owned representation. Schema version and optional active-hunter
+presence are distinct queries. Domain-specific status/hunter/expedition/settings
+exports retain insertion order, ASCII escapes and LF; the journal/evidence
+encoder remains sorted and byte-identical. Reading does not require exporting,
+so retained nonfinite metadata can fail one export while another succeeds.
+
+The CLI exposes only `status`, `hunter list`, `expedition list`, and read-only
+`host-settings`, plus help/version. Global `--store` and unused `--probe` accept
+native paths; writes and later-slice commands fail before repository access.
+Default paths follow LOCALAPPDATA or home/.local/share. Windows uses wide argv
+and environment variables; POSIX retains native path bytes. Regular errors use
+a JSON error object on stderr and exit 2; resource exhaustion uses a JSON error
+and distinct exit 3. The reference's absent-active-hunter list indexing failure
+is reported as a controlled native error; status never synthesizes that field.
+
+Read policy is operational, not persistent-format validation: default maximum
+nesting is 1000, with an explicitly raised API `ReadPolicy::max_depth` supported
+by both parsing and presentation export. There is **no default manifest byte
+or export-size ceiling**. An optional caller-selected input byte budget reports
+`ResourceExhausted`; allocation/length exhaustion and nesting exhaustion are
+also distinct from schema corruption. Arbitrary decimal integers retain their
+magnitude and do not inherit Python's configurable conversion digit cap. The
+existing private encoders/parser preserve their default resource behavior and
+325 original golden fixtures. CPython 3.12 / Unicode 15.0 remains the pinned
+semantic reference. These policy differences never cause fallback or writes.
+
+The read adapter deliberately resolves the caller root once in the constructor,
+then checks stored ancestors and the current manifest on each read. It rejects
+aliases, symlinks/reparse points, special files and multiply-linked regular
+files, including missing-current paths with unsafe ancestors. Windows ancestor
+anchors follow PureWindowsPath rather than STL UNC/device decomposition, and
+alias comparison uses pinned Unicode lowercase rather than OS uppercase tables.
+Caller-supplied extended prefixes are retained. POSIX opens the final file with
+O_NOFOLLOW/O_NONBLOCK; Windows opens its final handle with OPEN_REPARSE_POINT
+and rechecks its type/link count. Reads stop at the observed regular-file size
+and compare post-read size/link/mtime metadata. This is not a claim of protection
+against hostile concurrent directory replacement or all concurrent writers.
+
+Missing current data returns the reference empty manifest only when neither
+backup sentinel exists under normal exists semantics. Corrupt current data
+never falls back; valid current data ignores locks and backup contents. Reads
+never mkdir, lock, migrate, rewrite, capture profiles, query stored executables,
+or resolve recorded historical snapshots. This is only the read prerequisite
+of future filesystem work; capture, atomic writes and transactions remain later.
