@@ -976,3 +976,31 @@ commit-ID differences. This following evidence commit is bundled with that
 implementation in the initial branch update; its final SHA and actual CI
 outcomes belong in subsequent independent review evidence. No merge or
 self-approval is performed by this implementation checkpoint.
+
+### Windows active-writer diagnostic checkpoint
+
+Actual head `98f7ab7ab77474097d376c20da9938cc6682a1e0` passed Linux PR
+job 106074871578, run 35509519139: 18/18 in 99.67 seconds, with both named
+permission tests passed. Windows push job 106074824777, run 35509500990,
+passed 30/31 in 456.65 seconds; Windows PR job 106074871661, run 35509519139,
+passed 30/31 in 561.82 seconds. The content test failed the same combined
+writer-thread-alive/exception assertion in both (91.45 and 123.45 seconds).
+All six content, six profile and three capture named Windows capabilities
+passed without skips; all other tests passed. These heads are not approved.
+
+Those failure logs omitted the exception and alive flag, so they do not
+establish whether the writer errored or failed to stop. This diagnostic-only
+checkpoint preserves production bytes and every existing race assertion while
+reporting phase, completed replacement counts per observation, rejection count,
+thread alive state, bounded join duration, and exception type/repr/errno/winerror/
+traceback (plus a live writer stack when available). No failure code is ignored,
+no retry introduced, and no timeout increased. Explicit native read/stat handles
+still use FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE and RAII close;
+the observed Windows cause must be established before choosing a correction.
+
+The local affected oracle gate passed all 282 cases after diagnostic additions
+(`/tmp/c2-reference-fingerprint-writer-diagnostics.log`); the exact final writer
+diagnostics additionally passed an isolated active-writer rerun and Python syntax
+compilation. Production, native driver, CMake, original tests and workflows are
+unchanged. Actual Windows diagnosis is pending this narrowly instrumented head;
+this is not a claimed Windows fix or a reason to bypass the platform gate.

@@ -11,6 +11,7 @@ import sys
 import tempfile
 import threading
 import time
+import traceback
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from lodge import discovery as reference
@@ -221,30 +222,47 @@ def active_writer(root):
     stop = threading.Event()
     errors = []
     rejected = 0
+    progress = {'phase': 'starting', 'replacements': 0}
+    overlap = []
     def writer():
         try:
             i = 0
             while not stop.is_set():
                 temp = root / 'replacement'
+                progress['phase'] = 'write replacement'
                 temp.write_bytes((b'A' if i % 2 else b'B') * (4 * 1024 * 1024))
+                progress['phase'] = 'replace member'
                 os.replace(temp, p)
                 i += 1
+                progress['replacements'] = i
+            progress['phase'] = 'stopped'
         except Exception as e:
-            errors.append(e)
+            errors.append({'type': type(e).__name__, 'repr': repr(e),
+                           'errno': getattr(e, 'errno', None), 'winerror': getattr(e, 'winerror', None),
+                           'traceback': traceback.format_exc()})
     thread = threading.Thread(target=writer)
     thread.start()
     try:
         for _ in range(16):
+            started = progress['replacements']
             result = native('fingerprint', root)
+            overlap.append((started, progress['replacements']))
             if result['ok']:
                 assert result['value'] in (a, b), result
             else:
                 rejected += 1
     finally:
         stop.set()
+        join_started = time.monotonic()
         thread.join(timeout=30)
-    assert not thread.is_alive() and not errors
-    assert rejected, 'active writer did not exercise change rejection'
+        join_elapsed = time.monotonic() - join_started
+    alive = thread.is_alive()
+    frame = sys._current_frames().get(thread.ident) if alive else None
+    stack = traceback.format_stack(frame) if frame else []
+    evidence = {'alive': alive, 'progress': progress, 'errors': errors,
+                'replacement_counts_during_observations': overlap, 'rejected': rejected, 'join_seconds': join_elapsed, 'writer_stack': stack}
+    assert not alive and not errors, evidence
+    assert rejected, ('active writer did not exercise change rejection', evidence)
     tree(root)
 
 
