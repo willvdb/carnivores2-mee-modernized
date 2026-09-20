@@ -94,8 +94,8 @@ escaping and indentation are reviewable independently of checkout line endings.
 | 1A.1 pure manifest/schema validation | Reviewed and merged in PR #17 |
 | 1A.2 read-only filesystem/store/CLI integration | Reviewed and merged in PR #18; overall 1A complete |
 | 1B.1 current-generation/capture read | Reviewed and merged in PR #19 |
-| 1B.2 pure profile-byte codec inspection | In progress; independent review pending |
-| 1B.3 filesystem profile inventory/inspection | Pending; overall 1B incomplete |
+| 1B.2 pure profile-byte codec inspection | Reviewed and merged in PR #20 |
+| 1B.3 filesystem profile inventory/inspection | In progress; independent review pending |
 | 2A discovery/reference/fingerprint observation | Pending |
 | 2B catalog | Pending |
 | 2C Genesis planning | Pending |
@@ -638,3 +638,71 @@ supersedes it. No existing assertions were modified or weakened. Shared codec,
 original helper, Python implementation/tests/goldens, engine, Menu, workflows
 and persistent formats remain unchanged. These results are not independent
 approval; final published-head review and actual Windows CI remain gates.
+
+
+## Profile codec merge and source-filesystem boundary
+
+PR #20 was independently reviewed at head
+`b0863b778fd79e7e77cf415251976e3c7f1aef03`, tree
+`dfa99b9a1c06354b247ce0c5fa09b58982ff71e2`, three ahead / zero behind
+`e222b5542a12ab2675aba2116a189bd8e2985f58`, and merged as
+`7fe929a5b93c6ecff912e36ce66a86619cde74c8` with that same tree. The stack was
+`12d4b76c28ef41ff96dadc60aedc861fce3a8ee8`,
+`a352af1d2793560d6baefc6b3ac5958b9ad8c752`, and the reviewed head above.
+The coordinator inspected the actual GitHub diff, public API, tests and scope;
+no findings remained. All 28 final checks passed. Actual MSVC Windows run
+35505907698 / job 106065572533 passed 16/16 CTests in 350.28 seconds
+(profile 13.08 seconds), with all three filesystem capability tests passed,
+none skipped. Isolated reviewer Linux passed 13/13 CTests in 186.12 seconds,
+including all 154 Python tests in 68.800 seconds without skips. Independent
+580 struct-offset/Python/native exact-byte comparisons had zero mismatches.
+Agent Debug passed 13/13 in 188.99 seconds (154 Python tests in 71.179 seconds),
+with 865 profile oracle comparisons; ASan/UBSan passed 3/3 in 73.28 seconds,
+only unavailable LSan disabled under ptrace. Shared codec, original helper,
+Python, old tests/goldens, engine, Menu and workflows were untouched. This
+supersedes earlier pending 1B.2 statements without altering historical evidence.
+
+Branch `frontend/cpp-profile-files` starts at that exact merge for **1B.3 only**:
+read-only source-profile inventory, read_set, stable_read and inspect_set.
+Only their direct `discovery.walk_files` prerequisite moves forward from 2A.
+No recognition, reference resolution, fingerprinting, catalog, Genesis, profile
+association/refresh writes, store publication, locks, process execution, trust,
+acceptance, GUI or cutover is authorized by this dependency. External-helper
+execution remains 4A; a profile CLI bridge requiring explicit probe semantics
+is deferred with it. The explicit unavailable/native byte codec remains the
+only decoding choice, without environment lookup or fabricated helper evidence.
+
+Public `profile_files.hpp` observations own immutable state metadata and bind
+the original native root to the initial cwd without collapsing POSIX link/..
+components or expanding literal tilde. State objects cannot be constructed from
+caller-supplied trusted metadata. The bound root is an observation location,
+not physical-root or acceptance authority. Read resolves it afresh following
+Python Path.resolve semantics. Missing/non-directory/NUL roots yield empty
+inventory; other status errors retain the reference distinction from ignored
+scandir errors. Native POSIX surrogateescape and Windows unpaired UTF16 names
+remain code points, never locale conversions. Filenames and directories sort
+by Python code-point order, including on Windows. Unicode 15.0 decimal digits
+use a separately generated/verified narrow table; filename slots retain
+arbitrary decimal magnitude. Long-s regex equivalence does not normalize the
+captured extension's lowercased kind. Group keys, companion/file ordering,
+case ambiguity and diagnostics follow the reference literally.
+
+Source reading has its own bounded actual-byte reader. It allows ordinary
+hardlinks, ignores unrelated special files in inventory, rejects changed
+members that become special/symlink/escaping files, and reads at most 16MiB+1
+actual bytes even for virtual files whose stat extent is zero. It does not
+import managed capture's 128-entry/32MiB aggregate/alias-hardlink restrictions.
+Windows junction directories are traversed by inventory as in os.walk;
+canonical containment is checked at read. Nonsymlink regular reparse files
+are followed by the source reader; there is no blanket reparse rejection.
+Cloud-provider hydration behavior is not directly exercised by the authored
+fixtures. Existing Store and Capture policy is unchanged.
+
+Stable reads compare full member paths and companion metadata, then complete
+bytes; old inventory state-file sizes are not a pinned baseline. Inspection
+recomputes size/hash/decoded projections and retains raw bytes. All presentation
+uses insertion order, ASCII escapes, indent 2 and LF. These observations never
+certify an externally atomic SAV/SAB pair, semantic gameplay compatibility,
+ownership, fresh acceptance, or safety against hostile concurrent directory
+replacement. Ordinary detected races fail closed; no bytes are normalized or
+rewritten. Independent review and actual final-head Windows CI remain gates.
