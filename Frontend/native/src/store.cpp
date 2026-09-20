@@ -3,11 +3,14 @@
 #include "schema_compat.hpp"
 #include "store_paths.hpp"
 #include "capture.hpp"
+#include "manifest_access.hpp"
 #include <new>
 
 namespace c2::frontend {
 using compat::Value;
 struct Manifest::Impl { Value data; ReadPolicy policy; std::filesystem::path directory; };
+const Value& ManifestAccess::instances(const Manifest& m) { return m.impl_->data.at(U"instances"); }
+const ReadPolicy& ManifestAccess::policy(const Manifest& m) { return m.impl_->policy; }
 struct GenerationObservation::Impl {
     Value generation, history;
     std::u32string id;

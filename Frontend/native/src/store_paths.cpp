@@ -261,7 +261,7 @@ fs::path resolve_native(const fs::path& path) {
         throw StoreError("native path contains NUL");
     return resolve(path.empty() ? fs::path(".") : path);
 }
-fs::path resolve_root(fs::path path) {
+fs::path expand_user(fs::path path) {
     if (path.empty()) path = ".";
     auto s = path.native();
     if (s.find(decltype(s)::value_type{}) != s.npos) throw StoreError("store path contains NUL");
@@ -294,8 +294,9 @@ fs::path resolve_root(fs::path path) {
     }
     // pathlib turns an empty expanduser result back into the current directory.
     if (path.empty()) path = ".";
-    return resolve(path);
+    return path;
 }
+fs::path resolve_root(fs::path path) { return resolve(expand_user(std::move(path))); }
 fs::path default_directory() {
 #ifdef _WIN32
     auto local = environment(L"LOCALAPPDATA");

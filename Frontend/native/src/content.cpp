@@ -90,7 +90,7 @@ bool ignored(const std::error_code& ec) {
     return ec == std::errc::no_such_file_or_directory || ec == std::errc::not_a_directory ||
         ec == std::errc::bad_file_descriptor || ec == std::errc::too_many_symbolic_link_levels;
 }
-fs::file_status source_status(const fs::path& p) {
+fs::file_status source_status_impl(const fs::path& p) {
     std::error_code ec; auto s = fs::status(p, ec);
     if (ec && !ignored(ec)) throw fs::filesystem_error("cannot inspect content path", p, ec);
     return s;
@@ -246,7 +246,7 @@ std::vector<fs::path> walk(const fs::path& source, bool validate) {
             std::sort(dirs.begin(), dirs.end(), less); std::sort(files.begin(), files.end(), less);
             for (const auto& f : files) {
                 auto p = directory / f;
-                if (!is_link(p) && fs::is_regular_file(source_status(p))) result.push_back(item.relative / f);
+                if (!is_link(p) && fs::is_regular_file(source_status_impl(p))) result.push_back(item.relative / f);
             }
         }
         for (auto i = dirs.rbegin(); i != dirs.rend(); ++i) pending.push_back({item.relative / *i, item.ancestors});
@@ -260,6 +260,42 @@ const char* status_name(ReferenceStatus status) {
 }
 } // namespace
 namespace content_internal {
+fs::path source_spelling(const fs::path& p) { return pathlib_spelling(p); }
+fs::path source_syscall(const fs::path& p) { return syscall_path(p); }
+fs::file_status source_status(const fs::path& p) { return source_status_impl(syscall_path(p)); }
+bool source_is_link(const fs::path& p) { return is_link(syscall_path(p)); }
+std::string read_prefix(const fs::path& source, std::size_t limit) {
+    auto p = syscall_path(source);
+#ifdef _WIN32
+    Handle h{CreateFileW(p.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr)};
+    if (h.h == INVALID_HANDLE_VALUE) throw ContentError("cannot read resource script");
+    auto before = metadata(h.h);
+#else
+    Handle h{::open(p.c_str(), O_RDONLY | O_NONBLOCK | O_CLOEXEC)};
+    if (h.h < 0) throw ContentError("cannot read resource script");
+    struct stat st{};
+    if (::fstat(h.h, &st)) throw ContentError("cannot stat resource script");
+    auto before = metadata(st);
+#endif
+    if (!before.regular) throw ContentError("resource script is not a regular file");
+    std::string out;
+    std::array<char, 65536> buffer{};
+    while (out.size() < limit) {
+        auto wanted = std::min(buffer.size(), limit - out.size());
+#ifdef _WIN32
+        DWORD got = 0;
+        if (!ReadFile(h.h, buffer.data(), static_cast<DWORD>(wanted), &got, nullptr)) throw ContentError("cannot read resource script");
+#else
+        auto got = ::read(h.h, buffer.data(), wanted);
+        if (got < 0 && errno == EINTR) continue;
+        if (got < 0) throw ContentError("cannot read resource script");
+#endif
+        if (!got) break;
+        out.append(buffer.data(), static_cast<std::size_t>(got));
+    }
+    return out;
+}
 fs::path native_units(std::u32string_view s) {
     for (auto c : s) {
         if (c > 0x10ffff) throw ContentError("invalid native code point");
@@ -376,7 +412,7 @@ ReferenceObservation resolve_reference(const fs::path& source, std::u32string re
     if (parts.absolute() || parts.parent() || result.reference.find(U':') != result.reference.npos || parts.parts.empty()) return result;
     auto current = root; fs::path relative;
     for (const auto& component : parts.parts) {
-        if (!fs::is_directory(source_status(current))) { result.status = ReferenceStatus::missing; return result; }
+        if (!fs::is_directory(source_status_impl(current))) { result.status = ReferenceStatus::missing; return result; }
         std::vector<fs::path> matches;
         for (const auto& entry : fs::directory_iterator(current))
             if (schema::casefold(store_paths::native_points(entry.path().filename())) == schema::casefold(component)) matches.push_back(entry.path().filename());

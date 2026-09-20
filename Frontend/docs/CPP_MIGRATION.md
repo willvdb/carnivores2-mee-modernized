@@ -96,8 +96,8 @@ escaping and indentation are reviewable independently of checkout line endings.
 | 1B.1 current-generation/capture read | Reviewed and merged in PR #19 |
 | 1B.2 pure profile-byte codec inspection | Reviewed and merged in PR #20 |
 | 1B.3 filesystem profile inventory/inspection | Reviewed and merged in PR #21; overall 1B read observations complete |
-| 2A.1 reference resolution/content fingerprint | In progress; independent review pending |
-| 2A.2 coherent-root discovery/instance observations | Pending |
+| 2A.1 reference resolution/content fingerprint | Reviewed and merged in PR #22 |
+| 2A.2 coherent-root discovery/instance observations | In progress; independent review pending |
 | 2B catalog | Pending |
 | 2C Genesis planning | Pending |
 | 3A safe paths/capture/atomic I/O | Pending |
@@ -1117,3 +1117,167 @@ Python/tests/goldens, Shared codecs, engine, Menu and workflows are unchanged.
 This scoped correction and evidence are bundled into one non-force branch update.
 Actual fresh Windows CI and final independent review remain required; the green
 push on the preceding head does not approve its red PR outcome or this correction.
+
+
+## Reference/fingerprint merge and discovery observation boundary
+
+PR #22 on `frontend/cpp-reference-fingerprint` was independently reviewed at
+`58b0493cc042ae0fcefe096bde1aafd28b7666c5`, nine ahead / zero behind
+`ff0bb74f0481628384672a1271aafc25a5468540`, and merged as
+`a4b84d9d5532ae57004d51f26558a9fdf0486109`. The tested and merged tree is
+`2b5acb831720ce8b51a6b0909f65584c98ca4d0e`. Root reviewed the actual base,
+stack, full code, tests and API; 6,890 exact comparisons across 64 random trees
+and root edges had zero mismatches and unchanged source bytes. Final independent
+284-case verification (`/tmp/c2-reference-review-final/lifecycle-root.log`)
+completed 5,049 writer replacements, sixteen idle handoffs, sixteen local
+unconstrained change rejections and both forced atomic-replacement rejections.
+Agent Debug and ASan/UBSan 284-case outcomes remain recorded above.
+
+All 28 final checks were green at 13:03:07 UTC. Actual Linux PR run 35511761736,
+job 106080770957, passed 18/18 in 124.41 seconds (content 15.96 seconds), both
+named permission capabilities Passed without skips. Actual Windows PR job
+106080771065 passed 31/31 in 539.24 seconds (content 130.02 seconds); Windows
+push run 35511760493, job 106080767877, passed 31/31 in 442.92 seconds (content
+94.99 seconds). Both Windows jobs passed all fifteen named content/profile/
+capture capabilities without skips. The earlier Windows writer false failures,
+diagnosis and lifecycle corrections above remain historical evidence; this final
+review supersedes pending approval with no unresolved current correctness finding.
+The per-ancestry junction-cycle operational distinction and untested live UNC /
+cloud-provider behavior remain caveats.
+
+Branch `frontend/cpp-discovery-observations` starts at that exact main merge for
+**2A.2 only**: read-only recognize, discover, engine_evidence, get_instance,
+inspect_instance and move_candidates over the filesystem and immutable validated
+Manifest. Recognition is content evidence, never execution or trust certification;
+engine evidence remains independent from content identity. Full retained baseline
+values and Python semantic equality are required, including unknown metadata.
+Only minimal private prerequisite seams may move forward. No CLI bridge,
+register/refresh/relocate or manifest mutation (5B), catalog (2B), Genesis,
+process trust/execution (4A), acceptance, new persistent format, UI, engine/Menu,
+generalized architecture/performance work or broad refactor belongs here.
+Historical/external codec-helper selection/execution and the profile CLI bridge
+remain explicitly deferred to 4A without reinterpretation of historical pins.
+Independent review and actual final-head MSVC CI remain mandatory gates.
+
+### Slice 2A.2 implementation and compatibility checkpoint
+
+The additive `discovery.hpp` API exposes recognize, discover, engine_evidence,
+get_instance, inspect_instance and move_candidates. Owned immutable observations
+retain insertion order, diagnostic order, unknown metadata and exact value kinds;
+only standard-library types cross the public boundary. Executable observations
+are an optional owned vector: a foreign instance's unobserved field stays absent,
+while a missing/native root's observed empty list stays present. Typed path and
+change/review queries likewise preserve absence. Instance observations outlive
+both Store and Manifest without rereading disk or projecting the baseline.
+
+A narrow private ManifestAccess seam reads retained validated instance values and
+read policy. It neither exports/reparses the manifest nor changes authority. Full
+current revision and engine baselines use the existing Python semantic equality;
+unknown fields participate, integral float/bool values admitted by revision-history
+membership remain intact, and unrelated nonfinite metadata does not block
+inspection merely because presentation cannot encode it. The private raw-baseline
+test seam exercises absent-engine default behavior unreachable through today's
+validated Manifest; the public API always obtains instances from that Manifest.
+
+Recognition constructs native Path spelling, expands user and resolves without
+native_path's foreign/drive-relative rejection. Missing-root shape returns early.
+Reference diagnostics and map pairs preserve exact order; MAP enumeration follows
+regular aliases and permits colliding MAP spellings when the RSC reference is
+unique, whereas executable symlinks are excluded. Executable Path sorting uses
+pinned NT lowercase or POSIX code points; map strings sort by code points on every
+host. Content recognition is computed before the missing-engine advisory, never
+certifies execution, and never substitutes for fingerprint policy.
+
+Resource-script evidence reads at most 8MiB+1 actual bytes from an owned regular
+handle, independent of reported extent. Its ASCII byte-regex equivalent uses the
+exact word/whitespace/case rules without UTF-8 decoding, locale classes or catalog
+parsing. Ordinary aliases, hardlinks and nonsymlink regular reparse sources are
+allowed. POSIX nonblocking open rejects a substituted FIFO instead of blocking;
+this is an explicit operational fail-closed distinction, not managed ownership.
+No capture/profile member, entry or aggregate ceiling is imported. Existing
+fingerprint bytes, hashes and primitives remain unchanged.
+
+Discovery follows sorted os.walk directory traversal, excludes child symlinks
+before recognizing parents and prunes only HUNTDAT children. Siblings, nested
+games, finite junction aliases and permission omissions remain observable. The
+per-ancestry cycle guard runs after successful enumeration and fails the whole
+observation with `discovery directory cycle`; it never deduplicates aliases or
+returns silent partial success. As in prior slices, this is an operational
+difference from potentially unbounded Windows junction traversal. Live UNC shares
+and cloud-provider hydration/reparse behavior are not asserted by local fixtures.
+
+Inspection separates fresh filesystem evidence from the full retained baseline.
+Foreign shape contains no fabricated path, capabilities or map pairs. Pending
+engine relocation review remains required after bytes return to the baseline.
+Move candidates fingerprint directly, preserve manifest insertion order, use
+Path.exists semantics for dangling old locations and never require coherent-root
+recognition. No registration, refresh, relocation, manifest write, execution,
+trust certification or production CLI bridge is added.
+
+The authored test-only line-framed adapter drives public APIs and exact presentation
+bytes against unchanged Python. Its 634 local oracle cases cover all 256 byte
+values at resource-regex boundary and whitespace positions, exact/over 8MiB reads,
+zero-extent virtual bytes, missing/incomplete/foreign shapes, content-only roots,
+Unicode and raw native names, MAP/RSC ambiguity, trophy exclusion, nested pruning,
+source aliases, independent mutable/content/engine changes, unknown/nonfinite and
+numeric baselines, pending review and candidate order. Typed assertions test
+absence versus observed-empty and copies after Store/Manifest destruction. An
+owned bounded child retains a baseline while the fixture rewrites the disk
+manifest and engine, then proves inspection compares against the old baseline.
+Read-only source/manifest snapshots remain unchanged by every observation.
+Additional native-only FIFO rejection and more-than-128-entry / 36MiB-engine
+fixtures demonstrate the operational boundary and absence of managed limits.
+
+Named Windows file-link, dangling-link, unpaired-UTF16, junction, hardlink and
+cycle CTests require real fixture creation and distinguish Passed from unsupported
+skip 77. Extended local roots are exercised by each supported noncycle capability.
+The named POSIX permission test distinguishes denied-scandir omission from
+unreadable-script rejection; local identity dropping is denied with EPERM and
+reported as an explicit skip, not permission coverage. Actual Linux CI and actual
+final-head MSVC outcomes remain gates for independent review.
+
+Local implementation `63673b651fab66302e3dabf8f3da5ad43d1d8eb8` and remote immutable
+object `fa15bf816a4259f711fd68f0d1120eff8a7ad505` have the identical tree
+`868218d3c49aa51a6c9321389a984cd6b511d090`. Its private prerequisite local
+`8b5a0d6fa89363c09fd6efe56053f6671738ee09` maps to remote
+`b802663cd174baa83c6ef12c6fd2fa69f61b18d9`, tree
+`f1c735dcaebb53b59e524651055063a10af8fa96`; initial ledger local
+`352ae0131e7c4038394b2a8c630e526b550cb155` maps to remote
+`1232b78a4c1b5ef0e795ca6b12ac66d42fa0487c`, tree
+`85d9b935f4fdfbdafbdc2f6e5a2b2b52c3b8083a`. Every blob and complete tree was
+checked against local Git objects. Author/committer metadata accounts for commit
+ID differences. This following validation ledger is bundled before initial branch
+publication; its final SHA belongs in independent review evidence.
+
+Preliminary root review independently compiled a frozen matching production/header/
+driver snapshot in `/tmp/c2-discovery-review-initial/build` and ran 253 separate
+exact JSON/value comparisons across 55 randomized roots plus targeted raw-byte,
+8MiB, alias/collision, discovery, retained/nonfinite/numeric baseline, foreign,
+pending-review and candidate-order cases. There were zero mismatches and source/
+manifest bytes and metadata were unchanged. Log:
+`/tmp/c2-discovery-review/independent-result.log`. Root reviewed the full new code,
+API and tests; its requested typed executable-presence correction is included.
+This is preliminary evidence, not published-head or Windows approval.
+
+Verification uses the immutable source archive `/tmp/c2-discovery-astra-final-source`
+and separate `/tmp/c2-discovery-astra-final-debug` and
+`/tmp/c2-discovery-astra-final-asan` build directories. Each owned process is fully
+awaited; no binary directory is rebuilt while its tests run. The sanitizer command
+uses `-fsanitize=address,undefined -fno-omit-frame-pointer`, with
+`ASAN_OPTIONS=detect_leaks=0` only for unavailable LSan under ptrace and
+`UBSAN_OPTIONS=halt_on_error=1`. Targeted discovery/store/compatibility/stack
+ASan/UBSan passed 4/4 in 152.42 seconds (117.03, 30.94, 2.28 and 2.15 seconds).
+Log: `/tmp/c2-discovery-astra-final-asan.log`.
+
+Final full Debug completed all twenty registered CTests in 287.76 seconds:
+seventeen Passed and three named POSIX permission capabilities explicitly Skipped
+for local identity-drop EPERM (discovery, content and profiles). The new 634-case
+discovery gate passed in 20.65 seconds. All unchanged 154 Python tests passed in
+67.746 seconds without Python skips (backend 68.08 seconds), using the actual
+compiled profile, launch-argument and native-session probes. Existing content,
+profile, schema, original 325 goldens and constrained-stack gates passed unchanged.
+Log: `/tmp/c2-discovery-astra-final-debug.log`; complete child output is in its
+build directory's `Testing/Temporary/LastTest.log`. Both final verification
+sessions were fully awaited before publication. Python implementation/old tests,
+original goldens, Shared codecs/helper, engine, Menu and workflows are unchanged.
+No later slice is started and this checkpoint does not self-approve 2A.2.
