@@ -124,6 +124,21 @@ with tempfile.TemporaryDirectory(prefix='c2-generation-') as temporary:
         check_capture(state / 'dirlink', parent)
         check_capture(parent / 'capture' / '..' / 'capture', parent)
     else:
+        # Symlink privilege varies across Windows hosts. Exercise each available
+        # kind, and report denied creation explicitly rather than silently skip.
+        for name, target_name in [('file-link', 'bytes'), ('dangling-link', 'absent')]:
+            link = state / name
+            try: link.symlink_to(target_name)
+            except OSError as error: print(f'Windows symlink creation unavailable: {name}: {error}', flush=True)
+            else:
+                check_capture(state, parent)
+                link.unlink()
+        unpaired = state / 'unpaired-\ud800.sav'
+        try: unpaired.write_bytes(b'opaque-unpaired-name')
+        except (OSError, UnicodeError) as error: print(f'Windows unpaired UTF16 name unavailable: {error!r}', flush=True)
+        else:
+            check_capture(state, parent)
+            unpaired.unlink()
         junction = parent / 'junction'
         result = subprocess.run(['cmd', '/c', 'mklink', '/J', str(junction), str(state)], capture_output=True)
         assert result.returncode == 0, result.stderr
@@ -262,6 +277,16 @@ with tempfile.TemporaryDirectory(prefix='c2-generation-') as temporary:
             p = run([api, 'capture', changing])
             assert p.returncode in (0, 2), p.stderr
             if p.returncode == 2: failures += 1
+            else:
+                # ASCII JSON entry projection precedes length-framed raw blobs.
+                end = p.stdout.index(b'\n]\n') + 3
+                entries = json.loads(p.stdout[:end])
+                remaining = p.stdout[end:]
+                assert len(entries) == 1 and entries[0]['type'] == 'file'
+                size_line, remaining = remaining.split(b'\n', 1)
+                size = int(size_line)
+                assert size == limit == entries[0]['size'] and len(remaining) == size
+                assert hashlib.sha256(remaining).hexdigest() == entries[0]['sha256']
         assert failures, 'sustained writer was not detected'
     finally: stop.set(); thread.join()
 print(f'{count} generation/capture differential checks passed')
