@@ -1056,3 +1056,64 @@ production build with only unavailable LSan disabled. Its writer completed
 change rejections, no writer errors and bounded clean termination. Log:
 `/tmp/c2-reference-fingerprint-writer-fix-asan.log`. Both correction verification
 sessions were fully awaited before this bundled checkpoint.
+
+### Windows race coordination: owned observation lifetime
+
+Head `5c086b4326f2a1794f2536532ba7cb42a1444680` had divergent actual Windows
+outcomes: push job 106078369422, run 35510845424, passed 31/31 in 535.47 seconds
+(content 130.91 seconds); PR job 106078374864, run 35510847646, failed 30/31 in
+528.22 seconds (content 123.24 seconds). All fifteen named capabilities passed.
+The red run exhausted the two-second replacement deadline after six completed
+replacements and 314 WinError 5 retries; the writer exited, and later observations
+had no new mutations. It reported zero unconstrained change rejections. The green
+CTest log suppresses successful writer output, so its retry counts and individual
+observation durations are unknown. These results do not identify which OS handle
+caused the denial, and a larger arbitrary timeout would not establish correctness.
+
+Correction local `4c58ea143d5b5bd5bfa6097f0e4f57d5ed186924`, remote object
+`ed247767584c193d7de1f7ab90b9813ae8b48132`, tree
+`0c85231cad455c8c23b543187a078383c6c4fa56`, changes only authored test
+coordination. A small locked lifecycle clock subtracts both accumulated completed
+reader intervals and the current interval from monotonic time. The two-second
+idle-denial budget therefore excludes an owned observation even if the writer
+is descheduled across its entire active-to-idle transition. Synthetic regressions
+exercise that 200-second interval without waiting, alongside all previous fatal
+error/deadline/cancellation checks; they do not claim Windows execution coverage.
+
+Each of the sixteen public native fingerprint calls still runs with the sustained
+writer and must return an exact complete A/B fingerprint on success. Each owned
+child retains the existing 90-second timeout and is fully awaited before closing
+its lifecycle interval. Before the next child starts, the harness requires a new
+successful replacement while idle; persistent denial cannot be hidden by starting
+another reader. The existing bounded stop/join and fatal writer-error assertions
+remain. Retry remains restricted to Windows os.replace and actual error 5; all
+other errors remain fatal. The test records individual observation durations,
+active/idle retry counts, mutation counts and every idle progress handoff.
+
+Mandatory detected-change proof now comes from two deterministic atomic replacements
+on the same 4MiB member at both existing private phases: initial_inventory and
+member_hashed before restat. Each requires a successfully completed replacement
+and a specific changed-while-hashing rejection. Those paused mutations receive
+no lifecycle exemption, so their short bound prevents a paused-child/retry deadlock.
+The exact required phase pair is asserted directly. Unconstrained rejection and
+overlap counts remain visible diagnostics rather than assumptions that Windows
+must permit rename while a reader is open. No valid-success, no-error, bounded
+cleanup, original oracle, or actual replacement assertion is removed. There is
+no new production callback, API, environment switch, format or safety policy.
+
+Affected Linux Debug and ASan/UBSan gates passed all original 282 authored cases
+plus the two atomic-replacement cases (284 total). Debug completed 5,066 writer
+replacements, all sixteen idle handoffs, sixteen unconstrained detected changes
+and both forced replacements. ASan/UBSan completed 9,077 replacements with the
+same handoff/detection outcomes. Both writers terminated cleanly without errors.
+The coordinator requested a final assertion-clarity edit to name the exact two
+required phases directly; it preserves the checked outcomes, and syntax compilation
+passed. Logs: `/tmp/c2-reference-fingerprint-lifecycle-final-debug.log` and
+`/tmp/c2-reference-fingerprint-lifecycle-final-asan.log`. Only unavailable LSan
+was disabled, as before; both verification sessions were fully awaited.
+
+Production, public/private C++ implementation, differential driver, CMake, original
+Python/tests/goldens, Shared codecs, engine, Menu and workflows are unchanged.
+This scoped correction and evidence are bundled into one non-force branch update.
+Actual fresh Windows CI and final independent review remain required; the green
+push on the preceding head does not approve its red PR outcome or this correction.
