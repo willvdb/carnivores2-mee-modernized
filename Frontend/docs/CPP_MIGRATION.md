@@ -394,3 +394,37 @@ never falls back; valid current data ignores locks and backup contents. Reads
 never mkdir, lock, migrate, rewrite, capture profiles, query stored executables,
 or resolve recorded historical snapshots. This is only the read prerequisite
 of future filesystem work; capture, atomic writes and transactions remain later.
+
+### Published 1A.2 implementation and verification checkpoint
+
+PR #18 initially published implementation head
+`0f095b553a68338ea05e523a5a45c7b642075e18` (tree
+`cbb59c53273601bc4e00c117369a68ae83d21393`) from base
+`32786ef3818353e41673c409b5eae7ad4de43f7d`. The focused stack starts with
+ledger `db4a90137ea827342a0b61deb3dfad3995ca59c8`, private resource/display seam
+`bfbbbe669ef1d6f3fab6870b87e8092c39197989`, repository/platform
+`92bff74621617829c79e64eb277eed522b353410`, and the CLI/test head above.
+No original Python implementation, old tests, golden fixtures, engine, Menu,
+or workflow files changed.
+
+Linux Debug passed 11/11 CTests in 124.70 seconds, including unchanged Python
+154 tests in 66.27 seconds, 325 golden cases, 9,106 schema cases, and constrained
+stack tests. Targeted final path/argument checks then passed store/golden/stack
+3/3 in 8.26 seconds. The complete ASan/UBSan native suite passed 10/10 in
+149.49 seconds (`ASAN_OPTIONS=detect_leaks=0`, `UBSAN_OPTIONS=halt_on_error=1`);
+only unavailable LeakSanitizer was disabled. Fresh build directories were
+`/tmp/c2-store-read-initial` and `/tmp/c2-store-read-asan`, with build and test
+commands awaited sequentially.
+
+Review follow-up compares NT aliases as parsed drive/root/components, including
+UNC anchor trailing separators, rather than raw lowercased spellings. It adds
+144 authoritative PureWindowsPath equality pairs and explicit positive/negative
+Greek contextual-lowercase rename fixtures. That expanded store gate passed
+Debug in 9.69 seconds and ASan/UBSan in 26.15 seconds. The authored store test
+also performed 164 POSIX Store/CLI output-or-failure comparisons, immutable
+snapshot lifetime/API checks, resource tests and no-write filesystem snapshots.
+Windows-only checks run in the existing Windows CI job; live network-share
+reads are not asserted by the pure UNC spelling tests. Initial-head Ubuntu CI
+passed, and actual MSVC compiled successfully with its tests still pending at
+this checkpoint. Published final-head review and Windows results remain gates;
+none of these implementation results self-approve the slice.

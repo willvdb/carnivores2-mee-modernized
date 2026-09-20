@@ -2,7 +2,7 @@
 import copy
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import stat
 import subprocess
 import sys
@@ -70,6 +70,14 @@ def summary(data):
     s += str(len(data['instances'])) + '\n'
     for key, e in data['instances'].items(): s += cps(key) + ''.join(cps(e[k]) for k in ('mode', 'path_flavor', 'path'))
     return s.encode()
+
+# Alias comparison follows pathlib drive/root/parts and pinned Unicode lower,
+# including equivalent UNC anchor trailing separators (no live share needed).
+spellings = ['C:\\\\', 'c:/', '\\\\server\\share', '\\\\server\\share\\', '\\\\?\\C:\\', '\\\\?\\UNC\\server\\share', '\\\\?\\UNC\\server\\share\\', 'C:\\ΟΣ', 'c:\\ος', 'C:\\οσ', 'C:\\sigma-Σ', 'C:\\sigma-ς']
+for a in spellings:
+    for b in spellings:
+        p = run([api, 'path-equal', a, b])
+        assert p.returncode == 0 and p.stdout == (b'1\n' if PureWindowsPath(a) == PureWindowsPath(b) else b'0\n'), (a, b, p)
 
 with tempfile.TemporaryDirectory(prefix='c2-native-store-') as temporary:
     parent = Path(temporary).resolve()
@@ -238,7 +246,7 @@ with tempfile.TemporaryDirectory(prefix='c2-native-store-') as temporary:
         # Python expands the current username to USERPROFILE without requiring
         # a matching basename; other-user expansion has that extra constraint.
         check(parent, unicode_dir, env={'USERNAME': 'different-basename', 'USERPROFILE': str(unicode_dir)}, prefix=['--store', '~different-basename'])
-        for before_name, after_name in [('mixed-case', 'MIXED-CASE'), ('sigma-Σ', 'sigma-ς')]:
+        for before_name, after_name in [('mixed-case', 'MIXED-CASE'), ('sigma-Σ', 'sigma-ς'), ('positive-ΟΣ', 'positive-ος'), ('negative-ΟΣ', 'negative-οσ')]:
             before_dir = parent / before_name; write(before_dir, base())
             reference = Store(before_dir)
             p = subprocess.Popen([api, 'hold', str(before_dir)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

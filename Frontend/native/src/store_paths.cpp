@@ -184,7 +184,7 @@ void safe_path(const fs::path& path) {
         auto resolved = resolve(prefix);
 #ifdef _WIN32
         // pathlib uses pinned Unicode lower(), not the OS uppercase table.
-        if (schema::lower(points(resolved.native())) != schema::lower(points(prefix.native())))
+        if (!windows_path_equal(points(resolved.native()), points(prefix.native())))
 #else
         if (resolved != prefix)
 #endif
@@ -202,6 +202,13 @@ void safe_path(const fs::path& path) {
 #endif
     }
 }
+}
+bool windows_path_equal(std::u32string a, std::u32string b) {
+    const auto x = schema::path(std::move(a), true), y = schema::path(std::move(b), true);
+    if (schema::lower(x.drive) != schema::lower(y.drive) || x.root != y.root || x.parts.size() != y.parts.size()) return false;
+    for (std::size_t i = 0; i < x.parts.size(); ++i)
+        if (schema::lower(x.parts[i]) != schema::lower(y.parts[i])) return false;
+    return true;
 }
 std::vector<fs::path> ancestor_paths(const fs::path& path) {
     std::vector<fs::path> prefixes;
@@ -254,7 +261,7 @@ fs::path default_directory() {
 #else
     auto local = environment("LOCALAPPDATA");
 #endif
-    return (local ? *local : home() / ".local/share") / "carnivores-lodge";
+    return (local ? *local : home() / ".local" / "share") / "carnivores-lodge";
 }
 std::optional<std::string> read(const fs::path& path, const ReadPolicy& policy) {
     safe_path(path);

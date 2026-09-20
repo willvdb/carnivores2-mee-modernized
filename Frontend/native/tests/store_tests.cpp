@@ -18,6 +18,9 @@ int run(int argc, std::filesystem::path* argv) {
         if (argc < 3) return 9;
         auto mode = argv[1];
         if (mode == "default") { std::cout << Store::default_directory().u8string() << '\n'; return 0; }
+        if (mode == "path-equal" && argc == 4) {
+            std::cout << store_paths::windows_path_equal(argv[2].u32string(), argv[3].u32string()) << '\n'; return 0;
+        }
         if (mode == "parents") {
             for (const auto& p : store_paths::ancestor_paths(argv[2])) std::cout << p.u8string() << '\n';
             return 0;
