@@ -12,6 +12,7 @@ import tempfile
 import threading
 import time
 import traceback
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from lodge import discovery as reference
@@ -94,6 +95,7 @@ def tree(root):
 
 
 def main(base):
+    check_writer_retry()
     root = base / 'game'
     root.mkdir()
     for op in ('native_path', 'walk_files', 'content_inventory', 'resolve_reference', 'resolved_path', 'fingerprint'):
@@ -213,6 +215,73 @@ def links(base):
         check('hash_file', '/proc/version')  # Actual bytes, not reported zero extent.
 
 
+def replace_for_race(source, target, stop, progress, *, windows=None):
+    # The actual Windows CI writer hit ERROR_ACCESS_DENIED at os.replace while
+    # observation handles were active. Only this operation/code is retried;
+    # a persistent denial still fails. Reader behavior and its checks are intact.
+    if windows is None:
+        windows = os.name == 'nt'
+    deadline = time.monotonic() + 2.0
+    while not stop.is_set():
+        try:
+            os.replace(source, target)
+            return True
+        except OSError as error:
+            if not windows or getattr(error, 'winerror', None) != 5 or time.monotonic() >= deadline:
+                raise
+            progress['replace_winerror5_retries'] += 1
+            if stop.wait(0.002):
+                return False
+    return False
+
+
+def check_writer_retry():
+    # Check only the harness policy on every host; actual Win32 coverage remains
+    # the Windows race gate. Never label these injected exceptions OS evidence.
+    def error(code):
+        value = PermissionError(13, 'injected test denial')
+        value.winerror = code
+        return value
+    def state():
+        return threading.Event(), {'replace_winerror5_retries': 0}
+    stop, progress = state()
+    with mock.patch.object(os, 'replace', side_effect=[error(5), None]) as replace:
+        assert replace_for_race('source', 'target', stop, progress, windows=True)
+        assert replace.call_count == 2 and progress['replace_winerror5_retries'] == 1
+    for windows, code in ((False, 5), (True, 32), (True, 2), (True, None)):
+        stop, progress = state()
+        failure = error(code)
+        with mock.patch.object(os, 'replace', side_effect=failure) as replace:
+            try:
+                replace_for_race('source', 'target', stop, progress, windows=windows)
+            except OSError as caught:
+                assert caught is failure
+            else:
+                raise AssertionError('unexpected retry-policy success')
+            assert replace.call_count == 1 and progress['replace_winerror5_retries'] == 0
+    stop, progress = state()
+    failure = error(5)
+    with mock.patch.object(os, 'replace', side_effect=failure) as replace, \
+            mock.patch.object(time, 'monotonic', side_effect=[0.0, 1.0, 2.0]):
+        try:
+            replace_for_race('source', 'target', stop, progress, windows=True)
+        except OSError as caught:
+            assert caught is failure
+        else:
+            raise AssertionError('persistent denial did not fail at deadline')
+        assert replace.call_count == 2 and progress['replace_winerror5_retries'] == 1
+    stop, progress = state()
+    stop.set()
+    with mock.patch.object(os, 'replace') as replace:
+        assert not replace_for_race('source', 'target', stop, progress, windows=True)
+        replace.assert_not_called()
+    stop, progress = state()
+    with mock.patch.object(os, 'replace', side_effect=error(5)) as replace, \
+            mock.patch.object(stop, 'wait', side_effect=lambda timeout: (stop.set() or True)):
+        assert not replace_for_race('source', 'target', stop, progress, windows=True)
+        assert replace.call_count == 1
+
+
 def active_writer(root):
     # Atomic same-sized replacements yield only two valid complete member hashes.
     p = write(root, 'HUNTDAT/a', b'A' * (4 * 1024 * 1024))
@@ -222,7 +291,8 @@ def active_writer(root):
     stop = threading.Event()
     errors = []
     rejected = 0
-    progress = {'phase': 'starting', 'replacements': 0}
+    changed_rejections = 0
+    progress = {'phase': 'starting', 'replacements': 0, 'replace_winerror5_retries': 0}
     overlap = []
     def writer():
         try:
@@ -232,7 +302,8 @@ def active_writer(root):
                 progress['phase'] = 'write replacement'
                 temp.write_bytes((b'A' if i % 2 else b'B') * (4 * 1024 * 1024))
                 progress['phase'] = 'replace member'
-                os.replace(temp, p)
+                if not replace_for_race(temp, p, stop, progress):
+                    break
                 i += 1
                 progress['replacements'] = i
             progress['phase'] = 'stopped'
@@ -251,6 +322,7 @@ def active_writer(root):
                 assert result['value'] in (a, b), result
             else:
                 rejected += 1
+                changed_rejections += 'changed while hashing' in result['error']
     finally:
         stop.set()
         join_started = time.monotonic()
@@ -260,9 +332,13 @@ def active_writer(root):
     frame = sys._current_frames().get(thread.ident) if alive else None
     stack = traceback.format_stack(frame) if frame else []
     evidence = {'alive': alive, 'progress': progress, 'errors': errors,
-                'replacement_counts_during_observations': overlap, 'rejected': rejected, 'join_seconds': join_elapsed, 'writer_stack': stack}
+                'replacement_counts_during_observations': overlap, 'rejected': rejected, 'changed_rejections': changed_rejections,
+                'join_seconds': join_elapsed, 'writer_stack': stack}
     assert not alive and not errors, evidence
     assert rejected, ('active writer did not exercise change rejection', evidence)
+    assert changed_rejections, ('no detected hash/inventory change', evidence)
+    assert progress['replacements'] >= 2 and any(end > start for start, end in overlap), evidence
+    print('active writer evidence:', evidence, flush=True)
     tree(root)
 
 
