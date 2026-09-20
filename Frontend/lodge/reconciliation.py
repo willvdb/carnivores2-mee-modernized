@@ -20,16 +20,17 @@ def reconcile_locked(store, root, journal, probe=None):
     observation = {'inventory': 'unavailable', 'byte_capture': 'unavailable',
                    'retained_capture': 'unavailable', 'codec_inspection': 'unavailable'}
     try:
-        if journal['schema_version'] == 2:
-            from .native_observer import CAPABILITY, execution_spec, native_pins, supported_contract
-            current, _ = native_pins(store, pins['association_id'], pins['selection'], probe, pins['codec'])
+        if journal['schema_version'] >= 2:
+            from .native_session import CAPABILITY, adapter_for, supported_contract
+            adapter = adapter_for(journal)
+            current, _ = adapter.native_pins(store, pins['association_id'], pins['selection'], probe, pins['codec'])
             from .sessions import executable_evidence
             spec = journal['execution']
             evidence = executable_evidence(spec['executable']['path'])
             if evidence != spec['executable']:
                 diagnostics.append({'code': 'selected-engine-changed-on-return'})
             # Recovery validates evidence without executing any engine query.
-            expected = execution_spec(root, pins, evidence, CAPABILITY, spec.get('timeout_seconds'))
+            expected = adapter.execution_spec(root, pins, evidence, CAPABILITY, spec.get('timeout_seconds'))
             if expected != spec or not supported_contract(spec.get('contract')) or spec.get('shell') is not False:
                 diagnostics.append({'code': 'native-execution-evidence-changed-on-return'})
         else:
@@ -43,8 +44,8 @@ def reconcile_locked(store, root, journal, probe=None):
         diagnostics.append({'code': 'source-review-required', 'message': str(error)})
     try:
         safe_path(root / 'work')
-        if journal['schema_version'] == 2:
-            from .native_observer import workspace_findings
+        if journal['schema_version'] >= 2:
+            from .native_session import workspace_findings
             diagnostics.extend(workspace_findings(root, returning=True))
         elif {p.name for p in (root / 'work').iterdir()} != {'state'}:
             diagnostics.append({'code': 'unexpected-workspace-entry',

@@ -81,12 +81,12 @@ def run_session(store, identity, probe=None, cancel=None, *, native_authorizatio
         journal = read_journal(store, identity)
         if journal['state'] != 'prepared':
             raise FrontendError('only a prepared session can launch; recovery never relaunches')
-        if journal['schema_version'] == 2 and native_authorization is None:
+        if journal['schema_version'] >= 2 and native_authorization is None:
             raise FrontendError('native observer requires the separate gated developer run command')
         try:
-            if journal['schema_version'] == 2:
-                from .native_observer import preflight_native
-                preflight_native(store, root, journal, probe, native_authorization)
+            if journal['schema_version'] >= 2:
+                from .native_session import adapter_for, preflight as native_preflight
+                native_preflight(store, root, journal, probe, native_authorization, adapter_for(journal))
             else:
                 preflight(store, root, journal, probe)
         except (FrontendError, OSError, KeyError, TypeError) as error:
@@ -144,8 +144,9 @@ def run_session(store, identity, probe=None, cancel=None, *, native_authorizatio
             journal['diagnostics'].append({'code': 'process-' + reason, 'exit_code': code})
         if any(log['error'] for log in output.values()):
             journal['diagnostics'].append({'code': 'log-capture-failed'})
-        if journal['schema_version'] == 2:
-            journal['capabilities']['native_observer_lifecycle'] = 'completed'
+        if journal['schema_version'] >= 2:
+            from .native_session import adapter_for
+            journal['capabilities'][adapter_for(journal).LIFECYCLE] = 'completed'
             journal['capabilities']['engine_process_executed'] = True
             # Process completion alone cannot certify entry into the game world.
         else:

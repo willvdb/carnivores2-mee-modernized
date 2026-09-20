@@ -33,7 +33,7 @@ def codec_evidence(probe):
     return executable_evidence(path)
 
 
-def snapshot_pins(store, association_id, selection, probe, expected_codec=None):
+def snapshot_pins(store, association_id, selection, probe, expected_codec=None, *, mode='observer'):
     data = store.read()
     association = data['associations'].get(association_id)
     if association is None:
@@ -56,10 +56,10 @@ def snapshot_pins(store, association_id, selection, probe, expected_codec=None):
     if any(d['code'] in ('unclosed-block', 'unmatched-brace', 'dialect-conflict',
                          'explicit-areas-uninterpreted') for d in catalog['diagnostics']):
         raise FrontendError('ambiguous catalog cannot prepare a session')
-    if (set(selection) != {'area', 'mode', 'time_of_day', 'licenses', 'weapons', 'equipment'}
-            or selection['mode'] != 'observer' or type(selection['time_of_day']) is not int
+    if (not isinstance(selection, dict) or set(selection) != {'area', 'mode', 'time_of_day', 'licenses', 'weapons', 'equipment'}
+            or selection['mode'] != mode or type(selection['time_of_day']) is not int
             or selection['time_of_day'] not in (0, 1, 2)
-            or selection['licenses'] or selection['weapons'] or selection['equipment']):
+            or (mode == 'observer' and (selection['licenses'] or selection['weapons'] or selection['equipment']))):
         raise FrontendError('session policy permits observer with no loadout only')
     area = next((a for a in catalog['areas'] if a['id'] == selection['area']), None)
     if not area or not area['launch_stem']:

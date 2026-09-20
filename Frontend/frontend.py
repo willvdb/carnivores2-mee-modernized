@@ -13,6 +13,7 @@ from lodge.launch import prepare, simulated_return
 from lodge.profiles import associate, inspect_set, inventory, refresh_association
 from lodge.store import FrontendError, Store, hunter
 from lodge.genesis import plan_observer
+from lodge.native_hunt import plan_hunt, prepare_hunt, run_hunt
 from lodge.native_observer import prepare_native, run_native
 from lodge.reconciliation import reconcile_session
 from lodge.session_io import read_journal
@@ -101,6 +102,22 @@ def parser():
             n.add_argument('--area', required=True)
             n.add_argument('--time', type=int, choices=[0, 1, 2], default=1)
             n.add_argument('--timeout', type=float, default=900, help='Bounded developer validation, 30..3600 seconds')
+    hunt = commands.add_parser('native-hunt', help='Pinned experimental Genesis normal hunts')
+    hunt_actions = hunt.add_subparsers(dest='action', required=True)
+    for name in ('plan', 'prepare', 'run', 'inspect'):
+        n = hunt_actions.add_parser(name)
+        n.add_argument('id', help='Association for plan/prepare; session for run/inspect')
+        if name in ('plan', 'prepare'):
+            n.add_argument('--area', required=True)
+            n.add_argument('--license', action='append', required=True)
+            n.add_argument('--weapon', action='append', required=True)
+            n.add_argument('--time', type=int, choices=[0, 1, 2], default=1)
+        if name in ('prepare', 'run'):
+            n.add_argument('--engine', type=Path, required=True)
+            n.add_argument('--trusted-engine-sha256', required=True)
+            n.add_argument('--experimental-native-hunt', action='store_true', required=True)
+        if name == 'prepare':
+            n.add_argument('--timeout', type=float, default=900)
     settings = commands.add_parser('host-settings')
     settings.add_argument('--json', help='JSON object with display, audio and/or input preferences; no native save mutation')
     return root
@@ -108,6 +125,19 @@ def parser():
 
 def execute(args):
     store = Store(args.store)
+    if args.command == 'native-hunt':
+        if args.action in ('plan', 'prepare'):
+            selection = {'area': args.area, 'licenses': args.license, 'weapons': args.weapon,
+                         'equipment': [], 'mode': 'hunt', 'time_of_day': args.time}
+            if args.action == 'plan':
+                return plan_hunt(store, args.id, selection, args.probe)
+            return prepare_hunt(store, args.id, selection, args.engine, args.trusted_engine_sha256,
+                                args.experimental_native_hunt, args.timeout, args.probe)
+        if args.action == 'inspect':
+            return read_journal(store, args.id)
+        result = run_hunt(store, args.id, args.engine, args.trusted_engine_sha256,
+                          args.experimental_native_hunt, args.probe)
+        return reconcile_session(store, args.id, args.probe) if result['state'] == 'returned' else result
     if args.command == 'native-observer':
         if args.action == 'prepare':
             return prepare_native(store, args.id, args.area, args.engine, args.trusted_engine_sha256,
