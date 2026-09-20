@@ -165,7 +165,7 @@ void check_stat(const struct stat& s) {
     if (S_ISREG(s.st_mode) && s.st_nlink != 1) throw StoreError("session file has multiple hard links");
 }
 #endif
-void safe_path(const fs::path& path) {
+void safe_path_impl(const fs::path& path) {
 #ifdef _WIN32
     auto shape = schema::path(points(path.native()), true);
     if (!shape.absolute() || shape.parent()) throw StoreError("session path must be absolute without traversal");
@@ -202,6 +202,40 @@ void safe_path(const fs::path& path) {
 #endif
     }
 }
+}
+void safe_path(const fs::path& path) { safe_path_impl(path); }
+bool resolves_to_self(const fs::path& path) {
+#ifdef _WIN32
+    return windows_path_equal(points(resolve(path).native()), points(path.native()));
+#else
+    return resolve(path) == path;
+#endif
+}
+std::u32string native_points(const fs::path& path) {
+#ifdef _WIN32
+    return points(path.native());
+#else
+    // Decode one valid UTF-8 sequence, escaping each undecodable byte separately.
+    // This is the UTF-8 filesystem encoding pinned by the Python oracle, not a locale conversion.
+    const auto& s = path.native();
+    std::u32string out;
+    for (std::size_t i = 0; i < s.size();) {
+        auto c = static_cast<unsigned char>(s[i]);
+        if (c < 128) { out.push_back(c); ++i; continue; }
+        unsigned n = c >= 0xc2 && c <= 0xdf ? 2 : c >= 0xe0 && c <= 0xef ? 3 : c >= 0xf0 && c <= 0xf4 ? 4 : 0;
+        char32_t point = n ? c & ((1u << (7 - n)) - 1) : 0;
+        bool valid = n && i + n <= s.size();
+        for (unsigned j = 1; valid && j < n; ++j) {
+            auto tail = static_cast<unsigned char>(s[i + j]);
+            valid = (tail & 0xc0) == 0x80; point = (point << 6) | (tail & 63);
+        }
+        valid = valid && (n != 3 || point >= 0x800) && (n != 4 || point >= 0x10000) &&
+            point <= 0x10ffff && !(point >= 0xd800 && point <= 0xdfff);
+        if (valid) { out.push_back(point); i += n; }
+        else { out.push_back(0xdc00 + c); ++i; }
+    }
+    return out;
+#endif
 }
 bool windows_path_equal(std::u32string a, std::u32string b) {
     const auto x = schema::path(std::move(a), true), y = schema::path(std::move(b), true);
@@ -265,7 +299,7 @@ fs::path default_directory() {
 #endif
     return (local ? *local : home() / ".local" / "share") / "carnivores-lodge";
 }
-std::optional<std::string> read(const fs::path& path, const ReadPolicy& policy) {
+std::optional<std::string> read(const fs::path& path, const ReadPolicy& policy, bool require_eof) {
     safe_path(path);
 #ifdef _WIN32
     Handle h{CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
@@ -310,6 +344,20 @@ std::optional<std::string> read(const fs::path& path, const ReadPolicy& policy) 
 #endif
         if (!got) throw StoreError("manifest changed while reading");
         offset += static_cast<std::size_t>(got);
+    }
+    // Capture checks EOF as well as the reported size: virtual regular files may
+    // return bytes while stat continues reporting zero. Never certify that empty.
+    if (require_eof) {
+        char extra;
+#ifdef _WIN32
+        DWORD got = 0;
+        if (!ReadFile(h.value, &extra, 1, &got, nullptr)) throw StoreError("cannot read state file");
+#else
+        ssize_t got;
+        do { got = ::read(h.value, &extra, 1); } while (got < 0 && errno == EINTR);
+        if (got < 0) throw StoreError("cannot read state file");
+#endif
+        if (got) throw StoreError("state changed while capturing");
     }
 #ifdef _WIN32
     BY_HANDLE_FILE_INFORMATION after{};
