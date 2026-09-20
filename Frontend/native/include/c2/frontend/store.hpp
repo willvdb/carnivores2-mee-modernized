@@ -19,6 +19,7 @@ struct ReadPolicy {
 struct HunterSummary { std::u32string id, name; bool archived; };
 struct ExpeditionSummary { std::u32string id, mode, path_flavor, path; };
 enum class ManifestView { status, hunters, expeditions, host_settings };
+struct ManifestAccess; // private implementation seam; no public definition
 class Manifest {
 public:
     // Current means the head in this immutable manifest observation. No reread;
@@ -38,6 +39,7 @@ private:
     std::shared_ptr<const Impl> impl_;
     explicit Manifest(std::shared_ptr<const Impl>);
     friend class Store;
+    friend struct ManifestAccess;
 };
 class Store {
 public:

@@ -5,6 +5,13 @@
 #include <vector>
 #include <functional>
 namespace c2::frontend::content_internal {
+// Shared source semantics, deliberately separate from managed-store safety.
+std::filesystem::path source_spelling(const std::filesystem::path&);
+std::filesystem::path source_syscall(const std::filesystem::path&);
+std::filesystem::file_status source_status(const std::filesystem::path&);
+bool source_is_link(const std::filesystem::path&);
+// Actual bytes up to limit, follows ordinary aliases; owned regular handle only.
+std::string read_prefix(const std::filesystem::path&, std::size_t limit);
 std::filesystem::path native_units(std::u32string_view);
 std::vector<std::filesystem::path> walk_files(const std::filesystem::path&);
 struct Member {
