@@ -51,8 +51,10 @@ one JSON document per line and emits one status line, including compact JSON
 for valid documents. stdin/stdout are binary on Windows. Additional private
 modes test equality and Unicode casing. These are not production CLI commands.
 
-The existing parser depth-above-1000 guard is retained. Python configurable
-recursion/integer-resource differences remain pre-production-read gates;
+The pure schema decoder retains the default parser depth-above-1000 policy.
+Repository reads in 1A.2 expose an explicit ReadPolicy with configurable depth
+and distinct ResourceExhausted errors; Python configurable recursion/integer
+budgets are operational differences, not persistent-format rejection rules;
 unknown nonfinite metadata is permitted where validation permits it. Evidence
 encoding restrictions do not tighten manifest validation. No read-time upgrade,
 unknown-field filtering, snapshot inspection, trust check, or write is added.

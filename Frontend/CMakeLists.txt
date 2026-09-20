@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(CarnivoresFrontend LANGUAGES CXX)
 # Deliberately standalone: configure with -S Frontend, no engine dependencies.
-add_library(c2_frontend_core STATIC native/src/core.cpp native/src/json_compat.cpp native/src/schema_compat.cpp native/src/manifest_schema.cpp)
+add_library(c2_frontend_core STATIC native/src/core.cpp native/src/json_compat.cpp native/src/schema_compat.cpp native/src/manifest_schema.cpp native/src/store_paths.cpp native/src/store.cpp)
 target_compile_features(c2_frontend_core PUBLIC cxx_std_17)
 target_include_directories(c2_frontend_core PUBLIC native/include PRIVATE native/src)
 target_include_directories(c2_frontend_core SYSTEM PRIVATE native/third_party)
