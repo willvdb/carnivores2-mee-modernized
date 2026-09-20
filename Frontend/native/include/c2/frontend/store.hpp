@@ -1,4 +1,5 @@
 #pragma once
+#include "c2/frontend/generation.hpp"
 #include <cstddef>
 #include <filesystem>
 #include <memory>
@@ -20,6 +21,10 @@ struct ExpeditionSummary { std::u32string id, mode, path_flavor, path; };
 enum class ManifestView { status, hunters, expeditions, host_settings };
 class Manifest {
 public:
+    // Current means the head in this immutable manifest observation. No reread;
+    // this is not later acceptance freshness. Store identity is captured at read.
+    GenerationObservation resolve_generation(const std::u32string& association_id,
+        std::optional<std::u32string> generation_id = std::nullopt) const;
     int schema_version() const;
     bool has_active_hunter() const;
     std::optional<std::u32string> active_hunter() const;

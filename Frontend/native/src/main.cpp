@@ -1,6 +1,7 @@
 #include "c2/frontend/core.hpp"
 #include "c2/frontend/store.hpp"
 #include "json_compat.hpp"
+#include "store_paths.hpp"
 #include <iostream>
 #include <string>
 #include <vector>
@@ -33,7 +34,7 @@ int run(const std::vector<std::filesystem::path>& args) {
     }
     if (args.empty() || (args.size() == 1 && args[0] == "--help")) {
         std::cout << "Usage: c2-frontend-native [--store PATH] [--probe PATH] COMMAND\n"
-                     "Read-only commands: status, hunter list, expedition list, host-settings\n"
+                     "Read-only commands: status, hunter list, expedition list, host-settings, managed-state inspect ASSOCIATION\n"
                      "Options: --help, --version\n";
         return 0;
     }
@@ -54,14 +55,18 @@ int run(const std::vector<std::filesystem::path>& args) {
             }
             if (key == "--store") directory = std::move(value);
         }
-        ManifestView view;
+        ManifestView view = ManifestView::status;
+        std::optional<std::u32string> association;
         if (i + 1 == args.size() && args[i] == "status") view = ManifestView::status;
         else if (i + 1 == args.size() && args[i] == "host-settings") view = ManifestView::host_settings;
         else if (i + 2 == args.size() && args[i + 1] == "list" && args[i] == "hunter") view = ManifestView::hunters;
         else if (i + 2 == args.size() && args[i + 1] == "list" && args[i] == "expedition") view = ManifestView::expeditions;
+        else if (i + 3 == args.size() && args[i] == "managed-state" && args[i + 1] == "inspect")
+            association = store_paths::native_points(args[i + 2]);
         else throw StoreError("unsupported command; use --help");
         Store store(directory ? *directory : Store::default_directory());
-        auto output = store.read().export_json(view);
+        auto manifest = store.read();
+        auto output = association ? manifest.resolve_generation(*association).export_history_json() : manifest.export_json(view);
         std::cout << output;
         return 0;
     } catch (const ResourceExhausted& e) {
