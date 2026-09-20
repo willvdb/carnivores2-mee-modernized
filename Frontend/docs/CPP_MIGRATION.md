@@ -603,3 +603,38 @@ No inventory, stable read, set association, CLI profile command, discovery,
 mutation, normalization, persisted reencoding, runner, acceptance, GUI or
 cutover is included. Overall 1B requires the later 1B.3 review. Independent
 review of this implementation and final-head MSVC CI remain required.
+
+### Slice 1B.2 implementation and validation checkpoint
+
+The implementation commit object is
+`a352af1d2793560d6baefc6b3ac5958b9ad8c752`, tree
+`ac82fee010de8154b466d0b5457c44fc1553312a`, following ledger commit
+`12d4b76c28ef41ff96dadc60aedc861fce3a8ee8` on branch
+`frontend/cpp-profile-codec`. This checkpoint adds only evidence; the final
+published head must be recorded by the independent coordinator after review.
+
+Linux Debug passed all 13 CTests in 188.99 seconds, including all unchanged
+154 Python tests, 325 golden cases and 9,106 schema cases. The new profile
+CTest passed in 15.39 seconds: 865 exact JSON byte comparisons against unchanged
+`profiles.codec_inspect` with the original compiled helper or with
+`C2_PROFILE_PROBE` unset, plus typed API and ownership assertions. Cases cover
+all layout/availability/precedence branches, case-sensitive and non-save kinds,
+near/exact lengths, random/zero/FF/pattern payloads, raw signed extremes and
+IEEE NaN/infinity/negative-zero bit patterns, every item and reserved-word
+position, all Latin-1 bytes, every NUL position and retained trailing bytes.
+Direct API checks also cover embedded NULs in kind/dialect and input mutation,
+destruction and result copying. Native child tests run with an unusable helper
+environment, empty PATH and empty temporary cwd; the directory remains empty.
+
+Focused ASan/UBSan passed profile/compatibility/stack 3/3 in 73.28 seconds
+(profile 68.94 seconds), using `ASAN_OPTIONS=detect_leaks=0` only for the ptrace
+LSan limitation and `UBSAN_OPTIONS=halt_on_error=1`. Builds/logs are
+`/tmp/c2-profile-debug`, `/tmp/c2-profile-debug-final.log`,
+`/tmp/c2-profile-asan` and `/tmp/c2-profile-asan-focused.log`.
+An initial new test fixture accidentally excluded its intended trailing NUL
+by specifying length 15; correcting it to 16 resolved that test-only failure.
+The initial run's other 12 CTests passed; the complete successful rerun above
+supersedes it. No existing assertions were modified or weakened. Shared codec,
+original helper, Python implementation/tests/goldens, engine, Menu, workflows
+and persistent formats remain unchanged. These results are not independent
+approval; final published-head review and actual Windows CI remain gates.
