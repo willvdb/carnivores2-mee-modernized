@@ -215,20 +215,54 @@ def links(base):
         check('hash_file', '/proc/version')  # Actual bytes, not reported zero extent.
 
 
-def replace_for_race(source, target, stop, progress, *, windows=None):
+class ObservationLifecycle:
+    """Test-owned reader lifetime; its clock advances only while no child lives."""
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.started = None
+        self.completed_seconds = 0.0
+
+    def begin(self):
+        with self.lock:
+            assert self.started is None
+            self.started = time.monotonic()
+
+    def end(self):
+        with self.lock:
+            assert self.started is not None
+            self.completed_seconds += time.monotonic() - self.started
+            self.started = None
+
+    def state(self):
+        with self.lock:
+            now = time.monotonic()
+            active = self.started is not None
+            excluded = self.completed_seconds + (now - self.started if active else 0.0)
+            return now - excluded, active
+
+
+def replace_for_race(source, target, stop, progress, *, windows=None, observation=None):
     # The actual Windows CI writer hit ERROR_ACCESS_DENIED at os.replace while
-    # observation handles were active. Only this operation/code is retried;
-    # a persistent denial still fails. Reader behavior and its checks are intact.
+    # observation handles were active. Only this operation/code is retried.
+    # The caller owns/bounds observation to one fully awaited child. Once that
+    # child exits, persistent idle denial still fails within two seconds.
     if windows is None:
         windows = os.name == 'nt'
-    deadline = time.monotonic() + 2.0
+    def clock():
+        return observation.state() if observation is not None else (time.monotonic(), False)
+    deadline = clock()[0] + 2.0
     while not stop.is_set():
         try:
             os.replace(source, target)
             return True
         except OSError as error:
-            if not windows or getattr(error, 'winerror', None) != 5 or time.monotonic() >= deadline:
+            if not windows or getattr(error, 'winerror', None) != 5:
                 raise
+            idle_now, active = clock()
+            if idle_now >= deadline:
+                raise
+            counter = 'active_reader_retries' if active else 'idle_retries'
+            progress[counter] = progress.get(counter, 0) + 1
             progress['replace_winerror5_retries'] += 1
             if stop.wait(0.002):
                 return False
@@ -281,6 +315,27 @@ def check_writer_retry():
         assert not replace_for_race('source', 'target', stop, progress, windows=True)
         assert replace.call_count == 1
 
+    # Exclude a long owned-child interval even if the writer is descheduled
+    # across the entire begin/end transition. Idle denial must still expire.
+    for missed_active_interval in (False, True):
+        stop, progress = state()
+        observation = ObservationLifecycle()
+        calls = 0
+        def lifecycle_replace(source, target):
+            nonlocal calls
+            calls += 1
+            if calls == (1 if missed_active_interval else 2):
+                observation.end()
+            if calls < 3:
+                raise error(5)
+        samples = [10.0, 10.0, 210.0, 211.0, 211.5] if missed_active_interval else [10.0, 10.0, 110.0, 210.0, 211.0]
+        with mock.patch.object(os, 'replace', side_effect=lifecycle_replace), \
+                mock.patch.object(time, 'monotonic', side_effect=samples):
+            observation.begin()
+            assert replace_for_race('source', 'target', stop, progress, windows=True, observation=observation)
+        assert calls == 3 and observation.completed_seconds == 200.0
+        assert progress['idle_retries'] == (2 if missed_active_interval else 1)
+
 
 def active_writer(root):
     # Atomic same-sized replacements yield only two valid complete member hashes.
@@ -289,11 +344,15 @@ def active_writer(root):
     p.write_bytes(b'B' * (4 * 1024 * 1024))
     b = oracle('fingerprint', root)
     stop = threading.Event()
+    observation = ObservationLifecycle()
+    advanced = threading.Condition()
     errors = []
     rejected = 0
     changed_rejections = 0
     progress = {'phase': 'starting', 'replacements': 0, 'replace_winerror5_retries': 0}
     overlap = []
+    handoffs = []
+    observation_seconds = []
     def writer():
         try:
             i = 0
@@ -302,22 +361,39 @@ def active_writer(root):
                 progress['phase'] = 'write replacement'
                 temp.write_bytes((b'A' if i % 2 else b'B') * (4 * 1024 * 1024))
                 progress['phase'] = 'replace member'
-                if not replace_for_race(temp, p, stop, progress):
+                if not replace_for_race(temp, p, stop, progress, observation=observation):
                     break
                 i += 1
-                progress['replacements'] = i
+                with advanced:
+                    progress['replacements'] = i
+                    advanced.notify_all()
             progress['phase'] = 'stopped'
         except Exception as e:
             errors.append({'type': type(e).__name__, 'repr': repr(e),
                            'errno': getattr(e, 'errno', None), 'winerror': getattr(e, 'winerror', None),
                            'traceback': traceback.format_exc()})
+            with advanced:
+                advanced.notify_all()
     thread = threading.Thread(target=writer)
     thread.start()
     try:
         for _ in range(16):
             started = progress['replacements']
-            result = native('fingerprint', root)
-            overlap.append((started, progress['replacements']))
+            observation.begin()
+            began = time.monotonic()
+            try:
+                result = native('fingerprint', root)  # owned child bounded to90s, fully awaited
+            finally:
+                observation.end()
+                observation_seconds.append(time.monotonic() - began)
+            finished = progress['replacements']
+            overlap.append((started, finished))
+            # A fresh replacement with no reader alive must complete before the
+            # next observation. Persistent denial cannot hide in new readers.
+            with advanced:
+                moved = advanced.wait_for(lambda: progress['replacements'] > finished or errors, timeout=30)
+                assert moved and not errors and progress['replacements'] > finished, (progress, errors, observation_seconds)
+                handoffs.append((finished, progress['replacements']))
             if result['ok']:
                 assert result['value'] in (a, b), result
             else:
@@ -333,45 +409,68 @@ def active_writer(root):
     stack = traceback.format_stack(frame) if frame else []
     evidence = {'alive': alive, 'progress': progress, 'errors': errors,
                 'replacement_counts_during_observations': overlap, 'rejected': rejected, 'changed_rejections': changed_rejections,
-                'join_seconds': join_elapsed, 'writer_stack': stack}
+                'join_seconds': join_elapsed, 'writer_stack': stack,
+                'observation_seconds': observation_seconds, 'idle_handoffs': handoffs}
     assert not alive and not errors, evidence
-    assert rejected, ('active writer did not exercise change rejection', evidence)
-    assert changed_rejections, ('no detected hash/inventory change', evidence)
-    assert progress['replacements'] >= 2 and any(end > start for start, end in overlap), evidence
+    assert len(handoffs) == 16 and all(end > start for start, end in handoffs), evidence
+    assert progress['replacements'] >= 2, evidence
+    # Windows may serialize rename against a live read. Force both relevant
+    # observation windows, with no read handle held at these existing phases.
+    # Mutation retries remain idle-bounded even though the child is paused.
+    controlled_overlap = []
+    for phase, payload in (('initial_inventory', b'A'), ('member_hashed', b'B')):
+        temp = root / 'controlled-replacement'
+        temp.write_bytes(payload * (4 * 1024 * 1024))
+        completed = []
+        def replace_at_phase():
+            assert replace_for_race(temp, p, threading.Event(), progress)
+            completed.append(1)
+        result = barrier_change(root, phase, replace_at_phase)
+        assert completed == [1] and 'changed while hashing' in result['error'], result
+        controlled_overlap.append(phase)
+    # Unconstrained rejection/overlap counts are diagnostics: Windows may
+    # serialize those operations. Both forced observation windows must prove
+    # successful replacement and specific detection, independent of scheduling.
+    assert controlled_overlap == ['initial_inventory', 'member_hashed'], evidence
+    evidence['controlled_replacement_overlap'] = controlled_overlap
     print('active writer evidence:', evidence, flush=True)
     tree(root)
 
 
-def synchronized_changes(root):
+def barrier_change(root, phase, mutation):
     global CASES
+    p = subprocess.Popen([DRIVER], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    request = {'op': 'fingerprint_barrier', 'root': str(root), 'phase': phase}
+    ready = queue.Queue()
+    reader = threading.Thread(target=lambda: ready.put(p.stdout.readline()))
+    reader.start()
+    try:
+        p.stdin.write((json.dumps(request) + '\n').encode())
+        p.stdin.flush()
+        assert ready.get(timeout=30) == b'{"ready":true}\n'
+        reader.join(timeout=5)
+        assert not reader.is_alive()
+        mutation()
+        out, err = p.communicate(b'continue\n', timeout=30)
+        assert p.returncode == 0, err
+        result = json.loads(out)
+        assert not result['ok'], (phase, result)
+    finally:
+        if p.poll() is None:
+            p.kill()
+        reader.join(timeout=5)
+        assert not reader.is_alive()
+        p.wait(timeout=5)
+        for stream in (p.stdin, p.stdout, p.stderr):
+            stream.close()
+    CASES += 1
+    return result
+
+
+def synchronized_changes(root):
     member = write(root, 'HUNTDAT/a', b'original')
     def run(phase, mutation):
-        global CASES
-        p = subprocess.Popen([DRIVER], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        request = {'op': 'fingerprint_barrier', 'root': str(root), 'phase': phase}
-        ready = queue.Queue()
-        reader = threading.Thread(target=lambda: ready.put(p.stdout.readline()))
-        reader.start()
-        try:
-            p.stdin.write((json.dumps(request) + '\n').encode())
-            p.stdin.flush()
-            assert ready.get(timeout=30) == b'{"ready":true}\n'
-            reader.join(timeout=5)
-            assert not reader.is_alive()
-            mutation()
-            out, err = p.communicate(b'continue\n', timeout=30)
-            assert p.returncode == 0, err
-            result = json.loads(out)
-            assert not result['ok'], (phase, result)
-        finally:
-            if p.poll() is None:
-                p.kill()
-            reader.join(timeout=5)
-            assert not reader.is_alive()
-            p.wait(timeout=5)
-            for stream in (p.stdin, p.stdout, p.stderr):
-                stream.close()
-        CASES += 1
+        return barrier_change(root, phase, mutation)
     # Metadata is changed after the hash and before its reference restat.
     stamp = member.stat().st_mtime_ns + 2000000000
     run('member_hashed', lambda: os.utime(member, ns=(stamp, stamp)))
