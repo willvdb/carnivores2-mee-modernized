@@ -93,8 +93,9 @@ escaping and indentation are reviewable independently of checkout line endings.
 | 0B core, private representation, encoders, SHA, CLI/tests | Reviewed and merged in PR #16 |
 | 1A.1 pure manifest/schema validation | Reviewed and merged in PR #17 |
 | 1A.2 read-only filesystem/store/CLI integration | Reviewed and merged in PR #18; overall 1A complete |
-| 1B.1 current-generation/capture read | In progress; independent review pending |
-| 1B.2 profile inspection | Pending |
+| 1B.1 current-generation/capture read | Reviewed and merged in PR #19 |
+| 1B.2 pure profile-byte codec inspection | In progress; independent review pending |
+| 1B.3 filesystem profile inventory/inspection | Pending; overall 1B incomplete |
 | 2A discovery/reference/fingerprint observation | Pending |
 | 2B catalog | Pending |
 | 2C Genesis planning | Pending |
@@ -553,3 +554,87 @@ Non-Windows mode dispatch explicitly returned 77 for all three; the complete
 101-case Linux generation gate passed again in 33.92 seconds after rebuilding
 (`/tmp/c2-generation-debug-capabilities.log`). Final published-head Windows
 results, including these individual capability outcomes, remain required.
+
+
+## Generation merge and pure profile codec boundary
+
+PR #19 was independently reviewed at head
+`68fa21f3421791574e7938b43a9517ca78f2cc31` (six ahead / zero behind
+`20239c17cbfbce6fbae74e13743c32c109845845`) and merged as
+`e222b5542a12ab2675aba2116a189bd8e2985f58`, tree
+`28a9f136d56ffabf812e194371130c50006d278c`. All 28 final checks passed.
+Actual MSVC Windows run 35504678102 / job 106062373964 passed 15/15
+CTests in 328.56 seconds; separate file-link, dangling-link and unpaired-UTF16
+checks all passed without skips. Reviewer exact-production Linux passed 12/12
+in 169.90 seconds, including 154 unchanged Python tests in 68.774 seconds
+without skips. Independent 244 capture and 360 history comparisons had zero
+mismatches. Local Debug passed 12/12 in 171.41 seconds; focused ASan/UBSan
+passed 4/4 in 125.16 seconds, with only unavailable LSan disabled under ptrace.
+Review resolved the history-head guard, virtual-file EOF, Windows capability
+visibility and successful-raced-capture framing. This supersedes earlier
+pending 1B.1 status; the merge does not complete overall 1B.
+
+Branch `frontend/cpp-profile-codec` begins at that exact merge for **1B.2 only**.
+The remaining profile work is split into 1B.2 pure byte inspection and 1B.3
+filesystem inventory/stable-read/set inspection. The new C++17 API explicitly
+selects unavailable or in-process native decoding, defaulting conservatively
+to unavailable. It takes bytes, kind and dialect, never a helper path. It does
+not consult environment variables, access files or run subprocesses. Python
+and CLI defaults remain unchanged. The existing Shared codec and original
+profile helper remain the authoritative, unmodified baseline.
+
+Unavailable, unknown and unsupported outcomes contain no decoded values.
+Exact dialect precedence and case-sensitive kind selection match Python;
+non-`sav` kinds use the room length branch. Native candidates require full
+input decode/reencode equality before returning any projection. This temporary
+memory encoding never modifies stored bytes. Save options remain omitted from
+the projection but participate in full-byte verification. Every name byte is
+retained, and display alone stops at the first NUL with exact Latin-1 code
+points. Raw IEEE fields remain unsigned integer bits; all signed words and
+reserved item words retain their values. Immutable owned typed projections
+expose no Shared codec, JSON implementation, runtime or process types.
+Presentation uses the existing insertion-ordered ASCII encoder, indent 2 and
+LF, without changing evidence/hash encoders or historical journal evidence.
+
+A codec candidate proves only byte roundtrip, not semantic validity or working
+gameplay. In-process selection is not external-helper availability or trust;
+no helper path/SHA evidence is invented. External-helper providers remain 4A.
+No inventory, stable read, set association, CLI profile command, discovery,
+mutation, normalization, persisted reencoding, runner, acceptance, GUI or
+cutover is included. Overall 1B requires the later 1B.3 review. Independent
+review of this implementation and final-head MSVC CI remain required.
+
+### Slice 1B.2 implementation and validation checkpoint
+
+The implementation commit object is
+`a352af1d2793560d6baefc6b3ac5958b9ad8c752`, tree
+`ac82fee010de8154b466d0b5457c44fc1553312a`, following ledger commit
+`12d4b76c28ef41ff96dadc60aedc861fce3a8ee8` on branch
+`frontend/cpp-profile-codec`. This checkpoint adds only evidence; the final
+published head must be recorded by the independent coordinator after review.
+
+Linux Debug passed all 13 CTests in 188.99 seconds, including all unchanged
+154 Python tests, 325 golden cases and 9,106 schema cases. The new profile
+CTest passed in 15.39 seconds: 865 exact JSON byte comparisons against unchanged
+`profiles.codec_inspect` with the original compiled helper or with
+`C2_PROFILE_PROBE` unset, plus typed API and ownership assertions. Cases cover
+all layout/availability/precedence branches, case-sensitive and non-save kinds,
+near/exact lengths, random/zero/FF/pattern payloads, raw signed extremes and
+IEEE NaN/infinity/negative-zero bit patterns, every item and reserved-word
+position, all Latin-1 bytes, every NUL position and retained trailing bytes.
+Direct API checks also cover embedded NULs in kind/dialect and input mutation,
+destruction and result copying. Native child tests run with an unusable helper
+environment, empty PATH and empty temporary cwd; the directory remains empty.
+
+Focused ASan/UBSan passed profile/compatibility/stack 3/3 in 73.28 seconds
+(profile 68.94 seconds), using `ASAN_OPTIONS=detect_leaks=0` only for the ptrace
+LSan limitation and `UBSAN_OPTIONS=halt_on_error=1`. Builds/logs are
+`/tmp/c2-profile-debug`, `/tmp/c2-profile-debug-final.log`,
+`/tmp/c2-profile-asan` and `/tmp/c2-profile-asan-focused.log`.
+An initial new test fixture accidentally excluded its intended trailing NUL
+by specifying length 15; correcting it to 16 resolved that test-only failure.
+The initial run's other 12 CTests passed; the complete successful rerun above
+supersedes it. No existing assertions were modified or weakened. Shared codec,
+original helper, Python implementation/tests/goldens, engine, Menu, workflows
+and persistent formats remain unchanged. These results are not independent
+approval; final published-head review and actual Windows CI remain gates.
