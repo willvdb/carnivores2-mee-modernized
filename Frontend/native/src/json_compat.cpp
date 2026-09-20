@@ -49,6 +49,7 @@ bool underflow(std::string_view token) {
 class Parser {
     std::string_view source_;
     std::size_t position_ = 0;
+    std::size_t max_depth_;
 
     char peek() const { return position_ == source_.size() ? '\0' : source_[position_]; }
     char take() {
@@ -161,9 +162,9 @@ class Parser {
         return result;
     }
     Value atom(std::size_t depth) {
-        // Private foundation guard: covers default CPython's recursion budget.
-        // Configurably deeper Python input remains a cutover resource-policy gate.
-        if (depth > 1000) throw Error("JSON nesting resource limit");
+        // Operational policy, not a persistent-format depth restriction.
+        // The foundation default is preserved; repository callers may raise it.
+        if (depth > max_depth_) throw ResourceError("JSON nesting resource limit");
         whitespace();
         Value result;
         switch (peek()) {
@@ -192,7 +193,7 @@ class Parser {
         return result;
     }
 public:
-    explicit Parser(std::string_view source) : source_(source) {}
+    explicit Parser(std::string_view source, std::size_t depth) : source_(source), max_depth_(depth) {}
     Value run() {
         struct Frame {
             Value* container;
@@ -299,7 +300,7 @@ std::string float_text(double value, bool allow_nonfinite) {
     return result;
 }
 
-void encode(std::string& output, const Value& value, bool pretty) {
+void encode(std::string& output, const Value& value, bool pretty, bool sort_keys = true, std::size_t max_depth = 1000) {
     struct Frame {
         const Value* container;
         std::size_t next = 0;
@@ -307,7 +308,7 @@ void encode(std::string& output, const Value& value, bool pretty) {
     };
     std::vector<Frame> stack;
     auto atom = [&](const Value& node) {
-        if (stack.size() > 1000) throw Error("JSON nesting resource limit");
+        if (stack.size() > max_depth) throw ResourceError("JSON nesting resource limit");
         switch (node.kind) {
         case Kind::null: output += "null"; break;
         case Kind::boolean: output += node.boolean ? "true" : "false"; break;
@@ -321,7 +322,7 @@ void encode(std::string& output, const Value& value, bool pretty) {
             Frame frame{&node, 0, {}};
             if (object) {
                 for (std::size_t i = 0; i < node.object.size(); ++i) frame.order.push_back(i);
-                if (pretty) std::sort(frame.order.begin(), frame.order.end(), [&](auto a, auto b) {
+                if (pretty && sort_keys) std::sort(frame.order.begin(), frame.order.end(), [&](auto a, auto b) {
                     return node.object[a].first < node.object[b].first;
                 });
             }
@@ -427,7 +428,13 @@ Value::~Value() noexcept {
     }
 }
 
-Value parse(std::string_view utf8) { return Parser(utf8).run(); }
+Value parse(std::string_view utf8, std::size_t max_depth) { return Parser(utf8, max_depth).run(); }
+std::string display(const Value& value, std::size_t max_depth) {
+    std::string output;
+    encode(output, value, true, false, max_depth);
+    output += '\n';
+    return output;
+}
 const Value& Value::at(std::u32string_view key) const {
     if (kind == Kind::object) for (const auto& entry : object) if (entry.first == key) return entry.second;
     throw Error("missing object member");
