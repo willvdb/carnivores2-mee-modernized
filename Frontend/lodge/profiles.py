@@ -171,6 +171,9 @@ def associate(store, data, hunter_id, instance_id, state_key, origin, ownership=
             finally:
                 os.close(fd)
         association['snapshot'] = f'snapshots/{identity}'
+    if data['schema_version'] == 2 and ownership == 'managed':
+        from .managed_state import initialize_history
+        initialize_history(association)
     data['associations'][identity] = association
     return association
 
@@ -180,6 +183,9 @@ def association_root(store, instance, association):
         if instance['path_flavor'] != os.name:
             raise FrontendError('foreign installation path requires relocation')
         return Path(instance['path'])
+    if association.get('authority') == 'managed-state-history':
+        from .managed_state import resolve_generation
+        return resolve_generation(store, store.read(), association)[1]
     # Compute from validated UUID, never trust an arbitrary manifest path.
     return store.directory / 'snapshots' / association['id']
 
@@ -195,7 +201,11 @@ def refresh_association(store, data, identity, probe=None):
         result = {'status': 'missing-state', 'diagnostics': [diagnostic('missing-state', 'Native source remains associated; nothing deleted.')]}
     else:
         result = inspect_set(root, state, probe, instance['dialect_hint'])
-        expected = {f['path']: f['sha256'] for f in association['files']}
+        files = association['files']
+        if association.get('authority') == 'managed-state-history':
+            from .managed_state import resolve_generation
+            files = resolve_generation(store, data, association)[0]['members']
+        expected = {f['path']: f['sha256'] for f in files}
         actual = {f['path']: f['sha256'] for f in result['files']}
         result['status'] = 'changed-state' if expected != actual else 'unchanged-state'
         if expected != actual:

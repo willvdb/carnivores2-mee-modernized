@@ -33,7 +33,7 @@ def codec_evidence(probe):
     return executable_evidence(path)
 
 
-def snapshot_pins(store, association_id, selection, probe, expected_codec=None, *, mode='observer'):
+def snapshot_pins(store, association_id, selection, probe, expected_codec=None, *, mode='observer', managed=False, generation=None):
     data = store.read()
     association = data['associations'].get(association_id)
     if association is None:
@@ -67,10 +67,18 @@ def snapshot_pins(store, association_id, selection, probe, expected_codec=None, 
     slot = association['filename_slot']
     if slot not in range(8) or association['state_key'] != f'trophy{slot:02d}':
         raise FrontendError('session requires a canonical root native slot')
-    root = safe_path(association_root(store, instance, association))
-    entries, blobs = capture(root)
-    expected = sorted([{'path': f['path'], 'size': f['size'], 'sha256': f['sha256'],
-                        'type': 'file'} for f in association['files']], key=lambda e: e['path'])
+    state_generation = None
+    if managed:
+        from .managed_state import resolve_generation
+        state_generation, root, entries, blobs = resolve_generation(store, data, association, generation)
+        expected = state_generation['members']
+    else:
+        if data['schema_version'] != 1:
+            raise FrontendError('legacy sessions cannot select an import in an upgraded store; prepare a generation-pinned hunt')
+        root = safe_path(association_root(store, instance, association))
+        entries, blobs = capture(root)
+        expected = sorted([{'path': f['path'], 'size': f['size'], 'sha256': f['sha256'],
+                            'type': 'file'} for f in association['files']], key=lambda e: e['path'])
     allowed = {f'trophy{slot:02d}.sav', f'trophy{slot:02d}.sab'}
     if (entries != expected or not blobs or f'trophy{slot:02d}.sav' not in blobs
             or set(blobs) - allowed):
@@ -91,6 +99,9 @@ def snapshot_pins(store, association_id, selection, probe, expected_codec=None, 
             'source_observation': decoded, 'selection': selection,
             'area_stem': area['launch_stem'], 'codec': codec,
             'adapter': SYNTHETIC_POLICY}
+    if state_generation is not None:
+        pins['association'].pop('managed_state', None)
+        pins.update(generation_id=state_generation['id'], generation=state_generation)
     return copy.deepcopy(pins), blobs
 
 
