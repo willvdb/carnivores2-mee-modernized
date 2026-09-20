@@ -15,7 +15,10 @@ def reconcile_locked(store, root, journal, probe=None):
     process = journal.get('process') or {}
     if type(process.get('exit_code')) is not int or process.get('stop_reason') != 'exited' or process['exit_code'] != 0:
         diagnostics.append({'code': 'unclean-process-return'})
-    entries, blobs, decoded = [], {}, {}
+    # None means unavailable, not an observed empty directory or corrupt pair.
+    entries, blobs, decoded = None, None, None
+    observation = {'inventory': 'unavailable', 'byte_capture': 'unavailable',
+                   'retained_capture': 'unavailable', 'codec_inspection': 'unavailable'}
     try:
         if journal['schema_version'] == 2:
             from .native_observer import CAPABILITY, execution_spec, native_pins, supported_contract
@@ -41,12 +44,20 @@ def reconcile_locked(store, root, journal, probe=None):
     try:
         safe_path(root / 'work')
         if journal['schema_version'] == 2:
-            from .native_observer import validate_workspace
-            validate_workspace(root, journal, returning=True)
+            from .native_observer import workspace_findings
+            diagnostics.extend(workspace_findings(root, returning=True))
         elif {p.name for p in (root / 'work').iterdir()} != {'state'}:
             diagnostics.append({'code': 'unexpected-workspace-entry',
                                 'message': 'All extra workspace entries retained in work.'})
+    except (FrontendError, OSError, KeyError, TypeError, ValueError) as error:
+        diagnostics.append({'code': 'workspace-review-required', 'message': str(error)})
+    try:
+        # capture validates state AND every ancestor before inventory/read. An
+        # ancillary failure is never permission to bypass these safety checks.
         entries, blobs = capture(root / 'work/state')
+        observation['inventory'] = 'complete'
+        observation['byte_capture'] = ('complete' if all(e['type'] == 'file' for e in entries)
+                                       else 'partial')
         baseline_names = {e['path'] for e in journal['baseline_members']}
         actual_names = {e['path'] for e in entries}
         for name in sorted(baseline_names - actual_names):
@@ -61,7 +72,9 @@ def reconcile_locked(store, root, journal, probe=None):
             # Freeze membership/hash observations before copying. Recovery cannot
             # silently replace an earlier capture with later different bytes.
             journal['return_capture'] = entries
-            persist(root, journal)
+        # Retain ancillary/process findings across a crash during partial copy.
+        journal['diagnostics'] = diagnostics
+        persist(root, journal)
         if journal['return_capture'] != entries:
             raise FrontendError('returned state changed since durable capture; original capture retained')
         destination = safe_path(root / 'returned')
@@ -74,27 +87,40 @@ def reconcile_locked(store, root, journal, probe=None):
         copied, copied_blobs = capture(destination)
         if copied_blobs != blobs or any(e['type'] not in ('file', 'directory') for e in copied):
             raise FrontendError('returned evidence copy did not verify')
+        observation['retained_capture'] = 'verified'
         codec = codec_evidence(probe)
         if codec != pins['codec']:
             raise FrontendError('codec helper evidence changed')
         decoded, findings = inspect_bytes(copied_blobs, pins['native_slot'], codec['path'])
+        observation['codec_inspection'] = 'complete'
         diagnostics.extend(findings)
     except (FrontendError, OSError, KeyError, TypeError, ValueError) as error:
         diagnostics.append({'code': 'return-review-required', 'message': str(error)})
     clean = not diagnostics
     expected = {e['path']: e.get('sha256') for e in journal['baseline_members']}
-    actual = {e['path']: e.get('sha256') for e in entries}
-    readable = bool(decoded) and all(d.get('codec_roundtrip_exact') for d in decoded.values())
-    # A readable SAV alone must not hide a missing expected SAB.
-    readable = readable and set(decoded) == set(expected)
-    journal['capabilities']['returned_native_state_readable'] = 'yes' if readable else 'no'
+    comparison = observation['byte_capture'] == 'complete'
+    changed = None
+    if comparison:
+        actual = {e['path']: e['sha256'] for e in entries}
+        changed = sorted(name for name in expected.keys() | actual.keys()
+                         if expected.get(name) != actual.get(name))
+    readable = 'unknown'
+    if decoded is not None:
+        actual_names = {e['path'] for e in entries}
+        if set(expected) - actual_names or any(not d.get('codec_roundtrip_exact') for d in decoded.values()):
+            readable = 'no'
+        elif set(expected) <= set(decoded):
+            readable = 'yes' if set(decoded) == set(expected) else 'no'
+        # Present but unsafe/uncaptured expected members remain unknown.
+    journal['capabilities']['returned_native_state_readable'] = readable
     journal['diagnostics'] = diagnostics
     transition(root, journal, 'candidate' if clean else 'quarantined', reconciled_at=now(),
                returned_members=entries, returned_observation=decoded,
                reconciliation={'status': 'clean-candidate' if clean else 'review-required',
                    'authority': 'original-managed-snapshot', 'promotion': 'deferred',
-                   'changed_members': sorted(name for name in expected.keys() | actual.keys()
-                                             if expected.get(name) != actual.get(name)),
+                   'observation': observation,
+                   'comparison_status': 'complete' if comparison else 'unavailable',
+                   'changed_members': changed,
                    'pair_atomicity': 'unverified', 'progression_semantics': 'unverified'})
     return journal
 

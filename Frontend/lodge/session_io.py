@@ -32,6 +32,8 @@ def safe_path(path):
             raise FrontendError('session path contains an alias')
         if part.exists():
             info = part.lstat()
+            if getattr(info, 'st_file_attributes', 0) & getattr(stat, 'FILE_ATTRIBUTE_REPARSE_POINT', 0):
+                raise FrontendError('session path contains a reparse point')
             if not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode)):
                 raise FrontendError('session path contains a special file')
             if stat.S_ISREG(info.st_mode) and info.st_nlink != 1:

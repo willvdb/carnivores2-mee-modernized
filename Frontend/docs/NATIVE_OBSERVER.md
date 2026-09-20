@@ -62,6 +62,48 @@ compatibility or hunt/save-round-trip validation: an exit code and readable SAV
 cannot prove a world rendered or that Genesis behaved correctly. A native result
 never upgrades synthetic capabilities or permits promotion.
 
+## Return observation and unavailable evidence
+
+Config, workspace membership and output findings quarantine independently of
+native-state inspection. State is inspected only after its directory and every
+ancestor pass path safety checks, including links and Windows reparse points.
+Readable, unchanged saves can therefore coexist with an output/config quarantine.
+The same reporting rules apply to newly reconciled schema-1 synthetic journals.
+
+`reconciliation.observation` records the stages actually completed:
+
+| Field | Values and meaning |
+| --- | --- |
+| `inventory` | `complete` after the bounded stable inventory; otherwise `unavailable` |
+| `byte_capture` | `complete` when all inventoried entries are regular captured files; `partial` when unsafe/nonfile/oversized entries remain in work; otherwise `unavailable` |
+| `retained_capture` | `verified` when every safely captured blob is verified in `returned/`; otherwise `unavailable` (partial/prior evidence may still exist) |
+| `codec_inspection` | `complete` when inspection of the retained native blobs finishes; otherwise `unavailable` |
+
+`returned_members` is the current work/state inventory, or JSON `null` if inventory
+failed. `returned_observation` is the decoded observation, or `null` if codec
+inspection did not complete. An observed empty directory has `[]` members and `{}`
+decoded values; it is incomplete state, not an observation failure. Readability
+is `yes` for a complete readable expected set, `no` for observed missing/corrupt
+state or an unexpected decoded native member, and `unknown` when inspection is
+unavailable or an expected member cannot be safely captured. It does not authorize
+a candidate over other findings.
+
+`reconciliation.comparison_status` is `complete` only when all current members
+have captured bytes (including an observed empty directory). Only then is
+`changed_members` a list of names whose hashes/membership differ from the pinned
+baseline; `[]` means unchanged. Otherwise the status is `unavailable` and the
+list is `null`, never an implied unchanged result. A byte comparison may finish
+even if later retention or codec inspection fails; the stage fields distinguish
+those cases. `return_capture` remains the first durable inventory and is never
+replaced by divergent later work or returned evidence. Findings are persisted
+before copying so recovery cannot forget an already observed ancillary failure.
+
+The CLI passes these fields through as JSON; no in-tree production consumer
+assumes they are lists. External consumers must handle `null` and stage status.
+These fields are additive within schemas 1 and 2. Historical terminal journals
+are returned unchanged, without backfilling statuses or reinterpreting their
+older reports; absent stage fields mean no explicit stage record is available.
+
 ## Reproducible asset-free smoke
 
 No game assets or personal profiles are needed. The CTest runner requires the

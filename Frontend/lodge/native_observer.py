@@ -111,21 +111,37 @@ def execution_spec(root, pins, evidence, capability, timeout):
 
 
 def validate_workspace(root, journal, returning=False):
+    findings = workspace_findings(root, returning)
+    if findings:
+        raise FrontendError('; '.join(f['message'] for f in findings))
+
+
+def workspace_findings(root, returning=False):
+    """Check ancillary domains independently; never authorize state access here."""
     work = safe_path(root / 'work')
-    if {p.name for p in work.iterdir()} != {'state', 'config', 'output'}:
-        raise FrontendError('unexpected native workspace entry')
-    config, blobs = capture(work / 'config')
-    if set(blobs) != {'config.cfg'} or len(config) != 1 or blobs['config.cfg'] != CONFIG:
-        raise FrontendError('native session configuration changed')
-    output, _ = capture(work / 'output')
-    if not returning and output:
-        raise FrontendError('native output already exists; no relaunch')
-    # Legacy Windows screenshot code truncates its 12-byte name buffer to .BM.
-    # Admit exactly that existing form; do not relax to arbitrary BMP-like names.
-    screenshot = r'HUNT[0-9]{4}\.BM' if os.name == 'nt' else r'HUNT[0-9]{4,}\.BMP'
-    for entry in output:
-        if (entry['type'] != 'file' or not re.fullmatch(r'carnivor\.log|render\.log|' + screenshot, entry['path'])):
-            raise FrontendError('unexpected native output; retained for review')
+    findings = []
+    for domain in ('workspace', 'config', 'output'):
+        try:
+            if domain == 'workspace':
+                if {p.name for p in work.iterdir()} != {'state', 'config', 'output'}:
+                    raise FrontendError('unexpected native workspace entry')
+            elif domain == 'config':
+                config, blobs = capture(work / 'config')
+                if set(blobs) != {'config.cfg'} or len(config) != 1 or blobs['config.cfg'] != CONFIG:
+                    raise FrontendError('native session configuration changed')
+            else:
+                output, _ = capture(work / 'output')
+                if not returning and output:
+                    raise FrontendError('native output already exists; no relaunch')
+                # Keep the exact legacy platform screenshot allowlist.
+                screenshot = r'HUNT[0-9]{4}\.BM' if os.name == 'nt' else r'HUNT[0-9]{4,}\.BMP'
+                for entry in output:
+                    if (entry['type'] != 'file' or not re.fullmatch(r'carnivor\.log|render\.log|' + screenshot, entry['path'])):
+                        raise FrontendError('unexpected native output; retained for review')
+        except (FrontendError, OSError) as error:
+            findings.append({'code': 'native-workspace-review-required',
+                             'domain': domain, 'message': str(error)})
+    return findings
 
 
 def prepare_native(store, association, area, engine, digest, experimental=False,
