@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(CarnivoresFrontend LANGUAGES CXX)
 # Deliberately standalone: configure with -S Frontend, no engine dependencies.
-add_library(c2_frontend_core STATIC native/src/core.cpp native/src/json_compat.cpp native/src/schema_compat.cpp native/src/manifest_schema.cpp native/src/store_paths.cpp native/src/store.cpp native/src/capture.cpp native/src/profile.cpp native/src/profile_files.cpp native/src/content.cpp native/src/discovery.cpp)
+add_library(c2_frontend_core STATIC native/src/core.cpp native/src/json_compat.cpp native/src/schema_compat.cpp native/src/manifest_schema.cpp native/src/store_paths.cpp native/src/store.cpp native/src/capture.cpp native/src/profile.cpp native/src/profile_files.cpp native/src/content.cpp native/src/discovery.cpp native/src/catalog.cpp)
 target_compile_features(c2_frontend_core PUBLIC cxx_std_17)
 target_include_directories(c2_frontend_core PUBLIC native/include PRIVATE native/src)
 target_include_directories(c2_frontend_core SYSTEM PRIVATE native/third_party)
@@ -28,6 +28,18 @@ add_custom_target(c2-frontend
   COMMENT "Show the optional frontend CLI")
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(c2-frontend-catalog-tests native/tests/catalog_tests.cpp)
+  target_link_libraries(c2-frontend-catalog-tests PRIVATE c2_frontend_core)
+  target_include_directories(c2-frontend-catalog-tests PRIVATE native/src)
+  if(MSVC)
+    target_compile_options(c2-frontend-catalog-tests PRIVATE /W4 /utf-8)
+  else()
+    target_compile_options(c2-frontend-catalog-tests PRIVATE -Wall -Wextra -Wpedantic)
+  endif()
+  add_test(NAME frontend-catalog-oracle COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_catalog_fixtures.py" --check)
+  add_test(NAME frontend-native-catalog COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_catalog.py" "$<TARGET_FILE:c2-frontend-catalog-tests>")
   add_executable(c2-frontend-discovery-tests native/tests/discovery_tests.cpp)
   target_link_libraries(c2-frontend-discovery-tests PRIVATE c2_frontend_core)
   target_include_directories(c2-frontend-discovery-tests PRIVATE native/src)
