@@ -4,7 +4,7 @@
 
 Task branch: `codex/native-session-isolation`, in its existing dedicated worktree.
 Current follow-up code: `480e7362577beb0f06d6adad4f0db20f257bf49d`;
-the following documentation commit records acceptance limits. The current pushed
+Subsequent documentation commits record acceptance limits and review scope. The current pushed
 head and its CI results are recorded in PR #13, not the historical checkpoints below.
 
 - Starting local main: `a2cfec8ef3590c6c8d56d16c7a69e4c0e5327f5a`.
@@ -16,7 +16,7 @@ head and its CI results are recorded in PR #13, not the historical checkpoints b
 - Implementation checkpoint before final Windows screenshot compatibility correction:
   `5f19cbb6a5afd018525ab6bfcb939d054f2c824b`; following changes document delivery.
 
-Draft review: [PR #13](https://github.com/willvdb/carnivores2-mee-modernized/pull/13).
+Review: [PR #13](https://github.com/willvdb/carnivores2-mee-modernized/pull/13).
 Only the task branch was pushed. No main, engine-development or existing frontend
 branch was modified, rebased or force-pushed. Original main worktree still has
 its untouched untracked `carnivor.log` and `render.log`.
@@ -103,10 +103,11 @@ hosted CI results are recorded in the PR, separately from the historical CI belo
 Final incremental review found no changed output allowlist, content/trust gate,
 legacy launch or Phase 4 display policy; no new profile creation, state promotion,
 installation sync, assets or generated files; and no renderer, controller,
-networking, GUI or progression expansion. Remaining acceptance limitation:
-locate/review the reported small fixes and bind the successful interactive run to
-its actual code/platform/path evidence. Success on one platform would not certify
-the other, normal-hunt progression, all mods or authoritative save promotion.
+networking, GUI or progression expansion. The owner subsequently directed this
+pass to proceed without further investigation of the reported local fixes; they
+are no longer a prerequisite for final review. The interactive success remains
+user-reported with the evidence limits above. Success on one platform would not
+certify the other, normal-hunt progression, all mods or authoritative save promotion.
 PR #13 remains open and unmerged, with auto-merge disabled.
 
 ## Historical completed checkpoints and decisions
