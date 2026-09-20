@@ -1426,3 +1426,42 @@ supersedes the initial test-only surrogate-transport failure. Every owned local
 verification process was fully awaited before publication. Actual final-head
 MSVC/Linux CI, independent published-head review and merge remain gates; no
 later slice is begun and this implementation does not self-approve 2B.1.
+
+### Windows oracle checkout correction
+
+Original PR #24 head `7e1a6ad2a55f78fdc157aa33d862f0de2683afd9` passed
+Linux PR run 35515092033 / job 106089575530, all 22 CTests in 144.29 seconds,
+including all three permission capabilities without skips. Actual Windows push
+run 35515090640 / job 106089571884 completed 39/40 in 618.77 seconds; Windows
+PR job 106089575396 completed 39/40 in 657.81 seconds. Both failed only the
+new catalog golden regeneration check, `Catalog golden differs from unchanged
+Python`. Native catalog passed all 2,276 cases in 33.82 seconds (push) and
+35.06 seconds (PR); all old tests and all 21 named Windows capabilities passed
+without skips. Those results do not approve the failed oracle head.
+
+Root independently identified the checkout-byte cause: the new golden lacked
+an LF attribute. With core.autocrlf=true, Git's actual checkout filter produced
+35,020 bytes containing 979 CRLF sequences instead of the authoritative 34,041
+LF bytes. Replacing those CRLF sequences with LF exactly recovered the unchanged
+Python generator output. The focused correction adds only
+`tests/catalog/golden.json text eol=lf` to the existing Frontend/.gitattributes.
+It does not broaden attributes across the repository, change expected fixture
+data, normalize input in the oracle or relax its read_bytes comparison.
+
+After the correction, the actual command
+`git -c core.autocrlf=true cat-file --filters --path=Frontend/tests/catalog/golden.json HEAD:Frontend/tests/catalog/golden.json`
+returns exactly the unchanged committed 34,041 bytes, with 979 LF and zero CR.
+Golden SHA-256 remains
+`e3da4e8210f3fc3e3134d21647fac544ddab6caae614bfbf946486216c0339e2`.
+The unchanged generator's --check passes. A separate temporary fixture tree with
+the unchanged generator/reference accepts those filtered LF bytes, rejects an
+intentional CRLF conversion, and rejects a deliberate content mutation with the
+original error. Temporary corruptions are removed and the working golden is
+unchanged. Verification log: `/tmp/c2-catalog-lf-fix-verification.log`.
+
+Production/parser/API, private JSON, workflows, all golden expected data and old
+tests are unchanged. Existing compiled-source, native differential and sanitizer
+evidence remains applicable; no redundant full local rerun is claimed. This
+attribute plus ledger correction is published as a focused non-force follow-up.
+Actual final-head Windows/Linux CI and independent review remain required; no
+merge or later slice is authorized by this implementation checkpoint.

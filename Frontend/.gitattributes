@@ -1,3 +1,4 @@
 # Oracle comparison and vendored provenance checks use exact committed bytes.
 tests/compatibility/golden.json text eol=lf
+tests/catalog/golden.json text eol=lf
 native/third_party/picosha2/* text eol=lf
