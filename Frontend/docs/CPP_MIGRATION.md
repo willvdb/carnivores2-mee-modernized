@@ -1,6 +1,6 @@
 # Native frontend migration relay
 
-## Baseline and scope
+## Historical foundation baseline and scope
 
 Python remains the authoritative runtime/reference at main commit
 `e742fb7ab85ba0c571d50e45ff0a410eb2a444dd`. Branch:
@@ -91,8 +91,8 @@ escaping and indentation are reviewable independently of checkout line endings.
 | --- | --- |
 | 0A compatibility contract and golden corpus | Reviewed and merged in PR #16 |
 | 0B core, private representation, encoders, SHA, CLI/tests | Reviewed and merged in PR #16 |
-| 1A.1 pure manifest/schema validation | Implemented; awaiting independent review |
-| 1A.2 read-only filesystem/store/CLI integration | Pending |
+| 1A.1 pure manifest/schema validation | Reviewed and merged in PR #17 |
+| 1A.2 read-only filesystem/store/CLI integration | In progress; not independently approved |
 | 1B history/current-generation + profiles | Pending |
 | 2A discovery/reference/fingerprint observation | Pending |
 | 2B catalog | Pending |
@@ -316,3 +316,128 @@ must resolve the authoritative current snapshot and inspect profile bytes. The
 existing parser depth/resource-policy and configurable Python integer/recursion
 differences remain pre-production-read gates, as does a change to the Unicode
 baseline. Pure structural acceptance does not assert filesystem trust or safety.
+
+## Manifest validation merge and read-only store checkpoint
+
+PR #17 was independently reviewed at published head
+`bfe93508e9a618606fc0b7e251040a55859c6f0d` and merged as
+`32786ef3818353e41673c409b5eae7ad4de43f7d` (tree
+`d95c5c0049ccfbe664e015a727c5d67bf8724b1f`). Its focused commits were
+`3984b546f85c9a5b56ebdc47a97873c04f9fbc4c`,
+`2ad86d0e8342bd714768e7c4a46c093ecb4993bb`, and the published head.
+The reviewer inspected the complete published scope: Python runtime/tests and
+public API were unchanged, with no unresolved code finding. Exact-SHA Linux
+validation passed 10/10 CTests in 117.64 seconds, including 154 unchanged Python
+tests in 65.041 seconds without skips. Independent differential validation ran
+34,994 cases per POSIX/NT semantics (69,988 total), with zero mismatches; earlier
+20,530 NT path spellings and 48,237 Unicode lowercase cases also matched. All
+28 push/PR checks were green, including actual MSVC Windows 10/10 CTests in
+215.81 seconds (job 106054301850). Full native ASan/UBSan and the final 9,106-case
+schema rerun passed. Original 325 golden fixtures remained unchanged. This
+supersedes historical pending 1A.1 review statements above.
+
+Branch `frontend/cpp-store-read` starts exactly from that merge for 1A.2 only:
+read-only store/repository, safe-path read prerequisites, and thin CLI reads.
+Overall 1A stays incomplete pending independent 1A.2 review. Generation/profile
+resolution, writes, locks, discovery, execution, and acceptance remain later
+slices. Earlier foundation-only descriptions are chronological evidence, not
+the current branch scope. Resource-policy resolution is a prerequisite of this
+slice, not permission to change the persistent format.
+
+## Slice 1A.2 read-only implementation (review pending)
+
+The standalone public `store.hpp` adds `Store` and an immutable, opaque owned
+`Manifest`. Native store paths use `std::filesystem::path`; typed hunter and
+expedition summaries use `std::u32string`, preserving escaped surrogate code
+points as well as supplementary characters. Unknown nested metadata remains
+in the private owned representation. Schema version and optional active-hunter
+presence are distinct queries. Domain-specific status/hunter/expedition/settings
+exports retain insertion order, ASCII escapes and LF; the journal/evidence
+encoder remains sorted and byte-identical. Reading does not require exporting,
+so retained nonfinite metadata can fail one export while another succeeds.
+
+The CLI exposes only `status`, `hunter list`, `expedition list`, and read-only
+`host-settings`, plus help/version. Global `--store` and unused `--probe` accept
+native paths; writes and later-slice commands fail before repository access.
+Default paths follow LOCALAPPDATA or home/.local/share. Windows uses wide argv
+and environment variables; POSIX retains native path bytes. Regular errors use
+a JSON error object on stderr and exit 2; resource exhaustion uses a JSON error
+and distinct exit 3. The reference's absent-active-hunter list indexing failure
+is reported as a controlled native error; status never synthesizes that field.
+
+Read policy is operational, not persistent-format validation: default maximum
+nesting is 1000, with an explicitly raised API `ReadPolicy::max_depth` supported
+by both parsing and presentation export. There is **no default manifest byte
+or export-size ceiling**. An optional caller-selected input byte budget reports
+`ResourceExhausted`; allocation/length exhaustion and nesting exhaustion are
+also distinct from schema corruption. Arbitrary decimal integers retain their
+magnitude and do not inherit Python's configurable conversion digit cap. The
+existing private encoders/parser preserve their default resource behavior and
+325 original golden fixtures. CPython 3.12 / Unicode 15.0 remains the pinned
+semantic reference. These policy differences never cause fallback or writes.
+
+The read adapter deliberately resolves the caller root once in the constructor,
+then checks stored ancestors and the current manifest on each read. It rejects
+aliases, symlinks/reparse points, special files and multiply-linked regular
+files, including missing-current paths with unsafe ancestors. Windows ancestor
+anchors follow PureWindowsPath rather than STL UNC/device decomposition, and
+alias comparison uses pinned Unicode lowercase rather than OS uppercase tables.
+Caller-supplied extended prefixes are retained. POSIX opens the final file with
+O_NOFOLLOW/O_NONBLOCK; Windows opens its final handle with OPEN_REPARSE_POINT
+and rechecks its type/link count. Reads stop at the observed regular-file size
+and compare post-read size/link/mtime metadata. This is not a claim of protection
+against hostile concurrent directory replacement or all concurrent writers.
+
+Missing current data returns the reference empty manifest only when neither
+backup sentinel exists under normal exists semantics. Corrupt current data
+never falls back; valid current data ignores locks and backup contents. Reads
+never mkdir, lock, migrate, rewrite, capture profiles, query stored executables,
+or resolve recorded historical snapshots. This is only the read prerequisite
+of future filesystem work; capture, atomic writes and transactions remain later.
+
+### Published 1A.2 implementation and verification checkpoint
+
+PR #18 initially published implementation head
+`0f095b553a68338ea05e523a5a45c7b642075e18` (tree
+`cbb59c53273601bc4e00c117369a68ae83d21393`) from base
+`32786ef3818353e41673c409b5eae7ad4de43f7d`. The focused stack starts with
+ledger `db4a90137ea827342a0b61deb3dfad3995ca59c8`, private resource/display seam
+`bfbbbe669ef1d6f3fab6870b87e8092c39197989`, repository/platform
+`92bff74621617829c79e64eb277eed522b353410`, and the CLI/test head above.
+No original Python implementation, old tests, golden fixtures, engine, Menu,
+or workflow files changed.
+
+Linux Debug passed 11/11 CTests in 124.70 seconds, including unchanged Python
+154 tests in 66.27 seconds, 325 golden cases, 9,106 schema cases, and constrained
+stack tests. Targeted final path/argument checks then passed store/golden/stack
+3/3 in 8.26 seconds. The complete ASan/UBSan native suite passed 10/10 in
+149.49 seconds (`ASAN_OPTIONS=detect_leaks=0`, `UBSAN_OPTIONS=halt_on_error=1`);
+only unavailable LeakSanitizer was disabled. Fresh build directories were
+`/tmp/c2-store-read-initial` and `/tmp/c2-store-read-asan`, with build and test
+commands awaited sequentially.
+
+Review follow-up compares NT aliases as parsed drive/root/components, including
+UNC anchor trailing separators, rather than raw lowercased spellings. It adds
+144 authoritative PureWindowsPath equality pairs and explicit positive/negative
+Greek contextual-lowercase rename fixtures. That expanded store gate passed
+Debug in 9.69 seconds and ASan/UBSan in 26.15 seconds. The authored store test
+also performed 164 POSIX Store/CLI output-or-failure comparisons, immutable
+snapshot lifetime/API checks, resource tests and no-write filesystem snapshots.
+Windows-only checks run in the existing Windows CI job; live network-share
+reads are not asserted by the pure UNC spelling tests. Initial-head Ubuntu CI
+passed, and actual MSVC compiled successfully with its tests still pending at
+this checkpoint. Published final-head review and Windows results remain gates;
+none of these implementation results self-approve the slice.
+
+The initial-head MSVC job `106057527703` subsequently completed 10/11 CTests:
+all original tests passed, but the new store oracle caught mixed separators
+in default-directory presentation (`.local/share` versus `.local\\share`).
+Commit `8a3991ae48f438c552d1b6c44c740a954c8a7d67` already corrects this by
+joining native components; its tree is
+`dca154cb249b7f466b792899ea185882ee6b5904`. The failed run took 287.38 seconds,
+including 217.06 seconds for unchanged Python tests. It does not establish the
+later Windows safety fixtures, which remained after the failed assertion.
+A further focused review correction normalizes an empty post-tilde-expansion
+path to `.` (empty Windows USERPROFILE), with isolated constructor oracles for
+`~` and the current username. Linux's store gate passed again in 8.59 seconds;
+Windows reruns and independent final-head approval remain required.

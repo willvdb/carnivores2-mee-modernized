@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(CarnivoresFrontend LANGUAGES CXX)
 # Deliberately standalone: configure with -S Frontend, no engine dependencies.
-add_library(c2_frontend_core STATIC native/src/core.cpp native/src/json_compat.cpp native/src/schema_compat.cpp native/src/manifest_schema.cpp)
+add_library(c2_frontend_core STATIC native/src/core.cpp native/src/json_compat.cpp native/src/schema_compat.cpp native/src/manifest_schema.cpp native/src/store_paths.cpp native/src/store.cpp)
 target_compile_features(c2_frontend_core PUBLIC cxx_std_17)
 target_include_directories(c2_frontend_core PUBLIC native/include PRIVATE native/src)
 target_include_directories(c2_frontend_core SYSTEM PRIVATE native/third_party)
@@ -28,6 +28,12 @@ add_custom_target(c2-frontend
   COMMENT "Show the optional frontend CLI")
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(c2-frontend-store-tests native/tests/store_tests.cpp)
+  target_link_libraries(c2-frontend-store-tests PRIVATE c2_frontend_core)
+  target_include_directories(c2-frontend-store-tests PRIVATE native/src)
+  add_test(NAME frontend-native-store COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_store_read.py"
+    "$<TARGET_FILE:c2-frontend-native>" "$<TARGET_FILE:c2-frontend-store-tests>")
   add_executable(c2-frontend-schema-tests native/tests/schema_tests.cpp)
   target_link_libraries(c2-frontend-schema-tests PRIVATE c2_frontend_core)
   target_include_directories(c2-frontend-schema-tests PRIVATE native/src)
@@ -53,7 +59,7 @@ if(BUILD_TESTING)
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_native_stack.py"
       "$<TARGET_FILE:c2-frontend-native-tests>")
   add_test(NAME frontend-native-help COMMAND c2-frontend-native --help)
-  set_tests_properties(frontend-native-help PROPERTIES PASS_REGULAR_EXPRESSION "Backend operations are not implemented")
+  set_tests_properties(frontend-native-help PROPERTIES PASS_REGULAR_EXPRESSION "Read-only commands")
   add_test(NAME frontend-native-version COMMAND c2-frontend-native --version)
   set_tests_properties(frontend-native-version PROPERTIES PASS_REGULAR_EXPRESSION "0.1.0-foundation")
   add_test(NAME frontend-native-unsupported COMMAND c2-frontend-native discover)

@@ -43,7 +43,9 @@ public:
     using std::runtime_error::runtime_error;
 };
 
-Value parse(std::string_view utf8);
+class ResourceError : public Error { public: using Error::Error; };
+Value parse(std::string_view utf8, std::size_t max_depth = 1000);
+std::string display(const Value&, std::size_t max_depth = 1000);
 std::string compact(const Value& value);
 std::string ContentFingerprintV1(const Value& entries);
 std::string JournalEvidenceV1(const Value& decoded_journal);
