@@ -147,5 +147,8 @@ python3 Frontend/frontend.py --store /path/to/lodge --probe /path/to/c2-profile-
 Inspect actual world entry/observer controls, normal evacuation/close, native
 save byte/keybinding behavior, session output locations, and before/after source,
 installation and baseline hashes. Test native Windows and Linux independently.
-Keep any output candidate-only. No actual Genesis observer acceptance was run
-for this task because assets/baselines were not explicitly supplied to it.
+Keep any output candidate-only. The original implementation pass ran no actual
+Genesis observer acceptance because assets/baselines were not explicitly supplied
+to it. The subsequent user-reported local success and its unverified details are
+recorded separately in the
+[follow-up handoff](../../docs/NATIVE_SESSION_HANDOFF.md#follow-up-acceptance-and-pre-merge-correction--2026-09-19).
