@@ -473,3 +473,63 @@ discovery, execution, mutations, acceptance or GUI work. Capture will retain
 complete entries and opaque bytes, compare them with Python equality, and never
 fall back from the authoritative current generation. Independent review and
 actual final-head Windows CI remain gates; implementation evidence is not approval.
+
+## Slice 1B.1 implementation and review checkpoint
+
+PR #19 publishes read-only generation resolution and history inspection. Initial
+implementation head `87c6dacdbccc23a2f432a68ad54c3687c4a30050` has tree
+`4f24bb978ad84530d5fa50c1c37d481abdb444d2`; its parent safe-read prerequisite is
+`c7dc263a235d2a1aa2f8088ec266f7d43d8b0f68`, following ledger checkpoint
+`45a70df0cf767d0aac9574be853a25f0894d7751`. Windows capture test expansion is
+`fb8a91307a23eab28620d87829053b1f087fb189`, tree
+`90a6097bee230bfa039de693183efd7b39093d66`. Independent review and final-head
+Windows CI remain pending; none of these implementation results approve 1B.1.
+
+`Manifest::resolve_generation` binds resolution to that owned validated manifest
+and the Store directory retained at its read. Current means that observation's
+head, without a hidden reread or a claim of later acceptance freshness. The CLI
+reads fresh for its only added command, `managed-state inspect ASSOCIATION`.
+`GenerationObservation` owns immutable metadata, root, complete typed entries
+and opaque byte blobs. Explicit prior-generation resolution remains available;
+its history export rejects unless it is the manifest head, so an intact old
+snapshot cannot bypass a missing/corrupt head inspection. Generation and history
+presentation retain unknown metadata. Only the reference's three excluded keys
+are omitted from import provenance. Recorded executable/helper evidence is never
+probed, hashed or executed. Snapshot paths are constructed from validated IDs
+and kind, never arbitrary locators; only the selected snapshot is captured.
+
+Private capture preserves sorted depth-first directory entries, unsafe/link/
+oversized evidence, 128-entry and 16/32 MiB bounds, and complete bytes. Native
+POSIX names decode UTF-8 with surrogateescape; Windows UTF16 retains unpaired
+units. Host Path ordering uses Unicode code points and pinned lowercase on NT,
+with stable ties. Two full observations compare entries and blobs. Regular reads
+use the owned bounded reader, compare original signature and post-read identity,
+and additionally check EOF: zero-size virtual files that return bytes cannot be
+certified empty. Manifest read limits remain unchanged. These checks detect
+ordinary changes, not hostile concurrent directory replacement guarantees.
+
+Linux Debug passed 12/12 CTests in 171.41 seconds (backend 74.06 seconds; all 154
+unchanged Python tests in 73.780 seconds), including the 325 unchanged goldens,
+9,106 schema cases, store and stack tests. The expanded generation test passed
+again in 37.18 seconds. Focused ASan/UBSan generation/store/compatibility/stack
+passed 4/4 in 125.16 seconds, generation 91.46 seconds; only unavailable leak
+checking was disabled (`ASAN_OPTIONS=detect_leaks=0`,
+`UBSAN_OPTIONS=halt_on_error=1`). Builds live in `/tmp/c2-generation-debug` and
+`/tmp/c2-generation-asan`; full/focused logs are
+`/tmp/c2-generation-debug-full.log`, `/tmp/c2-generation-debug-expanded.log`,
+and `/tmp/c2-generation-asan-focused.log`.
+
+The new filesystem gate performs 101 Linux oracle comparisons using unchanged
+Python capture/resolve/inspect and exact CLI bytes, plus public observation
+lifetime and no-write snapshots. Cases include G0/G1/G2 and explicit predecessors,
+missing/corrupt head with intact old generations, metadata/member extras,
+opaque bytes, nested directories, missing versus empty, entry/file/total bounds,
+Unicode and invalid POSIX bytes, hardlinks, links, FIFO, virtual-file EOF, and
+sustained writers. Successful concurrent observations have checked raw framing,
+size and hash consistency; rejection is allowed. Windows cases add junctions,
+extended paths, file/dangling symlinks and unpaired UTF16 names; privilege/filesystem
+limitations print explicitly, so their actual CI coverage must be inspected.
+
+No Python source/old tests/goldens, engine, Menu, or workflow changed. Profile
+inspection (1B.2), capture writes and all remaining 3A work, other later slices,
+and independent completion/merge remain deferred.
