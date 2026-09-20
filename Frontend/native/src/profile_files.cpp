@@ -211,7 +211,13 @@ bool contained(const fs::path& root, const fs::path& p) {
 } // namespace
 namespace profile_source {
 std::string read_member(const fs::path& root, const fs::path& relative) {
-    const auto p = root / relative;
+    auto p = root / relative;
+#ifdef _WIN32
+    // Relative inventory paths use '/' for presentation. Extended-length Win32
+    // paths do not translate those separators; pathlib materializes '\\' here.
+    // Change syscall spelling only, without resolving or collapsing components.
+    p.make_preferred();
+#endif
     if (is_link(p) || !contained(root, store_paths::resolve_native(p))) throw ProfileError("state member escaped its root");
 #ifdef _WIN32
     struct Handle { HANDLE h; ~Handle() { if (h != INVALID_HANDLE_VALUE) CloseHandle(h); } };

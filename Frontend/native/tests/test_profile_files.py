@@ -339,6 +339,8 @@ def capability(name, base):
         assert {'alias-a/trophy04', 'alias-b/trophy04', 'real/trophy04'} <= {s['key'] for s in states}
     else:
         check_tree(root)
+    if name == 'unpaired-utf16':
+        check_tree(Path('\\\\?\\' + str(root)))
     if name == 'file-link':
         check_tree(base / 'root-link')
     if name == 'junction':
@@ -469,7 +471,16 @@ def main(base):
         finally:
             denied.chmod(0o700)
     else:
-        check_tree(Path('\\\\?\\' + str(data)))
+        extended = Path('\\\\?\\' + str(data))
+        check_tree(extended)
+        # Direct reader materialization must also translate nested presentation
+        # separators under an extended prefix, retaining all native code units.
+        for relative in ('case0/trophy00.sab', 'case1/trophy00.sav'):
+            actual = invoke('source-read', extended, relative)
+            assert actual.returncode == 0, actual.stderr
+            stream = io.BytesIO(actual.stdout)
+            assert frame(stream) == (extended / relative).read_bytes()
+            assert not stream.read()
     CASES += 8
 
 
