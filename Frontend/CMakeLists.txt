@@ -34,6 +34,14 @@ if(BUILD_TESTING)
   add_test(NAME frontend-native-generation COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_generation_read.py"
     "$<TARGET_FILE:c2-frontend-native>" "$<TARGET_FILE:c2-frontend-generation-tests>")
+  if(WIN32)
+    foreach(capability IN ITEMS file-link dangling-link unpaired-utf16)
+      add_test(NAME frontend-capture-windows-${capability} COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_generation_read.py"
+        "$<TARGET_FILE:c2-frontend-native>" "$<TARGET_FILE:c2-frontend-generation-tests>" ${capability})
+      set_tests_properties(frontend-capture-windows-${capability} PROPERTIES SKIP_RETURN_CODE 77)
+    endforeach()
+  endif()
   add_executable(c2-frontend-store-tests native/tests/store_tests.cpp)
   target_link_libraries(c2-frontend-store-tests PRIVATE c2_frontend_core)
   target_include_directories(c2-frontend-store-tests PRIVATE native/src)

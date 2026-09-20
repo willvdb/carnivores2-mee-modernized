@@ -100,6 +100,28 @@ def check_generation(directory, identity=None):
 def check_cli(directory):
     return differential([cli, '--store', directory, 'managed-state', 'inspect', A], lambda: display(inspect_history(Store(directory), A)))
 
+# Separate capability cases make Passed/Skipped visible under the existing
+# CTest --output-on-failure workflow. Keep the main oracle assertions above/below.
+if len(sys.argv) == 4:
+    case = sys.argv[3]
+    assert case in ('file-link', 'dangling-link', 'unpaired-utf16')
+    if os.name != 'nt': raise SystemExit(77)
+    with tempfile.TemporaryDirectory(prefix='c2-capture-windows-') as temporary:
+        parent = Path(temporary).resolve()
+        state = parent / 'state'; state.mkdir()
+        (state / 'bytes').write_bytes(bytes(range(256)))
+        try:
+            if case == 'unpaired-utf16':
+                (state / 'unpaired-\ud800.sav').write_bytes(b'opaque-unpaired-name')
+            else:
+                (state / case).symlink_to('bytes' if case == 'file-link' else 'absent')
+        except (OSError, UnicodeError) as error:
+            print(f'{case} creation unavailable on this Windows host: {error!r}', flush=True)
+            raise SystemExit(77)
+        assert check_capture(state, parent) is None
+        print(f'{case}: actual Python/native capture metadata and bytes matched', flush=True)
+    raise SystemExit(0)
+
 with tempfile.TemporaryDirectory(prefix='c2-generation-') as temporary:
     parent = Path(temporary).resolve()
     state = parent / 'capture'; state.mkdir()

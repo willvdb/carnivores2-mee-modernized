@@ -533,3 +533,23 @@ limitations print explicitly, so their actual CI coverage must be inspected.
 No Python source/old tests/goldens, engine, Menu, or workflow changed. Profile
 inspection (1B.2), capture writes and all remaining 3A work, other later slices,
 and independent completion/merge remain deferred.
+
+### Review follow-up: observable Windows capability coverage
+
+The coordinator reviewed published implementation `87c6dacdbccc23a2f432a68ad54c3687c4a30050`
+and verified production sources remained byte-identical through ledger head
+`b282790e9ee78580816b1d4d38a8add92fafa2b9`. Independent Linux verification
+passed 12/12 CTests in 169.90 seconds and all unchanged 154 Python tests; 244
+capture trees/boundaries and 360 history-output/error comparisons had zero
+mismatches. This is review evidence, not final approval or Windows coverage.
+
+The existing workflow suppresses successful CTest stdout, hiding conditional
+Windows capability messages. Three narrowly named Windows CTests now separately
+exercise actual file-link, dangling-link and unpaired-UTF16-name creation and
+Python/native capture comparison. Unavailable creation returns explicit CTest
+skip code 77, so ordinary CI logs distinguish Passed from Skipped. The original
+main oracle and its assertions remain intact, and no workflow changes are needed.
+Non-Windows mode dispatch explicitly returned 77 for all three; the complete
+101-case Linux generation gate passed again in 33.92 seconds after rebuilding
+(`/tmp/c2-generation-debug-capabilities.log`). Final published-head Windows
+results, including these individual capability outcomes, remain required.
