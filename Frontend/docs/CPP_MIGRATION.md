@@ -97,8 +97,9 @@ escaping and indentation are reviewable independently of checkout line endings.
 | 1B.2 pure profile-byte codec inspection | Reviewed and merged in PR #20 |
 | 1B.3 filesystem profile inventory/inspection | Reviewed and merged in PR #21; overall 1B read observations complete |
 | 2A.1 reference resolution/content fingerprint | Reviewed and merged in PR #22 |
-| 2A.2 coherent-root discovery/instance observations | In progress; independent review pending |
-| 2B catalog | Pending |
+| 2A.2 coherent-root discovery/instance observations | Reviewed and merged in PR #23; overall 2A complete |
+| 2B.1 pure catalog parser/scalars | In progress; independent review pending |
+| 2B.2 filesystem catalog projection | Pending |
 | 2C Genesis planning | Pending |
 | 3A safe paths/capture/atomic I/O | Pending |
 | 3B preparation/journal | Pending |
@@ -1281,3 +1282,45 @@ build directory's `Testing/Temporary/LastTest.log`. Both final verification
 sessions were fully awaited before publication. Python implementation/old tests,
 original goldens, Shared codecs/helper, engine, Menu and workflows are unchanged.
 No later slice is started and this checkpoint does not self-approve 2A.2.
+
+
+## Discovery merge and pure catalog boundary
+
+PR #23 was independently reviewed at head
+`f9bf8a7e6a74e761d98a4a86941556924cf4fedd` and merged as
+`6f48c387ec05bbb021753182d975989b5e501bb6`, matching tree
+`032904d38e49de2c05d7a9cdd9fe721f11c7c135`. Its four-commit stack is
+`1232b78a4c1b5ef0e795ca6b12ac66d42fa0487c`,
+`b802663cd174baa83c6ef12c6fd2fa69f61b18d9`,
+`fa15bf816a4259f711fd68f0d1120eff8a7ad505`, and the reviewed head.
+Root inspected the actual GitHub base, stack, full diff, public API, new tests
+and unchanged old tests. Independently compiled matching source passed 253
+exact-value/display-byte comparisons over 55 random roots and targeted cases,
+plus all 634 authored cases, with source/manifest bytes and metadata unchanged.
+The typed executables absent-versus-observed-empty finding was corrected; no
+correctness finding remains. Local Debug completed 17 Passed plus three explicit
+permission EPERM skips out of 20 in 287.76 seconds; all unchanged 154 Python
+tests passed in 67.746 seconds without skips using actual compiled probes.
+Actual focused ASan/UBSan passed 4/4 in 152.42 seconds; only LSan was unavailable.
+
+All 28 final-head CI checks were green. Linux PR run 35513474502 / job
+106085347354 passed 20/20 in 130.75 seconds, all three permission capabilities
+Passed without skips. Windows PR job 106085347421 from that run passed 38/38
+in 593.39 seconds (discovery 37.41 seconds). Windows push run 35513444472 /
+job 106085268209 passed 38/38 in 557.95 seconds (discovery 29.88 seconds).
+Both Windows jobs passed all 21 named capabilities without skips. Live UNC and
+cloud-provider behavior remain unexercised; cycles and substituted FIFOs retain
+the documented fail-closed operational distinctions. This supersedes pending
+2A.2 review statements above; overall 2A observations are complete.
+
+Branch `frontend/cpp-catalog-parser` starts at that exact main merge for
+**2B.1 only**: pure byte/token/tree parsing and scalar/attribute/block queries.
+Filesystem projection is separately bounded as 2B.2. Source is opaque Unicode
+metadata, never a validated filesystem path. Raw bytes, tree insertion order,
+source/line metadata, arbitrary decimal values and diagnostic order are retained.
+The separate scalar conversion follows the pinned CPython 3.12 default 4300-digit
+integer limit; it does not change private JSON storage or raw-tree parsing.
+No text_reference/project, filesystem policy, CLI bridge, Genesis/planning,
+rank/economy/equipment semantics, mutation, execution/trust/acceptance, UI,
+engine/Menu, format changes or broad refactor is included. Independent review
+and actual final-head MSVC CI remain gates; this checkpoint does not approve 2B.1.
