@@ -856,3 +856,123 @@ managed-capture or profile-size ceilings, compare metadata and the complete
 inventory, and hash the unchanged exact ContentFingerprintV1 bytes.
 Independent review and actual final-head MSVC CI are required; this boundary
 record does not approve the implementation or begin later slices.
+
+### Slice 2A.1 implementation and validation checkpoint
+
+The additive C++17 `content.hpp` API owns reference observations and immutable
+content fingerprints. It exposes native locator resolution, reference status
+and original spelling/relative POSIX path, resolved paths, and fingerprint
+algorithm/hash/counts. No JSON implementation or Python/runtime types cross the
+public boundary. Byte totals are arbitrary-magnitude canonical decimal strings.
+Inventory metadata stays private and retains signed nanosecond timestamps and
+full Windows 128-bit file IDs as decimal integers; compare-only device identity
+is not substituted for the Python-visible inode. Existing native path resolution,
+Unicode 15.0 casefold/lower and ContentFingerprintV1 encoders are reused only
+where their reference semantics match. No Store/Capture/profile authority or
+size limit is applied to general content.
+
+Reference observation resolves roots without expanding literal tilde or rejecting
+native backslash spelling. Locator native_path retains its distinct rejection
+and expansion policy. NUL roots fail before native C-string APIs; NUL reference
+components participate in sibling comparison and normally report missing.
+PurePath construction drops dot/repeated separators while preserving parent
+components and their link-dependent meaning. Found does not imply regular file
+or coherent-root shape: a regular-file HUNTDAT yields an empty inventory/hash,
+matching the reference; later recognition owns its separate directory checks.
+
+The first inventory pass preserves native dirs+files enumeration and validates
+all children, including mutable suffixes and ignored subtrees. A second pass
+sorts by Python code point, skips child symlinks, follows Windows junctions,
+filters only the reference suffixes/parents and observes regular-file metadata.
+Ordinary hardlinks and finite sibling junction aliases remain distinct entries.
+A narrow per-ancestry directory-cycle guard fails the entire observation with
+`content inventory directory cycle`. This operational divergence from potentially
+unbounded Python junction traversal is checked only after successful scandir,
+so ignored permission errors remain omitted; there is no global deduplication.
+
+Member hashing streams owned regular handles in 1MiB chunks through the existing
+vendored SHA-256, with no arbitrary file-size/entry-count/aggregate ceiling.
+Nonblocking POSIX open plus regular-handle checks prevents FIFO substitution
+from hanging. Handle and path stability checks fail closed on detected changes;
+reference member metadata and complete final inventory are compared separately.
+Actual bytes are hashed even when a virtual regular file reports extent zero.
+The payload remains sorted [relative,size,sha] arrays, exact compact ensure_ascii
+bytes without LF, hashed to lowercase SHA-256. These observations do not establish
+an externally atomic tree, hostile-race security, managed ownership or authority.
+
+The test-only line-framed driver accepts native_path, resolve_reference,
+resolved_path, hash_file, walk_files, content_inventory, fingerprint and
+fingerprint_payload operations. A narrow private phase callback additionally
+lets an owned test child pause after initial inventory, after member hashing
+before restat, and before final inventory. Production fingerprint supplies no
+callback; there is no environment switch, production CLI bridge or caller-supplied
+trusted metadata. Tests bound readiness/continuation, kill/wait and close owned
+children on failure. Deterministic mutations prove member addition/removal,
+posthash metadata change, and POSIX special-file substitution are rejected.
+Sustained atomic replacements still require every successful raced fingerprint
+to equal a complete valid expected identity, never merely a zero exit status.
+
+The original added membership race assertion could finish at equal inventories
+and therefore legitimately produce only valid successes. Both agent and reviewer
+saw that test-only scheduling failure. The private phase barriers above replace
+that probabilistic requirement; no compatibility assertion was weakened, and
+all original 325 goldens, 9,106 schema cases, 865 pure-profile cases and 154 Python
+tests remain unchanged. Root preliminary exact-tree review passed the corrected
+282-case content gate in 35.07 seconds and 6,890 independent comparisons across
+64 random trees and native root edges, with zero mismatches and unchanged source
+bytes. That evidence is not final published-head or Windows approval.
+
+Validation commands use fresh external build directories, and each build/test
+session is fully awaited before rebuilding its directory:
+
+```sh
+PATH=/root/.local/bin:$PATH cmake -S Frontend -B /tmp/c2-reference-fingerprint-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
+PATH=/root/.local/bin:$PATH cmake --build /tmp/c2-reference-fingerprint-debug --parallel 2
+PATH=/root/.local/bin:$PATH ctest --test-dir /tmp/c2-reference-fingerprint-debug --output-on-failure --no-tests=error
+PATH=/root/.local/bin:$PATH cmake -S Frontend -B /tmp/c2-reference-fingerprint-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+  '-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer' \
+  '-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined'
+PATH=/root/.local/bin:$PATH cmake --build /tmp/c2-reference-fingerprint-asan --target c2-frontend-content-tests c2-frontend-native-tests --parallel 2
+ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 PATH=/root/.local/bin:$PATH \
+  ctest --test-dir /tmp/c2-reference-fingerprint-asan -R 'frontend-native-(content|compatibility|stack)$' --output-on-failure --no-tests=error
+```
+
+Focused ASan/UBSan passed 3/3 in 86.08 seconds (content 81.33, compatibility 2.43,
+stack 2.31), with 282 authored oracle cases, exact observations/payloads, read-only
+snapshots, a 48MiB-plus streamed file and 130 source entries, raw names, mutable
+exclusions, aliases/collisions, signed timestamps, virtual bytes, and race gates.
+Only unavailable LeakSanitizer was disabled under ptrace. Log:
+`/tmp/c2-reference-fingerprint-asan-final.log`.
+
+Named Windows file-link, dangling-link, unpaired-UTF16, junction, hardlink and
+cycle capabilities distinguish Passed from unsupported skip 77. Linux permission
+coverage also has its own named test; local uid/gid dropping returns EPERM and
+is explicitly skipped, so actual Linux CI must supply that gate. Actual final-head
+MSVC execution remains required; Linux is not a substitute. Live UNC shares and
+cloud-provider reparse/hydration behavior remain unexercised. This slice does not
+change Python, original tests/goldens, Shared codec/helper, engine, Menu, workflow,
+persistent formats, or CLI behavior. Slice 2A.2 and all later operations remain
+deferred until independent review and merge.
+
+Final sequential Linux Debug completed all 18 registered CTests in 242.59
+seconds: 16 passed and two named permission capabilities explicitly skipped
+for local identity-drop EPERM (content and existing profiles). The corrected
+content gate passed in 33.75 seconds with all 282 cases; all unchanged 154 Python
+tests passed in 68.628 seconds, without Python skips (backend 68.93 seconds).
+The original goldens/schema/profile gates also passed. Log:
+`/tmp/c2-reference-fingerprint-debug-final.log`. This complete rerun supersedes
+the earlier membership-test scheduling failure.
+
+Authenticated GitHub object publication checked every created blob and complete
+tree against the local commits. Ledger local `69cf860` maps to remote
+`c1630e1eac2c18272527b2f4f5b0d3c25fc5f530`; implementation local
+`4324bc8d4b00090e36c650cb57bdb9cf33b5bd07` maps to remote
+`f448731daecb002af5df67e8c393f953192f50fa` with identical tree
+`166e83affb39a9610fa50588a0d135912120eca6`; deterministic race correction
+local `7e68166b5bd734fadab98b63c924e99f9af27781` maps to remote
+`88244c08e8425a89d2326e137dd65eacd10e1cc2` with identical tree
+`f72d333e38e9e5f75a487820456b351d5765e9d9`. Author/committer metadata explains
+commit-ID differences. This following evidence commit is bundled with that
+implementation in the initial branch update; its final SHA and actual CI
+outcomes belong in subsequent independent review evidence. No merge or
+self-approval is performed by this implementation checkpoint.
