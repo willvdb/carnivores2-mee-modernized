@@ -7,7 +7,9 @@ Expedition Console are presentation layers to build on this backend later.
 An opt-in synthetic session runner now exercises real child processes against
 disposable state copies. A separate [experimental native observer](docs/NATIVE_OBSERVER.md) now uses the
 versioned engine session contract with explicit executable/hash trust. General
-native launch and authoritative promotion remain disabled.
+native launch remains gated; authoritative promotion remains disabled.
+The separate [pinned normal-hunt adapter](docs/GENESIS_HUNT.md) now supports one
+license and weapon, returning candidate-only evidence through `native-hunt`.
 
 ## Build and test
 

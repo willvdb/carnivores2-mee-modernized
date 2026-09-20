@@ -30,8 +30,15 @@ int main(int argc, char** argv) {
     const bool read=Platform::ReadFile(file,bytes.data(),bytes.size(),&count);
     Platform::CloseFile(file);
     if(!read || !EngineSession::ValidateProfile(bytes.data(),count,false)) return 3;
+    // Authored test mutation only; this child never simulates gameplay success.
+    if (scenario == "changed") {
+        LegacyProfile::Save save{};
+        if (!LegacyProfile::DecodeSave(bytes.data(), bytes.size(), save)) return 3;
+        save.profile.header.score += 7;
+        bytes = LegacyProfile::EncodeSave(save);
+    }
     file=Platform::OpenFile(name.c_str(),Platform::FileMode::Write);
-    Platform::WriteFile(file,bytes.data(),bytes.size(),&count); Platform::CloseFile(file);
+    Platform::WriteFile(file,bytes.data(),scenario == "corrupt" ? 3 : bytes.size(),&count); Platform::CloseFile(file);
     file=Platform::OpenFile("render.log",Platform::FileMode::Write);
     const std::string text="asset-free native process fixture; not Genesis\n";
     Platform::WriteFile(file,text.data(),text.size(),&count); Platform::CloseFile(file);

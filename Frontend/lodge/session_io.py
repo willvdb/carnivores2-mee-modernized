@@ -61,7 +61,7 @@ def persist(root, journal):
 
 
 def validate_journal(journal, identity):
-    if (not isinstance(journal, dict) or journal.get('schema_version') not in (1, 2)
+    if (not isinstance(journal, dict) or journal.get('schema_version') not in (1, 2, 3)
             or type(journal.get('schema_version')) is not int
             or journal.get('id') != identity or not valid_id(identity)
             or journal.get('path_flavor') != os.name
@@ -86,9 +86,12 @@ def validate_journal(journal, identity):
         if not isinstance(journal.get(field), dict):
             raise FrontendError('incomplete session journal')
     kind = journal['execution'].get('kind')
-    if ((journal['schema_version'] == 1 and kind == 'experimental-native-observer-v1')
-            or (journal['schema_version'] == 2 and (kind != 'experimental-native-observer-v1'
-                or journal.get('experimental_native_process_launch_allowed') is not True
+    kinds = {1: 'controlled-synthetic', 2: 'experimental-native-observer-v1',
+             3: 'experimental-native-hunt-v1'}
+    if ((journal['schema_version'] == 1 and kind in tuple(kinds.values())[1:])
+            or (journal['schema_version'] >= 2 and kind != kinds[journal['schema_version']])
+            or (journal['schema_version'] >= 2 and (
+                journal.get('experimental_native_process_launch_allowed') is not True
                 or journal.get('process_launch_allowed') is not False
                 or journal.get('synthetic_process_launch_allowed') is not False))):
         raise FrontendError('incompatible session journal kind/version/capability')

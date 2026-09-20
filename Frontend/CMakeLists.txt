@@ -20,10 +20,24 @@ if(BUILD_TESTING)
   add_executable(c2-native-session-fixture tests/native_session_fixture.cpp
     ../Hunt/Session/Session.cpp ../Hunt/Platform/Files.cpp)
   target_compile_features(c2-native-session-fixture PRIVATE cxx_std_17)
+  # Compile the actual consumer, never a Python mirror of its mask formula.
+  set(commandline "${CMAKE_CURRENT_SOURCE_DIR}/../Hunt/Game/CommandLine.cpp")
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${commandline}")
+  file(READ "${commandline}" commandline_source)
+  string(FIND "${commandline_source}" "static bool equals_nocase" commandline_start)
+  if(commandline_start LESS 0)
+    message(FATAL_ERROR "Cannot locate production argument consumer")
+  endif()
+  string(SUBSTRING "${commandline_source}" ${commandline_start} -1 commandline_body)
+  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/launch_commandline.inc" "${commandline_body}")
+  add_executable(c2-launch-argument-probe tests/launch_argument_probe.cpp)
+  target_compile_features(c2-launch-argument-probe PRIVATE cxx_std_17)
+  target_include_directories(c2-launch-argument-probe PRIVATE ../Hunt "${CMAKE_CURRENT_BINARY_DIR}")
   add_test(NAME frontend-backend
     COMMAND "${CMAKE_COMMAND}" -E env
       "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}"
       "C2_PROFILE_PROBE=$<TARGET_FILE:c2-profile-probe>"
+      "C2_LAUNCH_ARGUMENT_PROBE=$<TARGET_FILE:c2-launch-argument-probe>"
       "C2_NATIVE_TEST_ENGINE=$<TARGET_FILE:c2-native-session-fixture>"
       "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/run_tests.py")
 endif()
