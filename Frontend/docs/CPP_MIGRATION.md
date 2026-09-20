@@ -776,3 +776,38 @@ actual final-head MSVC outcomes for each named filesystem capability must be
 inspected. Shared codec, original helper, Python implementation/old tests,
 goldens, engine, Menu and workflows remain unchanged. Overall 1B and the
 profile CLI/helper cutover are not self-approved by this checkpoint.
+
+### Review correction: extended Windows member separators
+
+Actual PR #21 head `703fee61379005436e72cbd33ade0cb448403ab5` passed
+Linux job 106069721343, run 35507514266, with all 16 CTests in 98.93 seconds.
+The named POSIX permission test passed in 0.09 seconds without a skip, closing
+that host-capability gap. Actual Windows job 106069721393 from that run passed
+23/24 tests in 435.57 seconds. All six new profile and three existing capture
+capability tests passed, but the main profile-files test failed its existing
+extended-root regression (78.72 seconds): nested `case0/trophy00.sab` could
+not be opened. Push job 106069673421 exhibited the same failure. These runs
+do not establish Windows approval for that head.
+
+The source reader joined a native extended-length root to the observation's
+POSIX-style relative member path, then passed retained forward slashes directly
+to CreateFileW. Extended-length Windows syntax disables the separator translation
+that ordinary paths receive. Correction implementation
+`9eff2bd47a166885cdc8c4fe654304a0b3ef7d49`, tree
+`1b764245d83834bf254bbde93b0db60e5f6f8fce`, applies Windows-only
+`make_preferred()` to the joined local syscall path before all pre-read, open
+and post-read checks. It changes separator spelling only: retained domain paths,
+bound root identity, extended drive/UNC prefixes, Unicode code units and path
+components are unchanged; it performs no lexical normalization. POSIX code,
+Store/Capture, Python/reference helper, codecs and persistent bytes are untouched.
+
+The original failing regression remains intact. Added direct reader comparisons
+retain literal forward-slash nested member input under an extended root; the
+named unpaired-UTF16 capability now also compares its complete extended-root
+inventory/read/inspection against Python. Live UNC shares remain untested.
+Sequential targeted Linux Debug passed decimal/source-profile tests 2/2 in
+30.11 seconds (source-profile 29.79 seconds, all 204 cases). Log:
+`/tmp/c2-profile-files-debug-extended.log`. The correction's behavior is
+Windows-only, so this local regression run does not validate the Windows fix;
+actual fresh final-head MSVC and all final checks remain required. This
+checkpoint is bundled before a single branch update, with no weakened assertions.
