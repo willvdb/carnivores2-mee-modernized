@@ -96,8 +96,8 @@ escaping and indentation are reviewable independently of checkout line endings.
 | 1B.1 current-generation/capture read | Reviewed and merged in PR #19 |
 | 1B.2 pure profile-byte codec inspection | Reviewed and merged in PR #20 |
 | 1B.3 filesystem profile inventory/inspection | Reviewed and merged in PR #21; overall 1B read observations complete |
-| 2A.1 reference resolution/content fingerprint | In progress; independent review pending |
-| 2A.2 coherent-root discovery/instance observations | Pending |
+| 2A.1 reference resolution/content fingerprint | Reviewed and merged in PR #22 |
+| 2A.2 coherent-root discovery/instance observations | In progress; independent review pending |
 | 2B catalog | Pending |
 | 2C Genesis planning | Pending |
 | 3A safe paths/capture/atomic I/O | Pending |
@@ -1117,3 +1117,44 @@ Python/tests/goldens, Shared codecs, engine, Menu and workflows are unchanged.
 This scoped correction and evidence are bundled into one non-force branch update.
 Actual fresh Windows CI and final independent review remain required; the green
 push on the preceding head does not approve its red PR outcome or this correction.
+
+
+## Reference/fingerprint merge and discovery observation boundary
+
+PR #22 on `frontend/cpp-reference-fingerprint` was independently reviewed at
+`58b0493cc042ae0fcefe096bde1aafd28b7666c5`, nine ahead / zero behind
+`ff0bb74f0481628384672a1271aafc25a5468540`, and merged as
+`a4b84d9d5532ae57004d51f26558a9fdf0486109`. The tested and merged tree is
+`2b5acb831720ce8b51a6b0909f65584c98ca4d0e`. Root reviewed the actual base,
+stack, full code, tests and API; 6,890 exact comparisons across 64 random trees
+and root edges had zero mismatches and unchanged source bytes. Final independent
+284-case verification (`/tmp/c2-reference-review-final/lifecycle-root.log`)
+completed 5,049 writer replacements, sixteen idle handoffs, sixteen local
+unconstrained change rejections and both forced atomic-replacement rejections.
+Agent Debug and ASan/UBSan 284-case outcomes remain recorded above.
+
+All 28 final checks were green at 13:03:07 UTC. Actual Linux PR run 35511761736,
+job 106080770957, passed 18/18 in 124.41 seconds (content 15.96 seconds), both
+named permission capabilities Passed without skips. Actual Windows PR job
+106080771065 passed 31/31 in 539.24 seconds (content 130.02 seconds); Windows
+push run 35511760493, job 106080767877, passed 31/31 in 442.92 seconds (content
+94.99 seconds). Both Windows jobs passed all fifteen named content/profile/
+capture capabilities without skips. The earlier Windows writer false failures,
+diagnosis and lifecycle corrections above remain historical evidence; this final
+review supersedes pending approval with no unresolved current correctness finding.
+The per-ancestry junction-cycle operational distinction and untested live UNC /
+cloud-provider behavior remain caveats.
+
+Branch `frontend/cpp-discovery-observations` starts at that exact main merge for
+**2A.2 only**: read-only recognize, discover, engine_evidence, get_instance,
+inspect_instance and move_candidates over the filesystem and immutable validated
+Manifest. Recognition is content evidence, never execution or trust certification;
+engine evidence remains independent from content identity. Full retained baseline
+values and Python semantic equality are required, including unknown metadata.
+Only minimal private prerequisite seams may move forward. No CLI bridge,
+register/refresh/relocate or manifest mutation (5B), catalog (2B), Genesis,
+process trust/execution (4A), acceptance, new persistent format, UI, engine/Menu,
+generalized architecture/performance work or broad refactor belongs here.
+Historical/external codec-helper selection/execution and the profile CLI bridge
+remain explicitly deferred to 4A without reinterpretation of historical pins.
+Independent review and actual final-head MSVC CI remain mandatory gates.
