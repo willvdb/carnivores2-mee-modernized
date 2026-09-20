@@ -6,6 +6,11 @@
 #include <iterator>
 #include <locale>
 #include <string>
+#ifdef _WIN32
+#include <cstdio>
+#include <fcntl.h>
+#include <io.h>
+#endif
 
 namespace {
 using namespace c2::frontend;
@@ -111,6 +116,53 @@ void strict_representation() {
     require(JournalEvidenceV1(parse("{\"b\":2,\"a\":1}")) ==
             JournalEvidenceV1(parse(" { \"a\" : 1, \"b\" : 2 }\n")), "journal hashes disk spelling");
 }
+std::string nested_document(bool object, std::size_t depth) {
+    std::string result;
+    for (std::size_t i = 0; i < depth; ++i) result += object ? "{\"x\":" : "[";
+    result += '0';
+    result.append(depth, object ? '}' : ']');
+    return result;
+}
+void deep_representation() {
+    for (bool object : {false, true}) {
+        std::cerr << "deep " << (object ? "objects" : "arrays") << ": accepted/copy/encode\n";
+        const auto input = nested_document(object, 1000);
+        auto value = parse(input);
+        require(compact(value) == input, "near-guard compact bytes differ");
+        const auto evidence = JournalEvidenceV1(value);
+        require(compact(parse(evidence)) == input, "near-guard journal round trip differs");
+        Value copy(value);
+        Value assigned;
+        assigned = copy;
+        require(JournalEvidenceV1(assigned) == evidence, "deep copy changed evidence");
+        value = std::move(assigned); // Also destroys the previous deep value.
+        require(compact(value) == input, "deep move assignment changed evidence");
+        assigned = copy;
+        assigned = Value{}; // Explicitly exercise replacement destruction.
+
+        std::cerr << "deep " << (object ? "objects" : "arrays") << ": rejection/unwind\n";
+        rejects([&] { parse(nested_document(object, 1001)); }, "over-limit value accepted");
+        auto malformed = input;
+        malformed.resize(malformed.size() - 1);
+        rejects([&] { parse(malformed); }, "incomplete near-guard tree accepted");
+        std::string over_limit;
+        for (int i = 0; i < 1002; ++i) over_limit += object ? "{\"x\":" : "[";
+        rejects([&] { parse(over_limit); }, "malformed over-limit tree accepted");
+        // Build beyond the parser guard to check encoder rejection and cleanup
+        // independently. Copying is also safe for privately constructed trees.
+        Value parent;
+        parent.kind = object ? Kind::object : Kind::array;
+        if (object) parent.object.emplace_back(U"x", std::move(value));
+        else parent.array.push_back(std::move(value));
+        Value beyond_guard(parent);
+        rejects([&] { compact(beyond_guard); }, "compact encoder depth guard missing");
+        rejects([&] { JournalEvidenceV1(beyond_guard); }, "journal encoder depth guard missing");
+        rejects([&] { ContentFingerprintV1(beyond_guard); }, "deep invalid fingerprint accepted");
+    }
+    // Empty containers at depth 1000 are accepted just like the original guard.
+    const auto empty = std::string(1001, '[') + std::string(1001, ']');
+    require(compact(parse(empty)) == empty, "empty-container depth boundary changed");
+}
 struct CommaLocale : std::numpunct<char> {
     char do_decimal_point() const override { return ','; }
     char do_thousands_sep() const override { return '.'; }
@@ -120,8 +172,17 @@ struct CommaLocale : std::numpunct<char> {
 
 int main(int argc, char** argv) {
     try {
+        if (argc == 2 && std::string(argv[1]) == "--deep-stack") {
+            deep_representation();
+            std::cout << "Deep representation checks passed\n";
+            return 0;
+        }
         // Test-only differential interface; production CLI has no JSON commands.
         if (argc == 2 && (std::string(argv[1]) == "--journal-stdin" || std::string(argv[1]) == "--compact-stdin")) {
+#ifdef _WIN32
+            require(_setmode(_fileno(stdin), _O_BINARY) != -1 &&
+                    _setmode(_fileno(stdout), _O_BINARY) != -1, "cannot enable binary test byte I/O");
+#endif
             const std::string input(std::istreambuf_iterator<char>(std::cin), {});
             const auto value = parse(input);
             std::cout << (std::string(argv[1]) == "--journal-stdin" ? JournalEvidenceV1(value) : compact(value));
@@ -132,11 +193,17 @@ int main(int argc, char** argv) {
         require(bool(stream), "cannot open golden corpus");
         const std::string source(std::istreambuf_iterator<char>(stream), {});
         const auto corpus = parse(source);
+        std::cerr << "SHA known answers\n";
         hash_answers();
+        std::cerr << "Strict representation and original nesting guard\n";
         strict_representation();
+        std::cerr << "Deep representation lifecycle\n";
+        deep_representation();
+        std::cerr << "Python golden corpus\n";
         golden(corpus);
         // Neither JSON decimal formatting nor SHA hexadecimal uses global locale.
         const auto previous = std::locale::global(std::locale(std::locale::classic(), new CommaLocale));
+        std::cerr << "Locale independence\n";
         golden(corpus);
         hash_answers();
         std::locale::global(previous);

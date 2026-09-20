@@ -186,3 +186,68 @@ processes and every later relay slice remain unimplemented.
 
 Windows MSVC CI is required before merge; local Linux validation cannot stand
 in for it. No later slice should start until 0A/0B representation gates pass.
+
+## Review correction: bounded native stack use
+
+The coordinator inspected published head
+`42c2e0880134438a771e8b26ffc601ad691328bf`: 0 commits behind / 2 ahead of the
+baseline, the complete 14-file additive diff, and no weakened existing tests.
+An isolated Linux Debug run passed 6/6 CTests in 71.95 seconds; the independent
+50,986-case differential rerun again had zero mismatches. That evidence did
+**not** clear the Windows gate: MSVC compiled successfully, but native
+compatibility crashed with a segmentation fault in job `106048568361`, push
+run `35499486506`. The other five CTests, including all 154 Python tests, passed.
+
+The original recursive parser exhausted its native call stack before safely
+rejecting the existing 1002-opening-bracket test. An isolated reproduction of
+that exact input with the original source, ASan and a 512 KiB child-process
+stack reported `stack-overflow` with repeated `Parser::value` frames. GCC with
+a larger/noninstrumented stack could pass; that did not establish Windows
+safety. With the correction, the same reproducer returns the intended
+`JSON nesting resource limit` error without overflowing.
+
+Parser and encoder traversal now use explicit heap frames. DOM copy traverses
+an explicit work list, and moves transfer ownership without recursive copies.
+Destruction walks ownership in postorder using temporary parent pointers;
+it allocates nothing and only destroys already-empty child containers. Thus
+ordinary destruction, replacement, partially built trees and exception unwind
+do not consume call stack proportional to document depth. The private DOM's
+value/copy semantics, original depth-above-1000 guard, all 325 golden cases,
+Unicode/numeric behavior, evidence bytes and public API remain unchanged.
+
+Regression coverage includes arrays and objects with a scalar at depth 1000,
+the accepted empty-container boundary, deep copy/move/replacement/destruction,
+near-limit incomplete documents, well-formed and malformed over-limit input,
+and encoder rejection of privately constructed over-limit trees. The original
+1002-bracket assertion remains. Native test stage messages locate future CI
+failures. A new `frontend-native-stack` CTest runs owned children at 256 KiB on
+POSIX and the unchanged executable default stack on Windows. No `/STACK`
+override or reduction in nesting coverage is used. Rejections must return
+the normal error exit and message; crashes cannot satisfy the test.
+
+The stack regression also compares deep journal bytes to unchanged Python:
+depth 900 is accepted with its default recursion budget; for depth 1000 the
+test temporarily increases only the oracle process's recursion budget to
+compare the native guard boundary's bytes. This does not change reference
+runtime code or erase the documented configurable-resource gate. Windows
+test-only stdin/stdout are explicitly binary so subprocess comparisons check
+the actual LF evidence, without newline normalization.
+
+Correction validation uses the build/test commands above, with a fresh Debug
+build outside workspace binary synchronization and the added stack CTest.
+The exact final full-suite command was:
+
+```sh
+cmake -S Frontend -B /tmp/c2-foundation-stackfix-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --build /tmp/c2-foundation-stackfix-debug --parallel 2
+ctest --test-dir /tmp/c2-foundation-stackfix-debug --output-on-failure --no-tests=error
+```
+
+Debug passed all 7 CTests, including all unchanged 154 Python tests (68.87
+seconds total). Release passed all 6 foundation CTests (1.54 seconds), and
+ASan/UBSan passed all 6 (4.87 seconds), including the constrained-stack children.
+The original 325-case oracle `--check` still passes. Earlier workspace builds
+encountered executables being truncated during synchronization, independently
+observed by the coordinator; the fresh `/tmp` build avoided that infrastructure
+failure. Windows rerun and final correction review remain required before merge
+or later slices; the correction commit's SHA belongs in subsequent evidence.

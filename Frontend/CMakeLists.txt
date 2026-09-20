@@ -40,6 +40,9 @@ if(BUILD_TESTING)
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_compatibility.py" --check)
   add_test(NAME frontend-native-compatibility COMMAND c2-frontend-native-tests
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/compatibility/golden.json")
+  add_test(NAME frontend-native-stack
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_native_stack.py"
+      "$<TARGET_FILE:c2-frontend-native-tests>")
   add_test(NAME frontend-native-help COMMAND c2-frontend-native --help)
   set_tests_properties(frontend-native-help PROPERTIES PASS_REGULAR_EXPRESSION "Backend operations are not implemented")
   add_test(NAME frontend-native-version COMMAND c2-frontend-native --version)

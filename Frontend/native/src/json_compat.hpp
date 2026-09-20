@@ -11,6 +11,13 @@ namespace c2::frontend::compat {
 enum class Kind { null, boolean, integer, floating, string, array, object };
 
 struct Value {
+    Value() = default;
+    Value(const Value& other);
+    Value(Value&& other) noexcept;
+    Value& operator=(const Value& other);
+    Value& operator=(Value&& other) noexcept;
+    ~Value() noexcept;
+
     Kind kind = Kind::null;
     bool boolean = false;
     // Arbitrary-magnitude canonical decimal; never narrowed to double/int64.
@@ -23,6 +30,12 @@ struct Value {
     std::vector<std::pair<std::u32string, Value>> object;
     const Value& at(std::u32string_view key) const;
     bool contains(std::u32string_view key) const;
+
+private:
+    void swap(Value& other) noexcept;
+    // Used only during destruction to walk ownership without recursion or
+    // allocation (including unwinding an allocation/parse/encoding failure).
+    Value* cleanup_parent_ = nullptr;
 };
 
 class Error : public std::runtime_error {

@@ -160,7 +160,7 @@ class Parser {
         }
         return result;
     }
-    Value value(std::size_t depth) {
+    Value atom(std::size_t depth) {
         // Private foundation guard: covers default CPython's recursion budget.
         // Configurably deeper Python input remains a cutover resource-policy gate.
         if (depth > 1000) throw Error("JSON nesting resource limit");
@@ -174,34 +174,11 @@ class Parser {
         case '[':
             result.kind = Kind::array;
             ++position_;
-            whitespace();
-            if (peek() != ']') while (true) {
-                result.array.push_back(value(depth + 1));
-                whitespace();
-                if (peek() != ',') break;
-                ++position_;
-            }
-            expect(']');
             break;
-        case '{': {
+        case '{':
             result.kind = Kind::object;
             ++position_;
-            whitespace();
-            std::set<std::u32string> keys;
-            if (peek() != '}') while (true) {
-                auto key = string();
-                if (!keys.insert(key).second) throw Error("duplicate JSON key");
-                whitespace();
-                expect(':');
-                result.object.emplace_back(std::move(key), value(depth + 1));
-                whitespace();
-                if (peek() != ',') break;
-                ++position_;
-                whitespace();
-            }
-            expect('}');
             break;
-        }
         case 'N': literal("NaN"); result.kind = Kind::floating;
             result.floating = std::numeric_limits<double>::quiet_NaN(); break;
         case 'I': literal("Infinity"); result.kind = Kind::floating;
@@ -217,7 +194,44 @@ class Parser {
 public:
     explicit Parser(std::string_view source) : source_(source) {}
     Value run() {
-        auto result = value(0);
+        struct Frame {
+            Value* container;
+            bool first = true;
+            std::set<std::u32string> keys;
+        };
+        auto result = atom(0);
+        std::vector<Frame> stack;
+        if (result.kind == Kind::array || result.kind == Kind::object)
+            stack.push_back({&result, true, {}});
+        while (!stack.empty()) {
+            auto& frame = stack.back();
+            const bool object = frame.container->kind == Kind::object;
+            whitespace();
+            if (peek() == (object ? '}' : ']')) {
+                ++position_;
+                stack.pop_back();
+                continue;
+            }
+            if (!frame.first) { expect(','); whitespace(); }
+            frame.first = false;
+            Value* child;
+            if (object) {
+                auto key = string();
+                if (!frame.keys.insert(key).second) throw Error("duplicate JSON key");
+                whitespace();
+                expect(':');
+                frame.container->object.emplace_back(std::move(key), Value{});
+                child = &frame.container->object.back().second;
+            } else {
+                frame.container->array.emplace_back();
+                child = &frame.container->array.back();
+            }
+            *child = atom(stack.size());
+            // Ancestors' child vectors are not grown while a descendant is
+            // active, so pointers in these heap frames remain stable.
+            if (child->kind == Kind::array || child->kind == Kind::object)
+                stack.push_back({child, true, {}});
+        }
         whitespace();
         if (position_ != source_.size()) throw Error("trailing JSON data");
         return result;
@@ -285,40 +299,58 @@ std::string float_text(double value, bool allow_nonfinite) {
     return result;
 }
 
-void encode(std::string& output, const Value& value, bool pretty, std::size_t depth) {
-    if (depth > 1000) throw Error("JSON nesting resource limit");
-    switch (value.kind) {
-    case Kind::null: output += "null"; break;
-    case Kind::boolean: output += value.boolean ? "true" : "false"; break;
-    case Kind::integer: output += value.integer; break;
-    case Kind::floating: output += float_text(value.floating, !pretty); break;
-    case Kind::string: quoted(output, value.string); break;
-    case Kind::array:
-    case Kind::object: {
-        const bool object = value.kind == Kind::object;
-        const auto count = object ? value.object.size() : value.array.size();
-        output += object ? '{' : '[';
+void encode(std::string& output, const Value& value, bool pretty) {
+    struct Frame {
+        const Value* container;
+        std::size_t next = 0;
         std::vector<std::size_t> order;
-        if (object) {
-            for (std::size_t i = 0; i < count; ++i) order.push_back(i);
-            if (pretty) std::sort(order.begin(), order.end(), [&](auto a, auto b) {
-                return value.object[a].first < value.object[b].first;
-            });
-        }
-        for (std::size_t i = 0; i < count; ++i) {
-            if (i) output += ',';
-            if (pretty) { output += '\n'; output.append((depth + 1) * 2, ' '); }
+    };
+    std::vector<Frame> stack;
+    auto atom = [&](const Value& node) {
+        if (stack.size() > 1000) throw Error("JSON nesting resource limit");
+        switch (node.kind) {
+        case Kind::null: output += "null"; break;
+        case Kind::boolean: output += node.boolean ? "true" : "false"; break;
+        case Kind::integer: output += node.integer; break;
+        case Kind::floating: output += float_text(node.floating, !pretty); break;
+        case Kind::string: quoted(output, node.string); break;
+        case Kind::array:
+        case Kind::object: {
+            const bool object = node.kind == Kind::object;
+            output += object ? '{' : '[';
+            Frame frame{&node, 0, {}};
             if (object) {
-                const auto& member = value.object[order[i]];
-                quoted(output, member.first);
-                output += pretty ? ": " : ":";
-                encode(output, member.second, pretty, depth + 1);
-            } else encode(output, value.array[i], pretty, depth + 1);
+                for (std::size_t i = 0; i < node.object.size(); ++i) frame.order.push_back(i);
+                if (pretty) std::sort(frame.order.begin(), frame.order.end(), [&](auto a, auto b) {
+                    return node.object[a].first < node.object[b].first;
+                });
+            }
+            stack.push_back(std::move(frame));
+            break;
         }
-        if (pretty && count) { output += '\n'; output.append(depth * 2, ' '); }
-        output += object ? '}' : ']';
-        break;
-    }
+        }
+    };
+    atom(value);
+    while (!stack.empty()) {
+        auto& frame = stack.back();
+        const auto& node = *frame.container;
+        const bool object = node.kind == Kind::object;
+        const auto count = object ? node.object.size() : node.array.size();
+        if (frame.next == count) {
+            if (pretty && count) { output += '\n'; output.append((stack.size() - 1) * 2, ' '); }
+            output += object ? '}' : ']';
+            stack.pop_back();
+            continue;
+        }
+        if (frame.next) output += ',';
+        if (pretty) { output += '\n'; output.append(stack.size() * 2, ' '); }
+        const auto index = frame.next++;
+        if (object) {
+            const auto& member = node.object[frame.order[index]];
+            quoted(output, member.first);
+            output += pretty ? ": " : ":";
+            atom(member.second);
+        } else atom(node.array[index]);
     }
 }
 
@@ -329,6 +361,71 @@ bool integer_less(const std::string& a, const std::string& b) {
     return negative_a ? a > b : a < b;
 }
 } // namespace
+
+void Value::swap(Value& other) noexcept {
+    using std::swap;
+    swap(kind, other.kind);
+    swap(boolean, other.boolean);
+    integer.swap(other.integer);
+    swap(floating, other.floating);
+    string.swap(other.string);
+    array.swap(other.array);
+    object.swap(other.object);
+}
+Value::Value(Value&& other) noexcept { swap(other); }
+Value& Value::operator=(Value&& other) noexcept {
+    Value moved(std::move(other));
+    swap(moved);
+    return *this;
+}
+Value::Value(const Value& other) : Value() {
+    std::vector<std::pair<const Value*, Value*>> pending{{&other, this}};
+    while (!pending.empty()) {
+        const auto pair = pending.back();
+        pending.pop_back();
+        const auto& source = *pair.first;
+        auto& destination = *pair.second;
+        destination.kind = source.kind;
+        destination.boolean = source.boolean;
+        destination.integer = source.integer;
+        destination.floating = source.floating;
+        destination.string = source.string;
+        destination.array.resize(source.array.size());
+        destination.object.resize(source.object.size());
+        for (std::size_t i = 0; i < source.array.size(); ++i)
+            pending.emplace_back(&source.array[i], &destination.array[i]);
+        for (std::size_t i = 0; i < source.object.size(); ++i) {
+            destination.object[i].first = source.object[i].first;
+            pending.emplace_back(&source.object[i].second, &destination.object[i].second);
+        }
+    }
+}
+Value& Value::operator=(const Value& other) {
+    Value copy(other);
+    swap(copy);
+    return *this;
+}
+Value::~Value() noexcept {
+    // Postorder walk through existing ownership. No auxiliary allocation can
+    // fail during exception unwinding. Each pop destroys an already empty
+    // child, so vector/pair destruction never recurses with document depth.
+    auto* current = this;
+    while (true) {
+        Value* child = nullptr;
+        if (!current->array.empty()) child = &current->array.back();
+        else if (!current->object.empty()) child = &current->object.back().second;
+        if (child) {
+            child->cleanup_parent_ = current;
+            current = child;
+        } else {
+            if (current == this) break;
+            auto* parent = current->cleanup_parent_;
+            if (!parent->array.empty()) parent->array.pop_back();
+            else parent->object.pop_back();
+            current = parent;
+        }
+    }
+}
 
 Value parse(std::string_view utf8) { return Parser(utf8).run(); }
 const Value& Value::at(std::u32string_view key) const {
@@ -341,12 +438,12 @@ bool Value::contains(std::u32string_view key) const {
 }
 std::string compact(const Value& value) {
     std::string output;
-    encode(output, value, false, 0);
+    encode(output, value, false);
     return output;
 }
 std::string JournalEvidenceV1(const Value& decoded_journal) {
     std::string output;
-    encode(output, decoded_journal, true, 0);
+    encode(output, decoded_journal, true);
     output += '\n';
     return output;
 }
