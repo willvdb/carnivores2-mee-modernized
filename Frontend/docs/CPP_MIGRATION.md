@@ -89,9 +89,10 @@ escaping and indentation are reviewable independently of checkout line endings.
 
 | Slice | Status |
 | --- | --- |
-| 0A compatibility contract and golden corpus | Implemented, awaiting review |
-| 0B core, private representation, encoders, SHA, CLI/tests | Implemented, awaiting review |
-| 1A manifest read/validation | Pending |
+| 0A compatibility contract and golden corpus | Reviewed and merged in PR #16 |
+| 0B core, private representation, encoders, SHA, CLI/tests | Reviewed and merged in PR #16 |
+| 1A.1 pure manifest/schema validation | In progress; not reviewed |
+| 1A.2 read-only filesystem/store/CLI integration | Pending |
 | 1B history/current-generation + profiles | Pending |
 | 2A discovery/reference/fingerprint observation | Pending |
 | 2B catalog | Pending |
@@ -251,3 +252,24 @@ encountered executables being truncated during synchronization, independently
 observed by the coordinator; the fresh `/tmp` build avoided that infrastructure
 failure. Windows rerun and final correction review remain required before merge
 or later slices; the correction commit's SHA belongs in subsequent evidence.
+
+## Foundation merge and manifest split
+
+Independent review cleared 0A/0B at correction commit
+`a36f5e605645052db422963f2a76b0af316c8667`, after implementation commit
+`42c2e0880134438a771e8b26ffc601ad691328bf` and fixture prerequisite
+`ac92f8a153313c25e1fd7cfc6fce66651ca74a0f`. PR #16 merged as
+`a08f1cc441375068fbe18c6cb9550708337a3bb4` (tree
+`0ea17f181a6bcd4d0ed257fb00e3e6037ac5dd02`). Reviewer validation passed
+7/7 CTests including all 154 Python tests in 70.19 seconds, 50,986 independent
+JSON differential cases with zero mismatches, and pinned vendor byte checks.
+All 28 GitHub push/PR checks passed, including MSVC Windows 7/7 CTests in
+143.40 seconds. This supersedes the earlier pending foundation gates above.
+
+Slice 1A is split to keep pure structural semantics reviewable independently
+from filesystem policy: 1A.1 decodes and validates manifests, including nested
+managed history and historical execution receipts, without consulting files
+or executing recorded binaries. 1A.2 will add read-only repository/store/CLI
+integration. Overall 1A is incomplete until both slices pass independent review.
+Generation snapshot resolution and profile inspection remain 1B. No production
+read API or backend CLI command is introduced by 1A.1.
