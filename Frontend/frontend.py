@@ -12,6 +12,12 @@ from lodge.discovery import (DIALECTS, discover, get_instance, move_candidates,
 from lodge.launch import prepare, simulated_return
 from lodge.profiles import associate, inspect_set, inventory, refresh_association
 from lodge.store import FrontendError, Store, hunter
+from lodge.genesis import plan_observer
+from lodge.native_observer import prepare_native, run_native
+from lodge.reconciliation import reconcile_session
+from lodge.session_io import read_journal
+from lodge.session_runner import recover_session, run_session
+from lodge.sessions import SCENARIOS, prepare_session
 
 
 def parser():
@@ -68,6 +74,33 @@ def parser():
     ret = commands.add_parser('simulate-return')
     ret.add_argument('association')
     ret.add_argument('--exit-code', type=int, default=0)
+    session = commands.add_parser('session', help='Controlled synthetic sessions; no native engine execution')
+    actions = session.add_subparsers(dest='action', required=True)
+    s = actions.add_parser('prepare-synthetic')
+    s.add_argument('association')
+    s.add_argument('--area', required=True)
+    s.add_argument('--scenario', choices=SCENARIOS, default='unchanged')
+    s.add_argument('--time', type=int, choices=[0, 1, 2], default=1)
+    s.add_argument('--timeout', type=float, default=5)
+    for name in ('inspect', 'run', 'reconcile', 'recover'):
+        actions.add_parser(name).add_argument('id')
+    genesis = commands.add_parser('genesis-observer-plan', help='Pinned, blocked Genesis observer plan; never launches')
+    genesis.add_argument('association')
+    genesis.add_argument('--area', required=True)
+    genesis.add_argument('--time', type=int, choices=[0, 1, 2], default=1)
+    genesis.add_argument('--engine', type=Path, help='Optional binary for hash-only evidence; never executed')
+    native = commands.add_parser('native-observer', help='Experimental developer validation only; no general native launch')
+    native_actions = native.add_subparsers(dest='action', required=True)
+    for name in ('prepare', 'run'):
+        n = native_actions.add_parser(name)
+        n.add_argument('id', help='Managed association for prepare; prepared session for run')
+        n.add_argument('--engine', type=Path, required=True, help='Explicit reviewed executable; never auto-selected')
+        n.add_argument('--trusted-engine-sha256', required=True)
+        n.add_argument('--experimental-native-observer', action='store_true', required=True)
+        if name == 'prepare':
+            n.add_argument('--area', required=True)
+            n.add_argument('--time', type=int, choices=[0, 1, 2], default=1)
+            n.add_argument('--timeout', type=float, default=900, help='Bounded developer validation, 30..3600 seconds')
     settings = commands.add_parser('host-settings')
     settings.add_argument('--json', help='JSON object with display, audio and/or input preferences; no native save mutation')
     return root
@@ -75,6 +108,28 @@ def parser():
 
 def execute(args):
     store = Store(args.store)
+    if args.command == 'native-observer':
+        if args.action == 'prepare':
+            return prepare_native(store, args.id, args.area, args.engine, args.trusted_engine_sha256,
+                                  args.experimental_native_observer, args.time, args.timeout, args.probe)
+        result = run_native(store, args.id, args.engine, args.trusted_engine_sha256,
+                            args.experimental_native_observer, args.probe)
+        return reconcile_session(store, args.id, args.probe) if result['state'] == 'returned' else result
+    if args.command == 'session':
+        if args.action == 'prepare-synthetic':
+            return prepare_session(store, args.association, args.area, args.scenario,
+                                   args.time, args.timeout, args.probe)
+        if args.action == 'inspect':
+            return read_journal(store, args.id)
+        if args.action == 'recover':
+            return recover_session(store, args.id, args.probe)
+        if args.action == 'reconcile':
+            return reconcile_session(store, args.id, args.probe)
+        if args.action == 'run':
+            result = run_session(store, args.id, args.probe)
+            return reconcile_session(store, args.id, args.probe) if result['state'] == 'returned' else result
+    if args.command == 'genesis-observer-plan':
+        return plan_observer(store, args.association, args.area, args.time, args.probe, args.engine)
     if args.command == 'recover-backup':
         store.restore_backup()
         return {'result': 'backup-restored', 'store': str(store.path)}

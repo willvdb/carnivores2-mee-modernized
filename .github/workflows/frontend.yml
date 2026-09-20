@@ -1,0 +1,22 @@
+name: Frontend
+
+on: [push, pull_request]
+
+jobs:
+  frontend:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Configure standalone frontend
+        run: cmake -S Frontend -B build/frontend -DCMAKE_BUILD_TYPE=Debug
+      - name: Build production codec probe
+        run: cmake --build build/frontend --config Debug --parallel 2
+      - name: Run frontend with required codec probe
+        run: ctest --test-dir build/frontend -C Debug --output-on-failure --no-tests=error

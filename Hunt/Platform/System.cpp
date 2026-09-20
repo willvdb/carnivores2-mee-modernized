@@ -3,6 +3,7 @@
 namespace Platform {
 namespace { std::vector<std::string> arguments; }
 void SetArguments(int argc, char** argv) { if (argc > 0 && argv) arguments.assign(argv, argv + argc); else arguments.clear(); }
+void SetArguments(const std::vector<std::string>& values) { arguments = values; }
 const std::vector<std::string>& Arguments() { return arguments; }
 CalendarTime LocalTime()
 {

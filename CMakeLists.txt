@@ -187,7 +187,7 @@ else()
 endif()
 
 add_library(CarnivoresPlatformMemory STATIC Hunt/Platform/Memory.cpp Hunt/Platform/Files.cpp
-    Hunt/Platform/System.cpp Hunt/Platform/SharedLibrary.cpp Hunt/Platform/Screenshot.cpp)
+    Hunt/Session/Session.cpp Hunt/Platform/System.cpp Hunt/Platform/SharedLibrary.cpp Hunt/Platform/Screenshot.cpp)
 if(NOT WIN32)
     target_link_libraries(CarnivoresPlatformMemory PUBLIC ${CMAKE_DL_LIBS})
 endif()
@@ -365,6 +365,33 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     )
     set(FETCHCONTENT_QUIET OFF)
     FetchContent_MakeAvailable(googletest)
+
+    # Exact production functions, with only graphics/audio services doubled.
+    include(tests/extract_session_sources.cmake)
+    add_executable(Carnivores2SessionTests tests/test_engine_session.cpp tests/session_production_source.cpp
+        Hunt/Game/CommandLine.cpp
+        Hunt/Core/StateDefs.cpp Hunt/Debug/Log.cpp Hunt/Renderer/GLPerf.cpp deps/glad/glad.c)
+    target_include_directories(Carnivores2SessionTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Hunt ${CMAKE_CURRENT_SOURCE_DIR}/deps ${CMAKE_CURRENT_BINARY_DIR})
+    target_compile_definitions(Carnivores2SessionTests PRIVATE _gl GL_PERF_HOOKS)
+    target_link_libraries(Carnivores2SessionTests PRIVATE gtest_main CarnivoresPlatformMemory)
+    if(MSVC)
+        target_compile_options(Carnivores2SessionTests PRIVATE /Gy)
+        target_link_options(Carnivores2SessionTests PRIVATE /OPT:REF /INCREMENTAL:NO)
+        target_link_libraries(Carnivores2SessionTests PRIVATE winmm)
+    else()
+        target_compile_options(Carnivores2SessionTests PRIVATE -ffunction-sections -fdata-sections)
+        target_link_options(Carnivores2SessionTests PRIVATE -Wl,--gc-sections)
+    endif()
+    add_test(NAME Carnivores2Tests.Session COMMAND Carnivores2SessionTests)
+    add_executable(Carnivores2SessionExitProbe tests/session_exit_probe.cpp Hunt/Debug/Log.cpp)
+    target_include_directories(Carnivores2SessionExitProbe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Hunt ${CMAKE_CURRENT_BINARY_DIR})
+    target_link_libraries(Carnivores2SessionExitProbe PRIVATE CarnivoresPlatformMemory)
+    if(TARGET Carnivores1)
+        find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
+        add_test(NAME Carnivores2Tests.SessionStartup COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_session_startup.py" $<TARGET_FILE:Carnivores1> $<TARGET_FILE:Carnivores2SessionExitProbe>)
+    endif()
+
 
     include(tests/extract_menu_config.cmake)
     add_executable(Carnivores2MenuConfigTests tests/test_menu_config_preservation.cpp)

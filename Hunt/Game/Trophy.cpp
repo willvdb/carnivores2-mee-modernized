@@ -5,6 +5,7 @@
 
 #include "Hunt.h"
 #include "ProfileSerialization.h"
+#include "Session/Session.h"
 
 
 // Constants from Projectiles.cpp
@@ -354,18 +355,23 @@ void RemoveCurrentTrophy()
   TrophyBody = -1;
 }
 void LoadTrophy2(int RegNumber) {
+    if (EngineSession::Active() && RegNumber != EngineSession::Slot()) DoHalt("Session slot changed.");
     TrophyRoom2 = {};
     char fname2[128];
     snprintf(fname2, sizeof(fname2), "trophy0%d.sab", RegNumber);
     Platform::FileHandle hfile2 = Platform::OpenFile(fname2, Platform::FileMode::Read);
     if (hfile2 == Platform::InvalidFile) {
+        if (EngineSession::Active()) DoHalt("Cannot read session trophy room.");
         PrintLog("===> Error loading trophyB!\n");
         return;
     }
     LegacyProfile::RoomBytes bytes{};
     std::uint32_t count = 0;
+    const auto size = Platform::FileSize(hfile2);
     const std::int32_t ok = Platform::ReadFile(hfile2, bytes.data(), LegacyProfile::RoomSize, &count);
-    Platform::CloseFile(hfile2);
+    const bool closed = Platform::CloseFile(hfile2);
+    if (EngineSession::Active() && (!ok || !closed || size != count ||
+        !EngineSession::ValidateProfile(bytes.data(), count, true))) DoHalt("Invalid session trophy room.");
     if (!ok || !EngineProfile::LoadRoom(bytes.data(), count, TrophyRoom2)) {
         PrintLog("===> Short or invalid trophyB!\n");
         return;
@@ -376,19 +382,24 @@ void LoadTrophy2(int RegNumber) {
 void LoadTrophy()
 {
     const int registration = TrophyRoom.RegNumber;
+    if (EngineSession::Active() && registration != EngineSession::Slot()) DoHalt("Session slot changed.");
     TrophyRoom = {};
     TrophyRoom.RegNumber = registration;
     char fname[128];
     snprintf(fname, sizeof(fname), "trophy0%d.sav", registration);
     Platform::FileHandle hfile = Platform::OpenFile(fname, Platform::FileMode::Read);
     if (hfile == Platform::InvalidFile) {
+        if (EngineSession::Active()) DoHalt("Cannot read session profile.");
         PrintLog("===> Error loading trophy!\n");
         return;
     }
     LegacyProfile::SaveBytes bytes{};
     std::uint32_t count = 0;
+    const auto size = Platform::FileSize(hfile);
     const std::int32_t ok = Platform::ReadFile(hfile, bytes.data(), LegacyProfile::SaveSize, &count);
-    Platform::CloseFile(hfile);
+    const bool closed = Platform::CloseFile(hfile);
+    if (EngineSession::Active() && (!ok || !closed || size != count ||
+        !EngineSession::ValidateProfile(bytes.data(), count, false))) DoHalt("Invalid session profile.");
     if (!ok || !EngineProfile::LoadProfile(bytes.data(), count, TrophyRoom)) {
         PrintLog("===> Short or invalid trophy prefix!\n");
         return;
@@ -402,6 +413,9 @@ void LoadTrophy()
 }
 
 void SaveTrophy2(int RegNumber) {
+    if (EngineSession::Active() && (EngineSession::ExitStatus(0) || RegNumber != EngineSession::Slot())) {
+        EngineSession::Fail(); return;
+    }
     char fname2[128];
     snprintf(fname2, sizeof(fname2), "trophy0%d.sab", RegNumber);
     const auto bytes = LegacyProfile::EncodeRoom(EngineProfile::FromRuntime(TrophyRoom2));
@@ -422,6 +436,9 @@ void SaveTrophy2(int RegNumber) {
 
 void SaveTrophy()
 {
+    if (EngineSession::Active() && (EngineSession::ExitStatus(0) || TrophyRoom.RegNumber != EngineSession::Slot())) {
+        EngineSession::Fail(); return;
+    }
     char fname[128];
     snprintf(fname, sizeof(fname), "trophy0%d.sav", TrophyRoom.RegNumber);
     EngineProfile::UpdateRank(TrophyRoom);

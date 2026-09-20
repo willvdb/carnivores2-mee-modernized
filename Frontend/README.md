@@ -2,8 +2,12 @@
 
 An optional, independent frontend CLI for universal hunters and isolated
 expedition associations. It does not change the engine or Win32 Menu, select a
-GUI toolkit, write native saves, or execute hunts. The lodge and full-screen
+GUI toolkit, synthesize native profiles, or enable general hunt launching. The lodge and full-screen
 Expedition Console are presentation layers to build on this backend later.
+An opt-in synthetic session runner now exercises real child processes against
+disposable state copies. A separate [experimental native observer](docs/NATIVE_OBSERVER.md) now uses the
+versioned engine session contract with explicit executable/hash trust. General
+native launch and authoritative promotion remain disabled.
 
 ## Build and test
 
@@ -87,6 +91,57 @@ Host settings are stored preferences, not writes to native options or config.
 
 No new native profile slot is allocated by creating a universal hunter. New-native
 profile creation, slot reconciliation and writable launch are separate work.
+
+## Controlled session lifecycle
+
+See [SESSION_MODEL.md](docs/SESSION_MODEL.md) for journal/state/authority contracts,
+[GENESIS_POLICY.md](docs/GENESIS_POLICY.md) for the exact observer assumptions, and
+[ENGINE_SESSION_SEAM.md](docs/ENGINE_SESSION_SEAM.md) for the native blocker.
+
+Only a readable, unchanged **managed personal** association qualifies. A managed
+copy declared `unknown` or `bundled-example` remains ineligible; do not relabel
+packaged profiles as personal progression. Tests create their own synthetic data.
+The synthetic runner accepts a fixed, reviewed Python fixture and enumerated scenarios,
+not arbitrary executables, shell commands or game binaries.
+
+```sh
+# Uses an already imported eligible managed association; take the session UUID
+# from the returned JSON. Source snapshot and native files remain unchanged.
+python3 Frontend/frontend.py --store /tmp/my-lodge session prepare-synthetic ASSOCIATION_UUID --area areas:0 --scenario sav
+python3 Frontend/frontend.py --store /tmp/my-lodge session run SESSION_UUID
+python3 Frontend/frontend.py --store /tmp/my-lodge session inspect SESSION_UUID
+python3 Frontend/frontend.py --store /tmp/my-lodge session recover SESSION_UUID
+# Resume inspection only after a durable child return:
+python3 Frontend/frontend.py --store /tmp/my-lodge session reconcile SESSION_UUID
+
+# Exact pinned Genesis content only. Hash-only --engine evidence is optional;
+# this produces a blocked plan and never launches an engine.
+python3 Frontend/frontend.py --store /tmp/my-lodge genesis-observer-plan ASSOCIATION_UUID --area areas:0
+```
+
+`session run` waits, captures bounded logs, inventories/inspects returned bytes,
+and leaves either a clean `candidate` or `quarantined` review result. Spawn or
+preflight failure is `failed`. Default timeout is five seconds (synthetic range
+0.05..30); Ctrl-C cancels and reaps the owned child. Nonzero exit, timeout,
+corruption, missing/extra members and registration mismatch never become clean
+candidates. A process return code alone does not prove successful reconciliation.
+
+Journals and evidence live under `sessions/SESSION_UUID/`. The original association
+stays authoritative, schema 1 is unchanged, and there is **no promotion**. No
+session directory is automatically deleted. An intermediate launching/running
+journal becomes `interrupted` on recovery: no PID signal, relaunch or potentially
+live state capture. A stale store lock requires manual owner/child verification,
+as with existing manifest recovery. In schema-1 synthetic sessions, real-engine
+capability flags remain unvalidated, including `process_launch_allowed: false`; the distinct
+`synthetic_process_launch_allowed` field authorizes only this fixture.
+
+## Experimental native observer
+
+[Native observer validation](docs/NATIVE_OBSERVER.md) documents the separate
+`native-observer prepare` / `run` commands, required trust gate, schema-2 workspace,
+900-second developer validation limit and candidate-only return. Static planning
+and existing schema-1 synthetic sessions retain their own capabilities. No real
+Genesis acceptance is implied by the asset-free native process tests.
 
 ## State safety and lifecycle
 

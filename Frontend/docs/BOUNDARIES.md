@@ -1,5 +1,11 @@
 # Portable frontend boundary
 
+Current follow-up: [NATIVE_OBSERVER.md](NATIVE_OBSERVER.md) adds an explicitly gated
+native adapter with schema-2 journals against the implemented
+[engine session v1 contract](../../docs/ENGINE_SESSION.md). Schema-1 synthetic
+behavior and candidate-only authority remain. Historical missing-seam statements
+below describe the prerequisite milestone, not current engine capability.
+
 The optional `Frontend/` project is independently configured and run. Root CMake,
 engine, legacy Win32 Menu and their build/test behavior remain independent. A
 Python standard-library CLI proves orchestration; a standalone C++17 inspector
@@ -12,7 +18,9 @@ uses the existing fixed-width codec. This is not a final rendering/toolkit choic
 | `profiles` + codec helper | raw state-set inventory, hashes, byte-preserving copies, bounded non-mutating inspection | normalization, slot allocation, save writes |
 | `catalog` | ordered source observations, provenance, bounded dialect projections | universal species identity, gameplay evaluation |
 | `launch` | revision-bound intent, validation, price display, dry-run result, return refresh | currency debit, rank mutation, shell execution |
-| future process adapter | executable identity, argv/cwd, child wait, journal, return status | drawing, UI navigation |
+| `sessions` + `session_io` | pinned evidence, independent copies, durable journal | association mutation, native slot creation |
+| `session_runner` + `reconciliation` | fixed synthetic subprocess, argv/cwd, bounded wait/logs, candidates/quarantine | arbitrary executables, native engine launch, state promotion |
+| `genesis` | revision-pinned current-MEE observer intent | broad MEE support, engine certification |
 | future presentation | lodge/console replacement, navigation, hide/resume | native persistence semantics |
 
 Lossless codecs stay in `Shared/LegacyProfile.h`; the frontend helper calls them
@@ -53,13 +61,14 @@ Current `Menu/Menu.cpp` assembles masks/argv and saves options before launch; it
 `Hunt/Game/CommandLine.cpp` supplies `reg=`, `prj=`, `din=`, `wep=`, `dtm=` but
 does not separate content root from writable profile root or provide a state-set
 transaction/ownership handshake. It and platform/process/display files are hot
-in `port/display-targeting`; root CMake/CI/SDL are hot in that branch and
-`fix/sdl-x11-mode-leak`. All are read-only for this task.
+in `port/linux-display-behavior` and `port/linux-display-persistence`; root
+CMake/CI/SDL are also hot. All remain read-only for the session milestone.
 
 Do not execute hunts against referenced state or substitute a copied `.sav`
-into an installed slot. Stop at dry run until a content-root/state-root launch
-adapter and native state/return transaction are agreed. A simulated return can
-exercise snapshot refresh without claiming a real hunt passed.
+into an installed slot. Native execution stops at a blocked plan until the
+[engine session seam](ENGINE_SESSION_SEAM.md) is agreed and implemented. The
+[controlled synthetic session](SESSION_MODEL.md) exercises child ownership,
+durable journaling and candidate-only reconciliation without certifying a hunt.
 
 Future small extractions after engine work lands: pure menu script observations;
 dialect-specific price/rank/accessory policy; selection-to-mask validation;
