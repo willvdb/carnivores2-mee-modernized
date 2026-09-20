@@ -94,8 +94,8 @@ escaping and indentation are reviewable independently of checkout line endings.
 | 1A.1 pure manifest/schema validation | Reviewed and merged in PR #17 |
 | 1A.2 read-only filesystem/store/CLI integration | Reviewed and merged in PR #18; overall 1A complete |
 | 1B.1 current-generation/capture read | Reviewed and merged in PR #19 |
-| 1B.2 pure profile-byte codec inspection | In progress; independent review pending |
-| 1B.3 filesystem profile inventory/inspection | Pending; overall 1B incomplete |
+| 1B.2 pure profile-byte codec inspection | Reviewed and merged in PR #20 |
+| 1B.3 filesystem profile inventory/inspection | In progress; independent review pending |
 | 2A discovery/reference/fingerprint observation | Pending |
 | 2B catalog | Pending |
 | 2C Genesis planning | Pending |
@@ -638,3 +638,176 @@ supersedes it. No existing assertions were modified or weakened. Shared codec,
 original helper, Python implementation/tests/goldens, engine, Menu, workflows
 and persistent formats remain unchanged. These results are not independent
 approval; final published-head review and actual Windows CI remain gates.
+
+
+## Profile codec merge and source-filesystem boundary
+
+PR #20 was independently reviewed at head
+`b0863b778fd79e7e77cf415251976e3c7f1aef03`, tree
+`dfa99b9a1c06354b247ce0c5fa09b58982ff71e2`, three ahead / zero behind
+`e222b5542a12ab2675aba2116a189bd8e2985f58`, and merged as
+`7fe929a5b93c6ecff912e36ce66a86619cde74c8` with that same tree. The stack was
+`12d4b76c28ef41ff96dadc60aedc861fce3a8ee8`,
+`a352af1d2793560d6baefc6b3ac5958b9ad8c752`, and the reviewed head above.
+The coordinator inspected the actual GitHub diff, public API, tests and scope;
+no findings remained. All 28 final checks passed. Actual MSVC Windows run
+35505907698 / job 106065572533 passed 16/16 CTests in 350.28 seconds
+(profile 13.08 seconds), with all three filesystem capability tests passed,
+none skipped. Isolated reviewer Linux passed 13/13 CTests in 186.12 seconds,
+including all 154 Python tests in 68.800 seconds without skips. Independent
+580 struct-offset/Python/native exact-byte comparisons had zero mismatches.
+Agent Debug passed 13/13 in 188.99 seconds (154 Python tests in 71.179 seconds),
+with 865 profile oracle comparisons; ASan/UBSan passed 3/3 in 73.28 seconds,
+only unavailable LSan disabled under ptrace. Shared codec, original helper,
+Python, old tests/goldens, engine, Menu and workflows were untouched. This
+supersedes earlier pending 1B.2 statements without altering historical evidence.
+
+Branch `frontend/cpp-profile-files` starts at that exact merge for **1B.3 only**:
+read-only source-profile inventory, read_set, stable_read and inspect_set.
+Only their direct `discovery.walk_files` prerequisite moves forward from 2A.
+No recognition, reference resolution, fingerprinting, catalog, Genesis, profile
+association/refresh writes, store publication, locks, process execution, trust,
+acceptance, GUI or cutover is authorized by this dependency. External-helper
+execution remains 4A; a profile CLI bridge requiring explicit probe semantics
+is deferred with it. The explicit unavailable/native byte codec remains the
+only decoding choice, without environment lookup or fabricated helper evidence.
+
+Public `profile_files.hpp` observations own immutable state metadata and bind
+the original native root to the initial cwd without collapsing POSIX link/..
+components or expanding literal tilde. State objects cannot be constructed from
+caller-supplied trusted metadata. The bound root is an observation location,
+not physical-root or acceptance authority. Read resolves it afresh following
+Python Path.resolve semantics. Missing/non-directory/NUL roots yield empty
+inventory; other status errors retain the reference distinction from ignored
+scandir errors. Native POSIX surrogateescape and Windows unpaired UTF16 names
+remain code points, never locale conversions. Filenames and directories sort
+by Python code-point order, including on Windows. Unicode 15.0 decimal digits
+use a separately generated/verified narrow table; filename slots retain
+arbitrary decimal magnitude. Long-s regex equivalence does not normalize the
+captured extension's lowercased kind. Group keys, companion/file ordering,
+case ambiguity and diagnostics follow the reference literally.
+
+Source reading has its own bounded actual-byte reader. It allows ordinary
+hardlinks, ignores unrelated special files in inventory, rejects changed
+members that become special/symlink/escaping files, and reads at most 16MiB+1
+actual bytes even for virtual files whose stat extent is zero. It does not
+import managed capture's 128-entry/32MiB aggregate/alias-hardlink restrictions.
+Windows junction directories are traversed by inventory as in os.walk;
+canonical containment is checked at read. Nonsymlink regular reparse files
+are followed by the source reader; there is no blanket reparse rejection.
+Cloud-provider hydration behavior is not directly exercised by the authored
+fixtures. Existing Store and Capture policy is unchanged.
+
+Stable reads compare full member paths and companion metadata, then complete
+bytes; old inventory state-file sizes are not a pinned baseline. Inspection
+recomputes size/hash/decoded projections and retains raw bytes. All presentation
+uses insertion order, ASCII escapes, indent 2 and LF. These observations never
+certify an externally atomic SAV/SAB pair, semantic gameplay compatibility,
+ownership, fresh acceptance, or safety against hostile concurrent directory
+replacement. Ordinary detected races fail closed; no bytes are normalized or
+rewritten. Independent review and actual final-head Windows CI remain gates.
+
+A narrow operational cycle guard rejects an entire source inventory when a
+resolved directory repeats in the current ancestry. Unlike the reference's
+potential repeated junction traversal (which may eventually hit OS path limits),
+it reports `profile inventory directory cycle`; it never returns a partial
+success. Finite sibling junction aliases remain separate observations. The
+guard runs only after successful scandir, retaining ignored permission errors.
+Named Windows tests distinguish junction, cycle, hardlink, file-link,
+dangling-link and unpaired-UTF16 coverage from capability skips. The authored
+POSIX permission test uses a restricted identity when run as root; local
+identity dropping is denied with EPERM and is reported as skip 77, not permission
+coverage. Actual Linux CI permission coverage remains a merge gate.
+
+### Slice 1B.3 implementation and validation checkpoint
+
+The published implementation object is
+`d21bc2f9f1d2a687c396fe468a42eb6e5c84e8e8`, tree
+`04ff2f3a1d7499d931766e9e06b3ffeacf9d3de2`, following ledger
+`2686647c82f7d1cc5d3b885a1b305690889b2771` and prerequisite
+`9841e322311d7192d511b156ba3da7fc8c44748b` from base
+`7fe929a5b93c6ecff912e36ce66a86619cde74c8`. Authenticated GitHub object
+creation verified every blob and complete tree against the local commits.
+The tested local implementation `189751ffb1c3948f106fc6c537ae62d1db972260`
+has that exact implementation tree; author/committer metadata accounts for
+its different commit ID. This following checkpoint changes only documentation;
+its final published SHA belongs in subsequent independent review evidence.
+
+Final sequential Linux Debug completed all 16 registered tests in 233.76
+seconds: 15 passed, and the named permission capability explicitly skipped
+because changing to the restricted identity returned EPERM. All unchanged
+154 Python tests passed in 77.529 seconds, without Python skips. The 325
+golden cases, 9,106 schema cases and 865 pure-profile oracle comparisons remain
+unchanged and passed. The new source-profile test passed in 32.89 seconds,
+with 204 authored cases comparing unchanged Python inventory/stable-read/
+inspect-set, original compiled helper projections, exact presentation bytes,
+and complete raw bytes. No-write snapshots and owned observation lifetime/
+cwd binding assertions passed. Cases cover Unicode decimal blocks, arbitrary
+slots, long-s and case collisions, raw names, nested/unknown companions,
+symlinks and hardlinks, special-file replacement, actual virtual-file bytes,
+16MiB boundaries, more than 128 entries and more than 32MiB source trees,
+pre-read membership/companion/byte changes, and sustained active writers.
+Successful raced observations retain verified JSON/raw size/hash framing;
+rejection is permitted and a detected active change is required. None of this
+claims an externally atomic pair or protection against hostile replacement.
+
+Final ASan/UBSan passed all five focused gates in 218.22 seconds: source files
+145.22 seconds, pure profile 68.32 seconds, compatibility 2.15 seconds, stack
+2.13 seconds, plus the decimal oracle. Only unavailable LeakSanitizer was
+disabled under ptrace (`ASAN_OPTIONS=detect_leaks=0`,
+`UBSAN_OPTIONS=halt_on_error=1`). Final builds/logs are
+`/tmp/c2-profile-files-debug`, `/tmp/c2-profile-files-debug-final.log`,
+`/tmp/c2-profile-files-asan`, and `/tmp/c2-profile-files-asan-final.log`.
+An earlier full Debug run overlapped a rebuild and encountered executable
+startup permission failures in schema/compatibility/stack tests; that invalid
+verification run is superseded by the fully awaited, sequential final run.
+No assertion was removed or weakened.
+
+The coordinator independently archived the exact local implementation above,
+reviewed the actual code/API/tests, and ran 679 differential comparisons over
+64 randomized filesystem trees plus native-root edge cases, with zero
+mismatches and unchanged source bytes. Its isolated full run completed 15
+passed plus the same explicit permission skip out of 16 in 236.21 seconds;
+all 154 Python tests passed in 75.588 seconds without Python skips (backend
+76.03 seconds), and the new source-files gate passed in 33.77 seconds.
+This preliminary evidence does not replace actual published-GitHub review
+or platform gates. Actual Linux CI must pass the named permission test;
+actual final-head MSVC outcomes for each named filesystem capability must be
+inspected. Shared codec, original helper, Python implementation/old tests,
+goldens, engine, Menu and workflows remain unchanged. Overall 1B and the
+profile CLI/helper cutover are not self-approved by this checkpoint.
+
+### Review correction: extended Windows member separators
+
+Actual PR #21 head `703fee61379005436e72cbd33ade0cb448403ab5` passed
+Linux job 106069721343, run 35507514266, with all 16 CTests in 98.93 seconds.
+The named POSIX permission test passed in 0.09 seconds without a skip, closing
+that host-capability gap. Actual Windows job 106069721393 from that run passed
+23/24 tests in 435.57 seconds. All six new profile and three existing capture
+capability tests passed, but the main profile-files test failed its existing
+extended-root regression (78.72 seconds): nested `case0/trophy00.sab` could
+not be opened. Push job 106069673421 exhibited the same failure. These runs
+do not establish Windows approval for that head.
+
+The source reader joined a native extended-length root to the observation's
+POSIX-style relative member path, then passed retained forward slashes directly
+to CreateFileW. Extended-length Windows syntax disables the separator translation
+that ordinary paths receive. Correction implementation
+`9eff2bd47a166885cdc8c4fe654304a0b3ef7d49`, tree
+`1b764245d83834bf254bbde93b0db60e5f6f8fce`, applies Windows-only
+`make_preferred()` to the joined local syscall path before all pre-read, open
+and post-read checks. It changes separator spelling only: retained domain paths,
+bound root identity, extended drive/UNC prefixes, Unicode code units and path
+components are unchanged; it performs no lexical normalization. POSIX code,
+Store/Capture, Python/reference helper, codecs and persistent bytes are untouched.
+
+The original failing regression remains intact. Added direct reader comparisons
+retain literal forward-slash nested member input under an extended root; the
+named unpaired-UTF16 capability now also compares its complete extended-root
+inventory/read/inspection against Python. Live UNC shares remain untested.
+Sequential targeted Linux Debug passed decimal/source-profile tests 2/2 in
+30.11 seconds (source-profile 29.79 seconds, all 204 cases). Log:
+`/tmp/c2-profile-files-debug-extended.log`. The correction's behavior is
+Windows-only, so this local regression run does not validate the Windows fix;
+actual fresh final-head MSVC and all final checks remain required. This
+checkpoint is bundled before a single branch update, with no weakened assertions.

@@ -7,6 +7,8 @@ void safe_path(const std::filesystem::path&);
 bool resolves_to_self(const std::filesystem::path&);
 bool windows_path_equal(std::u32string, std::u32string);
 std::vector<std::filesystem::path> ancestor_paths(const std::filesystem::path&);
+// Path.resolve semantics without Store tilde expansion or safety policy.
+std::filesystem::path resolve_native(const std::filesystem::path&);
 std::filesystem::path resolve_root(std::filesystem::path);
 std::filesystem::path default_directory();
 // nullopt only for missing file, after ancestor/final safety checks.
