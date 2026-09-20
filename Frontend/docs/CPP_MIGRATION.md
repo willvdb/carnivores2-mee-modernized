@@ -706,3 +706,15 @@ certify an externally atomic SAV/SAB pair, semantic gameplay compatibility,
 ownership, fresh acceptance, or safety against hostile concurrent directory
 replacement. Ordinary detected races fail closed; no bytes are normalized or
 rewritten. Independent review and actual final-head Windows CI remain gates.
+
+A narrow operational cycle guard rejects an entire source inventory when a
+resolved directory repeats in the current ancestry. Unlike the reference's
+potential repeated junction traversal (which may eventually hit OS path limits),
+it reports `profile inventory directory cycle`; it never returns a partial
+success. Finite sibling junction aliases remain separate observations. The
+guard runs only after successful scandir, retaining ignored permission errors.
+Named Windows tests distinguish junction, cycle, hardlink, file-link,
+dangling-link and unpaired-UTF16 coverage from capability skips. The authored
+POSIX permission test uses a restricted identity when run as root; local
+identity dropping is denied with EPERM and is reported as skip 77, not permission
+coverage. Actual Linux CI permission coverage remains a merge gate.

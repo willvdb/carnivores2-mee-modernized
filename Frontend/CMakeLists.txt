@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(CarnivoresFrontend LANGUAGES CXX)
 # Deliberately standalone: configure with -S Frontend, no engine dependencies.
-add_library(c2_frontend_core STATIC native/src/core.cpp native/src/json_compat.cpp native/src/schema_compat.cpp native/src/manifest_schema.cpp native/src/store_paths.cpp native/src/store.cpp native/src/capture.cpp native/src/profile.cpp)
+add_library(c2_frontend_core STATIC native/src/core.cpp native/src/json_compat.cpp native/src/schema_compat.cpp native/src/manifest_schema.cpp native/src/store_paths.cpp native/src/store.cpp native/src/capture.cpp native/src/profile.cpp native/src/profile_files.cpp)
 target_compile_features(c2_frontend_core PUBLIC cxx_std_17)
 target_include_directories(c2_frontend_core PUBLIC native/include PRIVATE native/src)
 target_include_directories(c2_frontend_core SYSTEM PRIVATE native/third_party)
@@ -28,6 +28,28 @@ add_custom_target(c2-frontend
   COMMENT "Show the optional frontend CLI")
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(c2-frontend-profile-files-tests native/tests/profile_files_tests.cpp)
+  target_link_libraries(c2-frontend-profile-files-tests PRIVATE c2_frontend_core)
+  target_include_directories(c2-frontend-profile-files-tests PRIVATE native/src)
+  add_test(NAME frontend-profile-unicode-oracle COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_profile_unicode.py" --check)
+  add_test(NAME frontend-native-profile-files COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_profile_files.py"
+    "$<TARGET_FILE:c2-frontend-profile-files-tests>" "$<TARGET_FILE:c2-profile-probe>")
+  if(UNIX)
+    add_test(NAME frontend-profile-posix-permissions COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_profile_files.py"
+      "$<TARGET_FILE:c2-frontend-profile-files-tests>" "$<TARGET_FILE:c2-profile-probe>" permissions)
+    set_tests_properties(frontend-profile-posix-permissions PROPERTIES SKIP_RETURN_CODE 77)
+  endif()
+  if(WIN32)
+    foreach(capability IN ITEMS file-link dangling-link unpaired-utf16 junction hardlink cycle)
+      add_test(NAME frontend-profile-windows-${capability} COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_profile_files.py"
+        "$<TARGET_FILE:c2-frontend-profile-files-tests>" "$<TARGET_FILE:c2-profile-probe>" ${capability})
+      set_tests_properties(frontend-profile-windows-${capability} PROPERTIES SKIP_RETURN_CODE 77)
+    endforeach()
+  endif()
   add_executable(c2-frontend-profile-tests native/tests/profile_tests.cpp)
   target_link_libraries(c2-frontend-profile-tests PRIVATE c2_frontend_core)
   add_test(NAME frontend-native-profile COMMAND "${Python3_EXECUTABLE}"
