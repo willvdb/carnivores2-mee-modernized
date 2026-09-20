@@ -95,8 +95,9 @@ escaping and indentation are reviewable independently of checkout line endings.
 | 1A.2 read-only filesystem/store/CLI integration | Reviewed and merged in PR #18; overall 1A complete |
 | 1B.1 current-generation/capture read | Reviewed and merged in PR #19 |
 | 1B.2 pure profile-byte codec inspection | Reviewed and merged in PR #20 |
-| 1B.3 filesystem profile inventory/inspection | In progress; independent review pending |
-| 2A discovery/reference/fingerprint observation | Pending |
+| 1B.3 filesystem profile inventory/inspection | Reviewed and merged in PR #21; overall 1B read observations complete |
+| 2A.1 reference resolution/content fingerprint | In progress; independent review pending |
+| 2A.2 coherent-root discovery/instance observations | Pending |
 | 2B catalog | Pending |
 | 2C Genesis planning | Pending |
 | 3A safe paths/capture/atomic I/O | Pending |
@@ -811,3 +812,47 @@ Sequential targeted Linux Debug passed decimal/source-profile tests 2/2 in
 Windows-only, so this local regression run does not validate the Windows fix;
 actual fresh final-head MSVC and all final checks remain required. This
 checkpoint is bundled before a single branch update, with no weakened assertions.
+
+
+## Profile filesystem merge and reference/fingerprint boundary
+
+PR #21 was independently reviewed at head
+`da2f61c131df25f0f0f59af5459e967dd4da2b59`, six ahead / zero behind
+`7fe929a5b93c6ecff912e36ce66a86619cde74c8`, and merged as
+`ff0bb74f0481628384672a1271aafc25a5468540`. The exact final tree
+`8f54f62fd38fd2b8c4f0b50cbc5367660e42498d` was verified after merge.
+The coordinator reviewed the actual GitHub branch, API and complete diff;
+679 independent exact JSON/raw comparisons over 64 random trees and root
+edges had zero mismatches and unchanged source bytes. Isolated Linux review
+completed 15 passed plus one explicit local permission EPERM skip out of 16
+in 236.21 seconds, including all 154 Python tests in 75.588 seconds without
+Python skips. Agent ASan/UBSan passed 5/5 in 218.22 seconds.
+
+Windows review found the extended-prefix forward-separator read failure
+described above; the same implementation agent fixed only the local syscall
+path with make_preferred(), retaining persistent/root/code-unit/lexical
+semantics. Final PR run 35508095029 passed Linux job 106071182333, 16/16
+in 109.57 seconds including the named permission test, and Windows job
+106071182389, 24/24 in 320.03 seconds. All six profile and three capture
+named capabilities passed without skips; all 28 checks were green. This
+supersedes pending 1B.3 gates. Overall 1B read observations are complete;
+historical/external-helper selection, execution and the CLI trust bridge
+remain explicitly deferred to 4A, without native reinterpretation of pins.
+
+Branch `frontend/cpp-reference-fingerprint` starts at that exact merge for
+**2A.1 only**: native_path, resolve_reference, resolved_path, hash_file,
+walk_files, content_inventory and fingerprint. The separate later **2A.2**
+slice owns recognize, discover, engine_evidence, inspect_instance and
+move_candidates. No registration, refresh, relocation, import/upgrade,
+manifest writes, catalog, Genesis, CLI discovery, process/trust, GUI, engine
+or Menu changes are included.
+
+Reference root resolution must remain separate from native_path foreign-path
+rejection and tilde expansion. Every casefold-equal sibling participates in
+ambiguity. Content inventory validates unsorted native dirs+files, including
+mutable/ignored subtrees, before a separate sorted regular-file traversal.
+Source hardlinks remain allowed. Fingerprints stream 1MiB chunks without
+managed-capture or profile-size ceilings, compare metadata and the complete
+inventory, and hash the unchanged exact ContentFingerprintV1 bytes.
+Independent review and actual final-head MSVC CI are required; this boundary
+record does not approve the implementation or begin later slices.
