@@ -256,6 +256,11 @@ std::vector<fs::path> ancestor_paths(const fs::path& path) {
 #endif
     return prefixes;
 }
+fs::path resolve_native(const fs::path& path) {
+    if (path.native().find(fs::path::value_type{}) != fs::path::string_type::npos)
+        throw StoreError("native path contains NUL");
+    return resolve(path.empty() ? fs::path(".") : path);
+}
 fs::path resolve_root(fs::path path) {
     if (path.empty()) path = ".";
     auto s = path.native();
