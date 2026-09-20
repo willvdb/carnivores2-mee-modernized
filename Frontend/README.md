@@ -7,9 +7,12 @@ Expedition Console are presentation layers to build on this backend later.
 An opt-in synthetic session runner now exercises real child processes against
 disposable state copies. A separate [experimental native observer](docs/NATIVE_OBSERVER.md) now uses the
 versioned engine session contract with explicit executable/hash trust. General
-native launch remains gated; authoritative promotion remains disabled.
+native launch remains gated. Explicit [managed-state acceptance](docs/MANAGED_STATE.md)
+is available only after a deliberate metadata upgrade and for generation-pinned
+normal-hunt candidates. No return is adopted automatically.
+The [play-loop UI handoff](docs/PLAY_LOOP_HANDOFF.md) documents the complete callable boundary.
 The separate [pinned normal-hunt adapter](docs/GENESIS_HUNT.md) now supports one
-license and weapon, returning candidate-only evidence through `native-hunt`.
+license and weapon, returning candidate evidence through `native-hunt`; schema-1 stores remain candidate-only.
 
 ## Build and test
 
@@ -146,6 +149,10 @@ and existing schema-1 synthetic sessions retain their own capabilities. No real
 Genesis acceptance is implied by the asset-free native process tests.
 
 ## State safety and lifecycle
+
+The schema-1 rules below remain the import/legacy contract. For an explicitly
+upgraded store, [manifest v2](docs/MANAGED_STATE.md) owns accepted history and
+blocks generic backup rollback. Original imports remain immutable provenance.
 
 * Native `.sav` and `.sab` bytes remain authoritative. Discovery/association never
   normalizes options, rank, room version, names or embedded registrations.

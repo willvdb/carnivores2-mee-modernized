@@ -1,4 +1,4 @@
-"""Explicitly trusted, candidate-only normal hunts (journal schema 3)."""
+"""Normal-hunt API: original-import schema 3 or managed-generation schema 4."""
 import sys
 
 from .catalog import project
@@ -26,7 +26,8 @@ def native_pins(store, association, selection, probe, expected_codec=None):
 
 
 def plan_hunt(store, association, selection, probe=None):
-    pins, _ = native_pins(store, association, selection, probe)
+    adapter = preparation_adapter(store)
+    pins, _ = adapter.native_pins(store, association, selection, probe)
     return {'kind': 'genesis-hunt-plan-v1', 'pins': pins, 'policy': pins['hunt_policy'],
             'process_launch_allowed': False, 'result': 'validated-intent-only'}
 
@@ -38,8 +39,19 @@ def execution_spec(root, pins, evidence, capability, timeout):
 
 def prepare_hunt(store, association, selection, engine, digest, experimental=False, timeout=900, probe=None):
     return shared.prepare(store, association, selection, engine, digest, experimental,
-                          timeout, probe, sys.modules[__name__])
+                          timeout, probe, preparation_adapter(store))
 
 
 def run_hunt(store, identity, engine, digest, experimental=False, probe=None, cancel=None):
-    return shared.run(store, identity, engine, digest, experimental, probe, cancel, sys.modules[__name__])
+    from .session_io import read_journal
+    adapter = shared.adapter_for(read_journal(store, identity))
+    if adapter.SCHEMA not in (3, 4):
+        raise FrontendError('native-hunt run requires a normal-hunt journal')
+    return shared.run(store, identity, engine, digest, experimental, probe, cancel, adapter)
+
+
+def preparation_adapter(store):
+    if store.read()['schema_version'] == 2:
+        from . import native_continuation
+        return native_continuation
+    return sys.modules[__name__]

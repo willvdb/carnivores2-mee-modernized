@@ -1,5 +1,11 @@
 # Session lifecycle, journal schema 1
 
+Current play-loop extension: [MANAGED_STATE.md](MANAGED_STATE.md) explicitly versions
+accepted authority as manifest schema 2 and generation-pinned normal hunts as
+journal schema 4. [GENESIS_HUNT.md](GENESIS_HUNT.md) defines candidate-only schema 3.
+The historical contracts below remain applicable to their original schemas;
+[PLAY_LOOP_HANDOFF.md](PLAY_LOOP_HANDOFF.md) documents the current UI boundary.
+
 Current follow-up: [NATIVE_OBSERVER.md](NATIVE_OBSERVER.md) adds an explicitly gated
 native adapter with schema-2 journals against the implemented
 [engine session v1 contract](../../docs/ENGINE_SESSION.md). Schema-1 synthetic
