@@ -1,6 +1,6 @@
 # Native frontend migration relay
 
-## Baseline and scope
+## Historical foundation baseline and scope
 
 Python remains the authoritative runtime/reference at main commit
 `e742fb7ab85ba0c571d50e45ff0a410eb2a444dd`. Branch:
@@ -91,8 +91,8 @@ escaping and indentation are reviewable independently of checkout line endings.
 | --- | --- |
 | 0A compatibility contract and golden corpus | Reviewed and merged in PR #16 |
 | 0B core, private representation, encoders, SHA, CLI/tests | Reviewed and merged in PR #16 |
-| 1A.1 pure manifest/schema validation | Implemented; awaiting independent review |
-| 1A.2 read-only filesystem/store/CLI integration | Pending |
+| 1A.1 pure manifest/schema validation | Reviewed and merged in PR #17 |
+| 1A.2 read-only filesystem/store/CLI integration | In progress; not independently approved |
 | 1B history/current-generation + profiles | Pending |
 | 2A discovery/reference/fingerprint observation | Pending |
 | 2B catalog | Pending |
@@ -316,3 +316,30 @@ must resolve the authoritative current snapshot and inspect profile bytes. The
 existing parser depth/resource-policy and configurable Python integer/recursion
 differences remain pre-production-read gates, as does a change to the Unicode
 baseline. Pure structural acceptance does not assert filesystem trust or safety.
+
+## Manifest validation merge and read-only store checkpoint
+
+PR #17 was independently reviewed at published head
+`bfe93508e9a618606fc0b7e251040a55859c6f0d` and merged as
+`32786ef3818353e41673c409b5eae7ad4de43f7d` (tree
+`d95c5c0049ccfbe664e015a727c5d67bf8724b1f`). Its focused commits were
+`3984b546f85c9a5b56ebdc47a97873c04f9fbc4c`,
+`2ad86d0e8342bd714768e7c4a46c093ecb4993bb`, and the published head.
+The reviewer inspected the complete published scope: Python runtime/tests and
+public API were unchanged, with no unresolved code finding. Exact-SHA Linux
+validation passed 10/10 CTests in 117.64 seconds, including 154 unchanged Python
+tests in 65.041 seconds without skips. Independent differential validation ran
+34,994 cases per POSIX/NT semantics (69,988 total), with zero mismatches; earlier
+20,530 NT path spellings and 48,237 Unicode lowercase cases also matched. All
+28 push/PR checks were green, including actual MSVC Windows 10/10 CTests in
+215.81 seconds (job 106054301850). Full native ASan/UBSan and the final 9,106-case
+schema rerun passed. Original 325 golden fixtures remained unchanged. This
+supersedes historical pending 1A.1 review statements above.
+
+Branch `frontend/cpp-store-read` starts exactly from that merge for 1A.2 only:
+read-only store/repository, safe-path read prerequisites, and thin CLI reads.
+Overall 1A stays incomplete pending independent 1A.2 review. Generation/profile
+resolution, writes, locks, discovery, execution, and acceptance remain later
+slices. Earlier foundation-only descriptions are chronological evidence, not
+the current branch scope. Resource-policy resolution is a prerequisite of this
+slice, not permission to change the persistent format.
