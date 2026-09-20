@@ -95,8 +95,9 @@ escaping and indentation are reviewable independently of checkout line endings.
 | 1A.2 read-only filesystem/store/CLI integration | Reviewed and merged in PR #18; overall 1A complete |
 | 1B.1 current-generation/capture read | Reviewed and merged in PR #19 |
 | 1B.2 pure profile-byte codec inspection | Reviewed and merged in PR #20 |
-| 1B.3 filesystem profile inventory/inspection | In progress; independent review pending |
-| 2A discovery/reference/fingerprint observation | Pending |
+| 1B.3 filesystem profile inventory/inspection | Reviewed and merged in PR #21; overall 1B read observations complete |
+| 2A.1 reference resolution/content fingerprint | In progress; independent review pending |
+| 2A.2 coherent-root discovery/instance observations | Pending |
 | 2B catalog | Pending |
 | 2C Genesis planning | Pending |
 | 3A safe paths/capture/atomic I/O | Pending |
@@ -811,3 +812,308 @@ Sequential targeted Linux Debug passed decimal/source-profile tests 2/2 in
 Windows-only, so this local regression run does not validate the Windows fix;
 actual fresh final-head MSVC and all final checks remain required. This
 checkpoint is bundled before a single branch update, with no weakened assertions.
+
+
+## Profile filesystem merge and reference/fingerprint boundary
+
+PR #21 was independently reviewed at head
+`da2f61c131df25f0f0f59af5459e967dd4da2b59`, six ahead / zero behind
+`7fe929a5b93c6ecff912e36ce66a86619cde74c8`, and merged as
+`ff0bb74f0481628384672a1271aafc25a5468540`. The exact final tree
+`8f54f62fd38fd2b8c4f0b50cbc5367660e42498d` was verified after merge.
+The coordinator reviewed the actual GitHub branch, API and complete diff;
+679 independent exact JSON/raw comparisons over 64 random trees and root
+edges had zero mismatches and unchanged source bytes. Isolated Linux review
+completed 15 passed plus one explicit local permission EPERM skip out of 16
+in 236.21 seconds, including all 154 Python tests in 75.588 seconds without
+Python skips. Agent ASan/UBSan passed 5/5 in 218.22 seconds.
+
+Windows review found the extended-prefix forward-separator read failure
+described above; the same implementation agent fixed only the local syscall
+path with make_preferred(), retaining persistent/root/code-unit/lexical
+semantics. Final PR run 35508095029 passed Linux job 106071182333, 16/16
+in 109.57 seconds including the named permission test, and Windows job
+106071182389, 24/24 in 320.03 seconds. All six profile and three capture
+named capabilities passed without skips; all 28 checks were green. This
+supersedes pending 1B.3 gates. Overall 1B read observations are complete;
+historical/external-helper selection, execution and the CLI trust bridge
+remain explicitly deferred to 4A, without native reinterpretation of pins.
+
+Branch `frontend/cpp-reference-fingerprint` starts at that exact merge for
+**2A.1 only**: native_path, resolve_reference, resolved_path, hash_file,
+walk_files, content_inventory and fingerprint. The separate later **2A.2**
+slice owns recognize, discover, engine_evidence, inspect_instance and
+move_candidates. No registration, refresh, relocation, import/upgrade,
+manifest writes, catalog, Genesis, CLI discovery, process/trust, GUI, engine
+or Menu changes are included.
+
+Reference root resolution must remain separate from native_path foreign-path
+rejection and tilde expansion. Every casefold-equal sibling participates in
+ambiguity. Content inventory validates unsorted native dirs+files, including
+mutable/ignored subtrees, before a separate sorted regular-file traversal.
+Source hardlinks remain allowed. Fingerprints stream 1MiB chunks without
+managed-capture or profile-size ceilings, compare metadata and the complete
+inventory, and hash the unchanged exact ContentFingerprintV1 bytes.
+Independent review and actual final-head MSVC CI are required; this boundary
+record does not approve the implementation or begin later slices.
+
+### Slice 2A.1 implementation and validation checkpoint
+
+The additive C++17 `content.hpp` API owns reference observations and immutable
+content fingerprints. It exposes native locator resolution, reference status
+and original spelling/relative POSIX path, resolved paths, and fingerprint
+algorithm/hash/counts. No JSON implementation or Python/runtime types cross the
+public boundary. Byte totals are arbitrary-magnitude canonical decimal strings.
+Inventory metadata stays private and retains signed nanosecond timestamps and
+full Windows 128-bit file IDs as decimal integers; compare-only device identity
+is not substituted for the Python-visible inode. Existing native path resolution,
+Unicode 15.0 casefold/lower and ContentFingerprintV1 encoders are reused only
+where their reference semantics match. No Store/Capture/profile authority or
+size limit is applied to general content.
+
+Reference observation resolves roots without expanding literal tilde or rejecting
+native backslash spelling. Locator native_path retains its distinct rejection
+and expansion policy. NUL roots fail before native C-string APIs; NUL reference
+components participate in sibling comparison and normally report missing.
+PurePath construction drops dot/repeated separators while preserving parent
+components and their link-dependent meaning. Found does not imply regular file
+or coherent-root shape: a regular-file HUNTDAT yields an empty inventory/hash,
+matching the reference; later recognition owns its separate directory checks.
+
+The first inventory pass preserves native dirs+files enumeration and validates
+all children, including mutable suffixes and ignored subtrees. A second pass
+sorts by Python code point, skips child symlinks, follows Windows junctions,
+filters only the reference suffixes/parents and observes regular-file metadata.
+Ordinary hardlinks and finite sibling junction aliases remain distinct entries.
+A narrow per-ancestry directory-cycle guard fails the entire observation with
+`content inventory directory cycle`. This operational divergence from potentially
+unbounded Python junction traversal is checked only after successful scandir,
+so ignored permission errors remain omitted; there is no global deduplication.
+
+Member hashing streams owned regular handles in 1MiB chunks through the existing
+vendored SHA-256, with no arbitrary file-size/entry-count/aggregate ceiling.
+Nonblocking POSIX open plus regular-handle checks prevents FIFO substitution
+from hanging. Handle and path stability checks fail closed on detected changes;
+reference member metadata and complete final inventory are compared separately.
+Actual bytes are hashed even when a virtual regular file reports extent zero.
+The payload remains sorted [relative,size,sha] arrays, exact compact ensure_ascii
+bytes without LF, hashed to lowercase SHA-256. These observations do not establish
+an externally atomic tree, hostile-race security, managed ownership or authority.
+
+The test-only line-framed driver accepts native_path, resolve_reference,
+resolved_path, hash_file, walk_files, content_inventory, fingerprint and
+fingerprint_payload operations. A narrow private phase callback additionally
+lets an owned test child pause after initial inventory, after member hashing
+before restat, and before final inventory. Production fingerprint supplies no
+callback; there is no environment switch, production CLI bridge or caller-supplied
+trusted metadata. Tests bound readiness/continuation, kill/wait and close owned
+children on failure. Deterministic mutations prove member addition/removal,
+posthash metadata change, and POSIX special-file substitution are rejected.
+Sustained atomic replacements still require every successful raced fingerprint
+to equal a complete valid expected identity, never merely a zero exit status.
+
+The original added membership race assertion could finish at equal inventories
+and therefore legitimately produce only valid successes. Both agent and reviewer
+saw that test-only scheduling failure. The private phase barriers above replace
+that probabilistic requirement; no compatibility assertion was weakened, and
+all original 325 goldens, 9,106 schema cases, 865 pure-profile cases and 154 Python
+tests remain unchanged. Root preliminary exact-tree review passed the corrected
+282-case content gate in 35.07 seconds and 6,890 independent comparisons across
+64 random trees and native root edges, with zero mismatches and unchanged source
+bytes. That evidence is not final published-head or Windows approval.
+
+Validation commands use fresh external build directories, and each build/test
+session is fully awaited before rebuilding its directory:
+
+```sh
+PATH=/root/.local/bin:$PATH cmake -S Frontend -B /tmp/c2-reference-fingerprint-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
+PATH=/root/.local/bin:$PATH cmake --build /tmp/c2-reference-fingerprint-debug --parallel 2
+PATH=/root/.local/bin:$PATH ctest --test-dir /tmp/c2-reference-fingerprint-debug --output-on-failure --no-tests=error
+PATH=/root/.local/bin:$PATH cmake -S Frontend -B /tmp/c2-reference-fingerprint-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+  '-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer' \
+  '-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined'
+PATH=/root/.local/bin:$PATH cmake --build /tmp/c2-reference-fingerprint-asan --target c2-frontend-content-tests c2-frontend-native-tests --parallel 2
+ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 PATH=/root/.local/bin:$PATH \
+  ctest --test-dir /tmp/c2-reference-fingerprint-asan -R 'frontend-native-(content|compatibility|stack)$' --output-on-failure --no-tests=error
+```
+
+Focused ASan/UBSan passed 3/3 in 86.08 seconds (content 81.33, compatibility 2.43,
+stack 2.31), with 282 authored oracle cases, exact observations/payloads, read-only
+snapshots, a 48MiB-plus streamed file and 130 source entries, raw names, mutable
+exclusions, aliases/collisions, signed timestamps, virtual bytes, and race gates.
+Only unavailable LeakSanitizer was disabled under ptrace. Log:
+`/tmp/c2-reference-fingerprint-asan-final.log`.
+
+Named Windows file-link, dangling-link, unpaired-UTF16, junction, hardlink and
+cycle capabilities distinguish Passed from unsupported skip 77. Linux permission
+coverage also has its own named test; local uid/gid dropping returns EPERM and
+is explicitly skipped, so actual Linux CI must supply that gate. Actual final-head
+MSVC execution remains required; Linux is not a substitute. Live UNC shares and
+cloud-provider reparse/hydration behavior remain unexercised. This slice does not
+change Python, original tests/goldens, Shared codec/helper, engine, Menu, workflow,
+persistent formats, or CLI behavior. Slice 2A.2 and all later operations remain
+deferred until independent review and merge.
+
+Final sequential Linux Debug completed all 18 registered CTests in 242.59
+seconds: 16 passed and two named permission capabilities explicitly skipped
+for local identity-drop EPERM (content and existing profiles). The corrected
+content gate passed in 33.75 seconds with all 282 cases; all unchanged 154 Python
+tests passed in 68.628 seconds, without Python skips (backend 68.93 seconds).
+The original goldens/schema/profile gates also passed. Log:
+`/tmp/c2-reference-fingerprint-debug-final.log`. This complete rerun supersedes
+the earlier membership-test scheduling failure.
+
+Authenticated GitHub object publication checked every created blob and complete
+tree against the local commits. Ledger local `69cf860` maps to remote
+`c1630e1eac2c18272527b2f4f5b0d3c25fc5f530`; implementation local
+`4324bc8d4b00090e36c650cb57bdb9cf33b5bd07` maps to remote
+`f448731daecb002af5df67e8c393f953192f50fa` with identical tree
+`166e83affb39a9610fa50588a0d135912120eca6`; deterministic race correction
+local `7e68166b5bd734fadab98b63c924e99f9af27781` maps to remote
+`88244c08e8425a89d2326e137dd65eacd10e1cc2` with identical tree
+`f72d333e38e9e5f75a487820456b351d5765e9d9`. Author/committer metadata explains
+commit-ID differences. This following evidence commit is bundled with that
+implementation in the initial branch update; its final SHA and actual CI
+outcomes belong in subsequent independent review evidence. No merge or
+self-approval is performed by this implementation checkpoint.
+
+### Windows active-writer diagnostic checkpoint
+
+Actual head `98f7ab7ab77474097d376c20da9938cc6682a1e0` passed Linux PR
+job 106074871578, run 35509519139: 18/18 in 99.67 seconds, with both named
+permission tests passed. Windows push job 106074824777, run 35509500990,
+passed 30/31 in 456.65 seconds; Windows PR job 106074871661, run 35509519139,
+passed 30/31 in 561.82 seconds. The content test failed the same combined
+writer-thread-alive/exception assertion in both (91.45 and 123.45 seconds).
+All six content, six profile and three capture named Windows capabilities
+passed without skips; all other tests passed. These heads are not approved.
+
+Those failure logs omitted the exception and alive flag, so they do not
+establish whether the writer errored or failed to stop. This diagnostic-only
+checkpoint preserves production bytes and every existing race assertion while
+reporting phase, completed replacement counts per observation, rejection count,
+thread alive state, bounded join duration, and exception type/repr/errno/winerror/
+traceback (plus a live writer stack when available). No failure code is ignored,
+no retry introduced, and no timeout increased. Explicit native read/stat handles
+still use FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE and RAII close;
+the observed Windows cause must be established before choosing a correction.
+
+The local affected oracle gate passed all 282 cases after diagnostic additions
+(`/tmp/c2-reference-fingerprint-writer-diagnostics.log`); the exact final writer
+diagnostics additionally passed an isolated active-writer rerun and Python syntax
+compilation. Production, native driver, CMake, original tests and workflows are
+unchanged. Actual Windows diagnosis is pending this narrowly instrumented head;
+this is not a claimed Windows fix or a reason to bypass the platform gate.
+
+### Windows writer correction: bounded replacement retry
+
+Diagnostic head `65209441aaa5589a7d3b21642caf997f0f6792bf` established the
+actual cause in Windows PR job 106076473458, run 35510132713: the writer raised
+`PermissionError`, errno 13, winerror 5 (`ERROR_ACCESS_DENIED`) at
+`os.replace(replacement, HUNTDAT/a)`, after two completed replacements. It had
+already exited (`alive=False`, join 0.0 seconds); every observation after the
+first saw no new replacements and the run had zero detected rejections. This
+was a stopped mutation workload, not evidence of a hung writer. The content
+test failed in 70.89 seconds; 30/31 CTests passed in 307.23 seconds, including
+all fifteen named Windows content/profile/capture capabilities without skips.
+No successful fingerprint mismatch was reported. The diagnostic checkpoint
+correctly retained the failing assertion and did not approve that head.
+
+Correction local `b786aa75623c500c613035097f56b0c2d265198a`, remote object
+`cca648ab5e0895ba1c16244d8a8496807f5757a0`, tree
+`c8fa2272b537e9b8f8fae364d6f3ad9639437740`, changes only the authored test
+writer. The exact observed Windows error 5 may be retried only from os.replace,
+using the same completed replacement file, a two-second per-replacement deadline
+and a stop-cancellable two-millisecond wait. Persistent denial remains fatal;
+all other error codes, non-Windows errors and write_bytes failures remain fatal.
+No reader handle/share flag, metadata/stability check, hash, format, timeout,
+Windows skip, or production behavior changes. The precise lower-level source of
+the transient Windows denial is not established by that exception alone.
+
+The harness now additionally requires multiple completed replacements, a measured
+replacement-count increase during an observation, and an actual hash/inventory
+change rejection. Every successful race result must still equal the complete
+expected A or B fingerprint. Original alive/error/rejection assertions and all
+diagnostics remain. Small synthetic checks on every host prove retry/success,
+non-Windows error 5 rejection, Windows error 32/2/no-code rejection, deadline
+failure and cancellation. These are harness-policy checks, never claimed as
+actual Win32 evidence. Actual corrected Windows execution remains required.
+
+The affected Linux Debug gate passed all unchanged 282 authored content cases
+plus those harness checks. Its sustained writer completed 4,873 replacements,
+advanced during all sixteen observations and produced sixteen actual detected
+change rejections, no writer errors, and bounded clean termination. Log:
+`/tmp/c2-reference-fingerprint-writer-fix-debug.log`. Production/native-driver/
+CMake bytes remain exactly those already reviewed and fully tested; the original
+Python implementation/tests/goldens, engine, Shared codecs, Menu and workflows
+are untouched. This correction and its verification ledger are bundled into one
+non-force branch update; final-head actual MSVC and independent review remain
+gates, with no merge or self-approval.
+
+The same affected 282-case gate also passed against the existing ASan/UBSan
+production build with only unavailable LSan disabled. Its writer completed
+8,863 replacements with overlap in all sixteen observations and sixteen detected
+change rejections, no writer errors and bounded clean termination. Log:
+`/tmp/c2-reference-fingerprint-writer-fix-asan.log`. Both correction verification
+sessions were fully awaited before this bundled checkpoint.
+
+### Windows race coordination: owned observation lifetime
+
+Head `5c086b4326f2a1794f2536532ba7cb42a1444680` had divergent actual Windows
+outcomes: push job 106078369422, run 35510845424, passed 31/31 in 535.47 seconds
+(content 130.91 seconds); PR job 106078374864, run 35510847646, failed 30/31 in
+528.22 seconds (content 123.24 seconds). All fifteen named capabilities passed.
+The red run exhausted the two-second replacement deadline after six completed
+replacements and 314 WinError 5 retries; the writer exited, and later observations
+had no new mutations. It reported zero unconstrained change rejections. The green
+CTest log suppresses successful writer output, so its retry counts and individual
+observation durations are unknown. These results do not identify which OS handle
+caused the denial, and a larger arbitrary timeout would not establish correctness.
+
+Correction local `4c58ea143d5b5bd5bfa6097f0e4f57d5ed186924`, remote object
+`ed247767584c193d7de1f7ab90b9813ae8b48132`, tree
+`0c85231cad455c8c23b543187a078383c6c4fa56`, changes only authored test
+coordination. A small locked lifecycle clock subtracts both accumulated completed
+reader intervals and the current interval from monotonic time. The two-second
+idle-denial budget therefore excludes an owned observation even if the writer
+is descheduled across its entire active-to-idle transition. Synthetic regressions
+exercise that 200-second interval without waiting, alongside all previous fatal
+error/deadline/cancellation checks; they do not claim Windows execution coverage.
+
+Each of the sixteen public native fingerprint calls still runs with the sustained
+writer and must return an exact complete A/B fingerprint on success. Each owned
+child retains the existing 90-second timeout and is fully awaited before closing
+its lifecycle interval. Before the next child starts, the harness requires a new
+successful replacement while idle; persistent denial cannot be hidden by starting
+another reader. The existing bounded stop/join and fatal writer-error assertions
+remain. Retry remains restricted to Windows os.replace and actual error 5; all
+other errors remain fatal. The test records individual observation durations,
+active/idle retry counts, mutation counts and every idle progress handoff.
+
+Mandatory detected-change proof now comes from two deterministic atomic replacements
+on the same 4MiB member at both existing private phases: initial_inventory and
+member_hashed before restat. Each requires a successfully completed replacement
+and a specific changed-while-hashing rejection. Those paused mutations receive
+no lifecycle exemption, so their short bound prevents a paused-child/retry deadlock.
+The exact required phase pair is asserted directly. Unconstrained rejection and
+overlap counts remain visible diagnostics rather than assumptions that Windows
+must permit rename while a reader is open. No valid-success, no-error, bounded
+cleanup, original oracle, or actual replacement assertion is removed. There is
+no new production callback, API, environment switch, format or safety policy.
+
+Affected Linux Debug and ASan/UBSan gates passed all original 282 authored cases
+plus the two atomic-replacement cases (284 total). Debug completed 5,066 writer
+replacements, all sixteen idle handoffs, sixteen unconstrained detected changes
+and both forced replacements. ASan/UBSan completed 9,077 replacements with the
+same handoff/detection outcomes. Both writers terminated cleanly without errors.
+The coordinator requested a final assertion-clarity edit to name the exact two
+required phases directly; it preserves the checked outcomes, and syntax compilation
+passed. Logs: `/tmp/c2-reference-fingerprint-lifecycle-final-debug.log` and
+`/tmp/c2-reference-fingerprint-lifecycle-final-asan.log`. Only unavailable LSan
+was disabled, as before; both verification sessions were fully awaited.
+
+Production, public/private C++ implementation, differential driver, CMake, original
+Python/tests/goldens, Shared codecs, engine, Menu and workflows are unchanged.
+This scoped correction and evidence are bundled into one non-force branch update.
+Actual fresh Windows CI and final independent review remain required; the green
+push on the preceding head does not approve its red PR outcome or this correction.
