@@ -718,3 +718,61 @@ dangling-link and unpaired-UTF16 coverage from capability skips. The authored
 POSIX permission test uses a restricted identity when run as root; local
 identity dropping is denied with EPERM and is reported as skip 77, not permission
 coverage. Actual Linux CI permission coverage remains a merge gate.
+
+### Slice 1B.3 implementation and validation checkpoint
+
+The published implementation object is
+`d21bc2f9f1d2a687c396fe468a42eb6e5c84e8e8`, tree
+`04ff2f3a1d7499d931766e9e06b3ffeacf9d3de2`, following ledger
+`2686647c82f7d1cc5d3b885a1b305690889b2771` and prerequisite
+`9841e322311d7192d511b156ba3da7fc8c44748b` from base
+`7fe929a5b93c6ecff912e36ce66a86619cde74c8`. Authenticated GitHub object
+creation verified every blob and complete tree against the local commits.
+The tested local implementation `189751ffb1c3948f106fc6c537ae62d1db972260`
+has that exact implementation tree; author/committer metadata accounts for
+its different commit ID. This following checkpoint changes only documentation;
+its final published SHA belongs in subsequent independent review evidence.
+
+Final sequential Linux Debug completed all 16 registered tests in 233.76
+seconds: 15 passed, and the named permission capability explicitly skipped
+because changing to the restricted identity returned EPERM. All unchanged
+154 Python tests passed in 77.529 seconds, without Python skips. The 325
+golden cases, 9,106 schema cases and 865 pure-profile oracle comparisons remain
+unchanged and passed. The new source-profile test passed in 32.89 seconds,
+with 204 authored cases comparing unchanged Python inventory/stable-read/
+inspect-set, original compiled helper projections, exact presentation bytes,
+and complete raw bytes. No-write snapshots and owned observation lifetime/
+cwd binding assertions passed. Cases cover Unicode decimal blocks, arbitrary
+slots, long-s and case collisions, raw names, nested/unknown companions,
+symlinks and hardlinks, special-file replacement, actual virtual-file bytes,
+16MiB boundaries, more than 128 entries and more than 32MiB source trees,
+pre-read membership/companion/byte changes, and sustained active writers.
+Successful raced observations retain verified JSON/raw size/hash framing;
+rejection is permitted and a detected active change is required. None of this
+claims an externally atomic pair or protection against hostile replacement.
+
+Final ASan/UBSan passed all five focused gates in 218.22 seconds: source files
+145.22 seconds, pure profile 68.32 seconds, compatibility 2.15 seconds, stack
+2.13 seconds, plus the decimal oracle. Only unavailable LeakSanitizer was
+disabled under ptrace (`ASAN_OPTIONS=detect_leaks=0`,
+`UBSAN_OPTIONS=halt_on_error=1`). Final builds/logs are
+`/tmp/c2-profile-files-debug`, `/tmp/c2-profile-files-debug-final.log`,
+`/tmp/c2-profile-files-asan`, and `/tmp/c2-profile-files-asan-final.log`.
+An earlier full Debug run overlapped a rebuild and encountered executable
+startup permission failures in schema/compatibility/stack tests; that invalid
+verification run is superseded by the fully awaited, sequential final run.
+No assertion was removed or weakened.
+
+The coordinator independently archived the exact local implementation above,
+reviewed the actual code/API/tests, and ran 679 differential comparisons over
+64 randomized filesystem trees plus native-root edge cases, with zero
+mismatches and unchanged source bytes. Its isolated full run completed 15
+passed plus the same explicit permission skip out of 16 in 236.21 seconds;
+all 154 Python tests passed in 75.588 seconds without Python skips (backend
+76.03 seconds), and the new source-files gate passed in 33.77 seconds.
+This preliminary evidence does not replace actual published-GitHub review
+or platform gates. Actual Linux CI must pass the named permission test;
+actual final-head MSVC outcomes for each named filesystem capability must be
+inspected. Shared codec, original helper, Python implementation/old tests,
+goldens, engine, Menu and workflows remain unchanged. Overall 1B and the
+profile CLI/helper cutover are not self-approved by this checkpoint.
