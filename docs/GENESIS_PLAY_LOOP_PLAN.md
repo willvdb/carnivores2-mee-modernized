@@ -1,80 +1,132 @@
 # Genesis play loop execution record
 
-## Scope and checkpoints
+## Scope and completed checkpoints
 
-Starting main: `c4078d63884690144b9061476e7800162fc3b113` (fetched 2026-09-19).
-Original main checkout has two untracked logs; untouched. No open PRs at start.
-Dedicated worktree; branch A `frontend/genesis-hunt-adapter` from fetched main.
-B will branch from A as `frontend/managed-state-continuation`, PR targeting A.
-No main writes, merges, force pushes, user-store upgrades or real-save mutation.
+Starting fetched main: `c4078d63884690144b9061476e7800162fc3b113` (2026-09-19).
+The original checkout's local main remained `a2cfec8ef3590c6c8d56d16c7a69e4c0e5327f5a`,
+with its two pre-existing untracked logs untouched. Work used a dedicated worktree.
+No main writes, merges, force pushes, default-store upgrades or real-save mutation.
 
-- [x] Baseline/ref/worktree audit; contracts and production implementation trace.
-- [x] Baseline standalone Debug build and full frontend suite (116 tests, no skips).
-- [x] A: versioned pinned normal-hunt policy, shared native lifecycle, CLI, regressions.
-- [ ] A: full checks and read-only policy review complete; publish checkpoint and draft PR.
-- [ ] B: explicit versioned metadata upgrade; immutable generations; acceptance transaction.
-- [ ] B: generation-pinned continuation; failure/recovery/end-to-end tests.
-- [ ] B: final review, validation, draft stacked PR and backend/UI handoff.
+- [x] Baseline/ref/worktree audit; applicable instructions, full PORTING and contracts read.
+- [x] Production Menu/engine/profile/display trace; baseline 116 tests, no skips.
+- [x] A: pinned normal hunts, shared native lifecycle, CLI, candidate-only regression tests.
+- [x] A: Debug/sanitizers/read-only review; committed and published draft PR #14.
+- [x] B: explicit metadata upgrade, immutable generations, bounded acceptance transaction.
+- [x] B: generation-pinned continuation, staleness, failure/recovery and end-to-end tests.
+- [x] B: distinct final review, local validation, draft stacked PR #15 and UI handoff.
+- [ ] Human native Genesis world-entry/return/acceptance/continuation validation.
+
+Current branch: `frontend/managed-state-continuation`.
+
+| Checkpoint | SHA | Review boundary |
+| --- | --- | --- |
+| A candidate-only hunt | `cecac030b4d8a08b6c5966e6c742cb8c32ff93ad` | `frontend/genesis-hunt-adapter`; [draft #14](https://github.com/willvdb/carnivores2-mee-modernized/pull/14) → main |
+| B metadata prerequisite | `13737fe2babe785bed15e43dbe4f9ec02b073a48` | Independently built/tested upgrade/history commit |
+| B acceptance/continuation code | `1fce7dac551b68aeef8bd88ffbc64aaa568be344` | [draft #15](https://github.com/willvdb/carnivores2-mee-modernized/pull/15) → A; depends on #14 |
+
+A remains independently candidate-only and unmerged. B's remaining publication
+commit only updates this execution record. Both draft PRs have no auto-merge.
 
 ## Decisions and source evidence
 
-Existing exact Genesis fingerprint remains unchanged (Frontend/lodge/genesis.py).
-Menu/Menu.cpp builds license bits from filtered AI>=10 *positions*, weapons from
-ordered positions; CommandLine.cpp multiplies din by 1024, consumes wep directly.
-ScriptParser.cpp char0..char9 predicates use bits 10..19. No AI identity conversion.
-CalculateDebit and hunt selection require summed listed prices <= native score;
-launch block does not subtract it. Rank filtering is commented out. Menu rank at
-10000 becomes 1000; EngineProfile::UpdateRank caps at 2. Preserve native observations,
-never normalize rank or invent fees. Equipment restored from SAV is ignored by
-EngineProfile::ApplyOptions. All accessories remain disabled in this assignment.
-Policy defaults are the six existing smod values; SubmitDinoScore applies only
-active tranq/radar/scent/camo modifiers. Native scoring/saving owns progression.
+The exact Genesis fingerprint in `Frontend/lodge/genesis.py` is unchanged.
+`Menu/Menu.cpp` maps filtered AI>=10 license *positions* and weapon positions to
+bits. `CommandLine.cpp` multiplies `din` by 1024 once, consumes `wep` directly;
+`ScriptParser.cpp` char0..char9 conditions use bits 10..19. Grouped licenses and
+repeated AI values do not change selection identity. See precise function/source
+references and boundaries in [GENESIS_HUNT.md](../Frontend/docs/GENESIS_HUNT.md).
 
-Keep schema-1 synthetic and schema-2 observer meaning unchanged. A needs a distinct
-normal-hunt journal kind/version, still candidate-only. B needs explicit manifest
-versioning so old code fails closed and a new generation-pinned session contract.
-Fixtures use authored bytes and production codecs/session I/O; any policy double
-stays test-only and the real production pin must independently reject fixture content.
-No suitable task-only personal Genesis baseline has been explicitly configured;
-real gameplay is pending, independently of automated implementation validation.
+One area, one license and one weapon, dawn/day/night, no equipment or extra flags.
+All pinned catalog choices are supported within those bounds. `CalculateDebit`
+checks summed displayed prices against native score; the launch block does not
+subtract it. Rank filtering is commented out. Menu rank at 10000 becomes 1000;
+`EngineProfile::UpdateRank` caps at 2. Native observations remain authoritative;
+no fees or rank normalization. `EngineProfile::ApplyOptions` ignores saved
+equipment settings. Six existing smod defaults are emitted; `SubmitDinoScore`
+applies only active tranq/radar/scent/camo modifiers. The engine owns progression.
 
-## Commands and results
+Schema-1 synthetic/schema-2 observer/schema-3 candidate-only hunt journals retain
+their original meaning. Manifest v2 is an explicit backed-up metadata operation;
+old A code was directly exercised and rejects it. Schema-4 normal hunts pin the
+current generation. Old prepared modes fail closed on v2, with terminal inspection
+retained. Return inspection uses the historical baseline; acceptance/preflight
+require the unchanged current generation identity, not merely equal hashes.
 
-Baseline (passed):
-```
-cmake -S Frontend -B /tmp/c2-play-loop-a -DCMAKE_BUILD_TYPE=Debug
-cmake --build /tmp/c2-play-loop-a --parallel 6
-ctest --test-dir /tmp/c2-play-loop-a --output-on-failure --no-tests=error
-```
-Repeat at each checkpoint; also compileall and git diff --check. Add sanitizer
-build for C++ probe/fixture and actual argument-consumption characterization.
-Engine/menu/display CI remains enabled; rebuild engine if production engine changes.
+`lodge.json` is the only authority for current generation and acceptance receipts.
+Exact independent bytes are staged, verified and renamed before its atomic
+replacement commits head plus receipt. Earlier failure preserves old authority;
+later failure preserves new authority. A session receipt file is a reconstructible
+copy only. Retry after later acceptance returns the original receipt without
+rewinding. Recovery never promotes orphans, queries/launches an engine, signals
+stored PIDs, steals locks or deletes evidence. See [MANAGED_STATE.md](../Frontend/docs/MANAGED_STATE.md).
 
-## Checkpoint A validation/review
+## Exact validation commands and results
 
-126 frontend tests pass (no skips) with real probe, production Session/Files child,
-and actual CommandLine body characterization. Intermediate extraction errors
-(local preflight import shadowing, too-strict schema-1 kind persistence) were fixed;
-existing tests remain unchanged. A C++ fixture field-name typo was fixed at build.
-Read-only reviewer identified generic resource-base observations being wrongly
-used as availability gates; corrected and regression covered. No production engine
-or native layout change. ASan/UBSan suite rerun after fixes; final result below.
+Baseline/A: standalone Debug full suite 116 before changes, 126 after A; no skips.
+A Clang ASan/UBSan full suite: 126 passed, no skips. The same configure/build/test
+commands below used `/tmp/c2-play-loop-a` and `/tmp/c2-play-loop-a-sanitized`.
+B's independently checked-out metadata prerequisite passed 134 tests, no skips.
 
-## Next executable action
+Final B Debug and sanitizer suites each passed **154 tests, no skips**:
 
-Publish candidate-only A after final sanitizer result. Then branch B from this
-checkpoint and implement manifest-v2 authority plus schema-4 generation-pinned hunts.
-
-A sanitizer validation passed: 126 tests/no skips, Clang ASan+UBSan on the C++
-codec, production native I/O fixture and extracted actual argument consumer.
-Python is not instrumented; no full graphics hunt is claimed.
-```
-cmake -S Frontend -B /tmp/c2-play-loop-a-sanitized -G Ninja \
+```sh
+cmake -S Frontend -B /tmp/c2-play-loop-b -DCMAKE_BUILD_TYPE=Debug
+cmake --build /tmp/c2-play-loop-b --parallel 6
+ctest --test-dir /tmp/c2-play-loop-b --output-on-failure --no-tests=error
+cmake -S Frontend -B /tmp/c2-play-loop-b-sanitized -G Ninja \
   -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++ \
   '-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all'
-cmake --build /tmp/c2-play-loop-a-sanitized --parallel 6
+cmake --build /tmp/c2-play-loop-b-sanitized --parallel 6
 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 \
-  ctest --test-dir /tmp/c2-play-loop-a-sanitized --output-on-failure --no-tests=error
+  ctest --test-dir /tmp/c2-play-loop-b-sanitized --output-on-failure --no-tests=error
 python3 -m compileall -q Frontend
 git diff --check
 ```
+
+Real C++ profile codecs, production Session/Files fixture I/O, and the extracted
+actual CommandLine consumer are exercised. Sanitizers cover those C++ executables,
+not Python or a graphical engine hunt. No production engine/layout changes were
+made; engine/menu/display and Linux/Windows frontend CI remain enabled.
+A's exact-head hosted Frontend and full Build and Test workflows passed. B hosted
+checks are pending at publication; final-head results belong in PR #15 and the
+final delivery report, not inferred from A or a preceding head.
+
+## Demonstration, review and resolved failures
+
+Authored disposable fixture loop: G0 → S1 changed native candidate → explicit G1 →
+S2 actual source/work/baseline bytes equal G1 → explicit G2. Installation/import,
+G1 and session baselines remain unchanged at each applicable stage. Retrying S1
+after G2 returns G1's receipt and preserves G2. The production Genesis gate rejects
+fixture content; test policy doubles are visibly test-only. No fixture mutation
+is described as gameplay, a trophy or a successful hunt.
+
+During development, extraction/preflight scoping, a C++ fixture field typo and an
+overstrict schema-1 journal check were fixed. B exposed two existing corrupt/missing
+manifest recovery regressions; the guard was corrected without changing those
+tests. Final suites have no failures. No dependency pin was changed or warning/test
+suppressed.
+
+Separate read-only review found generic catalog resource observations being used
+as the wrong availability gate, and accepted history permitting mutually missing
+execution evidence. Both were fixed with regressions and re-reviewed. Final
+self-review traced authority/commit point, native reads/writes, all fallback paths,
+stale prepared/returned sessions, duplicate acceptance, unsafe aliases, exact byte
+preservation, receipt failure/recovery and old-kind separation. Complete diff
+contains no proprietary assets, real saves, private paths or unsanitized logs.
+
+## Remaining evidence and next executable action
+
+No suitable personal Genesis baseline was explicitly configured for a new task
+store. No unrelated personal directories/default store were searched or modified.
+Real normal-hunt world entry, controls, evacuation/native save changes and G1/G2
+continuation remain unvalidated. The limitation does not block the implemented
+asset-free backend loop. There is no unresolved policy decision for the supported
+subset; multiple loadouts, equipment and other editions remain disabled.
+
+Check B's hosted final-head CI after this documentation commit and report exact
+results. Then review both drafts and run the disposable-store human native
+checklist in [PLAY_LOOP_HANDOFF.md](../Frontend/docs/PLAY_LOOP_HANDOFF.md). That
+handoff documents actual module/CLI calls and JSON for the next thin Expedition
+Console: selection/loadout, launch/status/cancel, native before/after review,
+explicit candidate/predecessor acceptance and managed-history refresh. The GUI
+must consume backend eligibility and authority rules rather than duplicate them.

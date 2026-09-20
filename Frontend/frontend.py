@@ -13,6 +13,8 @@ from lodge.launch import prepare, simulated_return
 from lodge.profiles import associate, inspect_set, inventory, refresh_association
 from lodge.store import FrontendError, Store, hunter
 from lodge.genesis import plan_observer
+from lodge.acceptance import preview_acceptance, accept_candidate, recover_acceptance
+from lodge.managed_state import upgrade_store, inspect_history
 from lodge.native_hunt import plan_hunt, prepare_hunt, run_hunt
 from lodge.native_observer import prepare_native, run_native
 from lodge.reconciliation import reconcile_session
@@ -118,6 +120,17 @@ def parser():
             n.add_argument('--experimental-native-hunt', action='store_true', required=True)
         if name == 'prepare':
             n.add_argument('--timeout', type=float, default=900)
+    managed = commands.add_parser('managed-state', help='Explicit metadata upgrade and native candidate acceptance')
+    managed_actions = managed.add_subparsers(dest='action', required=True)
+    managed_actions.add_parser('upgrade')
+    managed_actions.add_parser('inspect').add_argument('association')
+    for name in ('preview', 'accept', 'recover-acceptance'):
+        n = managed_actions.add_parser(name)
+        n.add_argument('id', help='Session UUID')
+        if name in ('preview', 'accept'):
+            n.add_argument('--expected-generation', required=True)
+        if name == 'accept':
+            n.add_argument('--candidate-sha256', required=True, help='Exact digest from acceptance preview')
     settings = commands.add_parser('host-settings')
     settings.add_argument('--json', help='JSON object with display, audio and/or input preferences; no native save mutation')
     return root
@@ -125,6 +138,16 @@ def parser():
 
 def execute(args):
     store = Store(args.store)
+    if args.command == 'managed-state':
+        if args.action == 'upgrade':
+            return upgrade_store(store)
+        if args.action == 'inspect':
+            return inspect_history(store, args.association)
+        if args.action == 'preview':
+            return preview_acceptance(store, args.id, args.expected_generation, args.probe)
+        if args.action == 'accept':
+            return accept_candidate(store, args.id, args.expected_generation, args.candidate_sha256, args.probe)
+        return recover_acceptance(store, args.id)
     if args.command == 'native-hunt':
         if args.action in ('plan', 'prepare'):
             selection = {'area': args.area, 'licenses': args.license, 'weapons': args.weapon,

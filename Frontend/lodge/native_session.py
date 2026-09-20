@@ -152,6 +152,8 @@ def prepare(store, association, selection, engine, digest, experimental, timeout
                 'genesis_policy': 'structurally-validated', 'engine_process_executed': False,
                 'observer_session_launched': False, 'returned_native_state_readable': 'unknown',
                 'hunt_save_round_trip_validated': False, 'modern_engine_compatibility': 'unknown'}}
+        if adapter.SCHEMA == 4:
+            journal['reconciliation'].update(authority='managed-state-history', promotion='explicit-only')
         persist(root, journal)
         if os.name == 'posix':
             for path in (root / 'work', root, root.parent, store.directory):
@@ -188,8 +190,8 @@ def preflight(store, root, journal, probe, authorization, adapter):
 
 
 def adapter_for(journal):
-    from . import native_observer, native_hunt
-    adapters = {2: native_observer, 3: native_hunt}
+    from . import native_observer, native_hunt, native_continuation
+    adapters = {2: native_observer, 3: native_hunt, 4: native_continuation}
     adapter = adapters.get(journal['schema_version'])
     if adapter is None or journal['execution']['kind'] != adapter.KIND:
         raise FrontendError('unsupported native session kind/version')

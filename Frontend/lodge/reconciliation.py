@@ -23,7 +23,10 @@ def reconcile_locked(store, root, journal, probe=None):
         if journal['schema_version'] >= 2:
             from .native_session import CAPABILITY, adapter_for, supported_contract
             adapter = adapter_for(journal)
-            current, _ = adapter.native_pins(store, pins['association_id'], pins['selection'], probe, pins['codec'])
+            if journal['schema_version'] == 4:
+                current, _ = adapter.return_pins(store, pins, probe)
+            else:
+                current, _ = adapter.native_pins(store, pins['association_id'], pins['selection'], probe, pins['codec'])
             from .sessions import executable_evidence
             spec = journal['execution']
             evidence = executable_evidence(spec['executable']['path'])
@@ -118,7 +121,8 @@ def reconcile_locked(store, root, journal, probe=None):
     transition(root, journal, 'candidate' if clean else 'quarantined', reconciled_at=now(),
                returned_members=entries, returned_observation=decoded,
                reconciliation={'status': 'clean-candidate' if clean else 'review-required',
-                   'authority': 'original-managed-snapshot', 'promotion': 'deferred',
+                   'authority': 'managed-state-history' if journal['schema_version'] == 4 else 'original-managed-snapshot',
+                   'promotion': 'explicit-only' if journal['schema_version'] == 4 else 'deferred',
                    'observation': observation,
                    'comparison_status': 'complete' if comparison else 'unavailable',
                    'changed_members': changed,

@@ -61,7 +61,7 @@ def persist(root, journal):
 
 
 def validate_journal(journal, identity):
-    if (not isinstance(journal, dict) or journal.get('schema_version') not in (1, 2, 3)
+    if (not isinstance(journal, dict) or journal.get('schema_version') not in (1, 2, 3, 4)
             or type(journal.get('schema_version')) is not int
             or journal.get('id') != identity or not valid_id(identity)
             or journal.get('path_flavor') != os.name
@@ -87,7 +87,7 @@ def validate_journal(journal, identity):
             raise FrontendError('incomplete session journal')
     kind = journal['execution'].get('kind')
     kinds = {1: 'controlled-synthetic', 2: 'experimental-native-observer-v1',
-             3: 'experimental-native-hunt-v1'}
+             3: 'experimental-native-hunt-v1', 4: 'managed-native-hunt-v1'}
     if ((journal['schema_version'] == 1 and kind in tuple(kinds.values())[1:])
             or (journal['schema_version'] >= 2 and kind != kinds[journal['schema_version']])
             or (journal['schema_version'] >= 2 and (
@@ -104,6 +104,10 @@ def validate_journal(journal, identity):
     for field in ('selection', 'codec', 'revision', 'instance', 'association'):
         if not isinstance(pins.get(field), dict):
             raise FrontendError('incomplete pinned session provenance')
+    if journal['schema_version'] == 4 and (not valid_id(pins.get('generation_id'))
+            or not isinstance(pins.get('generation'), dict)
+            or pins['generation'].get('id') != pins['generation_id']):
+        raise FrontendError('missing managed generation pin')
     if type(pins.get('native_slot')) is not int or pins['native_slot'] not in range(8):
         raise FrontendError('invalid pinned native slot')
     for members in (pins.get('source_members'), journal.get('baseline_members')):

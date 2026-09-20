@@ -73,7 +73,7 @@ def validate_engine_evidence(evidence):
 
 
 def validate(data):
-    if not isinstance(data, dict) or type(data.get("schema_version")) is not int or data["schema_version"] != 1:
+    if not isinstance(data, dict) or type(data.get("schema_version")) is not int or data["schema_version"] not in (1, 2):
         raise FrontendError("unsupported manifest schema; explicit migration required")
     for table in ("hunters", "instances", "associations", "host_settings"):
         if not isinstance(data.get(table), dict):
@@ -133,7 +133,17 @@ def validate(data):
             validate_engine_evidence(review.get('destination_engine_evidence'))
             if review['baseline_engine_evidence'] != instance['engine_evidence']:
                 raise FrontendError('engine relocation review must retain registration baseline')
+    if data['schema_version'] == 2:
+        from .managed_state import UPGRADE_BACKUP
+        upgrade = data.get('state_upgrade')
+        if (not isinstance(upgrade, dict) or type(upgrade.get('from_version')) is not int
+                or upgrade['from_version'] != 1 or upgrade.get('backup') != UPGRADE_BACKUP
+                or not isinstance(upgrade.get('at'), str)
+                or not isinstance(upgrade.get('backup_sha256'), str)
+                or not re.fullmatch('[0-9a-f]{64}', upgrade['backup_sha256'])):
+            raise FrontendError('invalid manifest upgrade provenance')
     referenced = set()
+    accepted_sessions = set()
     for association in data["associations"].values():
         if not isinstance(association.get('hunter_id'), str) or not isinstance(association.get('instance_id'), str):
             raise FrontendError('invalid association reference')
@@ -150,6 +160,14 @@ def validate(data):
         if association.get('writable') is not False:
             raise FrontendError('schema 1 does not authorize native-state writers')
         authority = 'native-files' if association['ownership'] == 'referenced' else 'independent-snapshot'
+        if data['schema_version'] == 2 and association['ownership'] == 'managed':
+            from .managed_state import AUTHORITY, validate_history
+            authority = AUTHORITY
+            validate_history(association)
+            sessions = set(association['managed_state']['receipts'])
+            if sessions & accepted_sessions:
+                raise FrontendError('session receipt belongs to multiple associations')
+            accepted_sessions.update(sessions)
         if association.get('authority') != authority or not revision_valid(association.get('revision')):
             raise FrontendError('invalid association authority or revision')
         if not isinstance(association.get("files"), list) or not association["files"]:
@@ -206,7 +224,11 @@ class Store:
         self.path = self.directory / "lodge.json"
 
     def read(self):
-        if not self.path.exists() and self.path.with_suffix('.json.bak').exists():
+        from .managed_state import UPGRADE_BACKUP
+        from .session_io import safe_path
+        safe_path(self.path)
+        if not self.path.exists() and (self.path.with_suffix('.json.bak').exists()
+                or (self.directory / UPGRADE_BACKUP).exists()):
             raise FrontendError('manifest missing with backup present; use explicit recovery')
         return read_manifest(self.path) if self.path.exists() else empty_manifest()
 
@@ -241,8 +263,17 @@ class Store:
 
     def restore_backup(self):
         with self.lock():
+            from .managed_state import UPGRADE_BACKUP
             backup = self.path.with_suffix(".json.bak")
-            read_manifest(backup)
+            current_version = None
+            if self.path.exists():
+                try:
+                    current_version = read_manifest(self.path)['schema_version']
+                except FrontendError:
+                    pass  # Existing schema-1 damaged-manifest recovery stays explicit.
+            if (current_version == 2 or (self.directory / UPGRADE_BACKUP).exists()
+                    or read_manifest(backup)['schema_version'] == 2):
+                raise FrontendError('managed-state backup restore requires explicit future recovery; no history rollback')
             if self.path.exists():
                 atomic_write(self.directory / f"lodge.recovery-{new_id()}.json", self.path.read_bytes())
             atomic_write(self.path, backup.read_bytes())
