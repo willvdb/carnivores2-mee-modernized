@@ -246,6 +246,16 @@ with tempfile.TemporaryDirectory(prefix='c2-native-store-') as temporary:
         # Python expands the current username to USERPROFILE without requiring
         # a matching basename; other-user expansion has that extra constraint.
         check(parent, unicode_dir, env={'USERNAME': 'different-basename', 'USERPROFILE': str(unicode_dir)}, prefix=['--store', '~different-basename'])
+        env = {**os.environ, 'USERNAME': 'current-test-user', 'USERPROFILE': ''}
+        old = Path.cwd()
+        try:
+            os.chdir(parent)
+            for spelling in ['~', '~current-test-user']:
+                with patch.dict(os.environ, env, clear=True):
+                    expected = str(Store(spelling).directory).encode() + b'\n'
+                p = run([api, 'directory', spelling], env=env)
+                assert p.returncode == 0 and p.stdout == expected, (spelling, p.stderr, p.stdout, expected)
+        finally: os.chdir(old)
         for before_name, after_name in [('mixed-case', 'MIXED-CASE'), ('sigma-Σ', 'sigma-ς'), ('positive-ΟΣ', 'positive-ος'), ('negative-ΟΣ', 'negative-οσ')]:
             before_dir = parent / before_name; write(before_dir, base())
             reference = Store(before_dir)

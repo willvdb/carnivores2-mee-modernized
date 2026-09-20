@@ -428,3 +428,16 @@ reads are not asserted by the pure UNC spelling tests. Initial-head Ubuntu CI
 passed, and actual MSVC compiled successfully with its tests still pending at
 this checkpoint. Published final-head review and Windows results remain gates;
 none of these implementation results self-approve the slice.
+
+The initial-head MSVC job `106057527703` subsequently completed 10/11 CTests:
+all original tests passed, but the new store oracle caught mixed separators
+in default-directory presentation (`.local/share` versus `.local\\share`).
+Commit `8a3991ae48f438c552d1b6c44c740a954c8a7d67` already corrects this by
+joining native components; its tree is
+`dca154cb249b7f466b792899ea185882ee6b5904`. The failed run took 287.38 seconds,
+including 217.06 seconds for unchanged Python tests. It does not establish the
+later Windows safety fixtures, which remained after the failed assertion.
+A further focused review correction normalizes an empty post-tilde-expansion
+path to `.` (empty Windows USERPROFILE), with isolated constructor oracles for
+`~` and the current username. Linux's store gate passed again in 8.59 seconds;
+Windows reruns and independent final-head approval remain required.

@@ -253,6 +253,8 @@ fs::path resolve_root(fs::path path) {
         }
         path = end == s.npos ? base : fs::path(base.native() + s.substr(end));
     }
+    // pathlib turns an empty expanduser result back into the current directory.
+    if (path.empty()) path = ".";
     return resolve(path);
 }
 fs::path default_directory() {
