@@ -5,6 +5,7 @@ Run without flags to regenerate; --check compares committed bytes. No game asset
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 import random
 import struct
@@ -19,9 +20,12 @@ DESTINATION = Path(__file__).resolve().parents[1] / 'tests/compatibility/golden.
 
 
 def record(name, source):
-    result = {'name': name, 'input_hex': source.encode('utf-8').hex()}
+    raw = source.encode('utf-8') if isinstance(source, str) else source
+    result = {'name': name, 'input_hex': raw.hex()}
     try:
-        value = json.loads(source, object_pairs_hook=store._unique_object)
+        # Production files are decoded as UTF-8 before json.loads, not passed
+        # as bytes to its additional UTF-16/32 auto-detection paths.
+        value = json.loads(raw.decode('utf-8'), object_pairs_hook=store._unique_object)
     except (ValueError, RecursionError):
         result['parse_error'] = True
         return result
@@ -63,6 +67,19 @@ def generate():
         cases.append(('scalar-' + value, value))
     for index, value in enumerate(['01', '+1', '1.', '.1', '1e', '--1', '[1,]', '{"x":1,}', '{1:2}', '"\n"', '"\\x00"', '"\\u12xz"', 'null true', 'nan', '-NaN', '\ufeff{}']):
         cases.append((f'invalid-{index}', value))
+    for index, value in enumerate([b'\xc0\x80', b'\xed\xa0\x80', b'\xf4\x90\x80\x80',
+                                   b'\xe0\x80\x80', b'\x80', b'\xf0\x9f', b'\xc2', b'\xc2a']):
+        cases.append((f'invalid-utf8-{index}', b'"' + value + b'"'))
+    for index, value in enumerate([1e-4, 1e16, 1e-5, 1e15, 1e23, 2.2250738585072014e-308,
+                                   1.7976931348623157e308, 9007199254740992.0]):
+        for direction in (-math.inf, math.inf):
+            adjacent = math.nextafter(value, direction)
+            cases.append((f'adjacent-binary64-{index}-{direction}', json.dumps(adjacent)))
+    cases.append(('nested-containers', '[' * 128 + '{"unknown":{"value":-0.0}}' + ']' * 128))
+    retained = store.empty_manifest()
+    retained['unknown'] = {'nested': [900.0, 10 ** 100, '\ud800', '🦖'], 'observed': [], 'missing': None}
+    assert store.validate(retained)['unknown'] is retained['unknown']
+    cases.append(('accepted-manifest-unknown-metadata', json.dumps(retained)))
     # Fixed binary64 samples exercise formatting independently of source spelling.
     randomizer = random.Random(0xC2)
     for index in range(256):
