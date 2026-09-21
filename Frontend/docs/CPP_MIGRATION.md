@@ -90,10 +90,13 @@ escaping and indentation are reviewable independently of checkout line endings.
 Main is `74ee0d69f658805545732e9d329d7c1f7e75b895` (PR #26, 2C.1, reviewed
 head `86c1ea08dae987ceb6daa618ee88de132a4f9911`; independent Fable review
 APPROVE with no blockers, disposition recorded on PR #26; 28/28 CI green).
-Active slice: **3A** private write primitives on `frontend/cpp-write-primitives`
-from that merge: atomic replacement, the store writer lock, id/timestamp
-generation, the manifest transaction with backup, and blob writes. Journal
-persistence/transitions stay in 3B; backup restoration stays in 5B.
+Slice **3A** private write primitives are implemented on
+`frontend/cpp-write-primitives` from that merge (see the 3A implementation
+checkpoint; independent review, actual Windows CI and merge remain gates):
+atomic replacement, the store writer lock, id/timestamp generation, the
+manifest transaction with backup, and blob writes as private `store_write`
+interfaces only. Journal persistence/transitions stay in 3B; backup
+restoration stays in 5B.
 Deferred to **2C.2**, after 3A: the `genesis-observer-plan`, `native-hunt plan`
 and `launch-dry-run` wrappers (store lock, pin snapshot/capture, codec-helper
 evidence, the `StateObservation` producer and the `last_observation` write).
@@ -102,7 +105,10 @@ two KeyError oracle cases; bind or document that `evaluate_launch` receives the
 projection/state of the same stage-one instance and that callers check
 `complete()`; add a canonical non-negative ordinal guard before masks.
 Convention since 2C.1: reference `TypeError` paths map to `std::invalid_argument`;
-module errors carry only reference `FrontendError` messages. From 2B.2:
+module errors carry only reference `FrontendError` messages. From 3A: write
+primitives propagate reference `OSError` paths as
+`std::filesystem::filesystem_error`, and the reference's bare `ValueError`
+from `allow_nan=False` encoding maps to `StoreError`. From 2B.2:
 `project`/`text_reference` also propagate `ContentError`, `StoreError` and
 `filesystem_error`; a future CLI must catch `std::exception`.
 Unresolved findings: none.
@@ -1599,3 +1605,63 @@ Debug passed all 24 CTests in 128.11 seconds
 `ASAN_OPTIONS=detect_leaks=0` (LSan unavailable under ptrace) passed
 2/2 in 126.81 seconds (planning 62.80, projection 64.00) with no sanitizer report. Actual Windows/Linux CI, independent review and merge
 remain gates; this checkpoint approves nothing.
+
+### Slice 3A implementation checkpoint
+
+Private `native/src/store_write.hpp` (no public header, no CLI, no Python
+change) ports `atomic_write`, `Store.lock` (`WriterLock`),
+`Store.transaction` (`transaction` over an authored mutation callback),
+`now`/`new_id`, `session_root` and `write_blobs`, reusing `store_paths`
+safe paths and the reviewed reader, the 1A validator, the 1B.1 capture and
+the private encoders. Foundation extension in its own commit:
+`compat::dumps` reproduces `json.dumps(value, sort_keys=...)` with default
+separators and `allow_nan=True` (the transaction change comparison and the
+lock text), and `schema::valid_id` is shared. The capture was confirmed
+against `session_io.capture` for the write side (two passes, 128 entries,
+16/32 MiB, link/alias/unsafe/oversized typing, name checks) and reused
+without extension.
+
+Semantics: the temporary is `.pending-` plus eight characters from the
+mkstemp alphabet, created exclusively (0600 and `O_NOFOLLOW` on POSIX,
+`CREATE_NEW` on Windows), written, fsynced, then `rename` or
+`MoveFileExW(MOVEFILE_REPLACE_EXISTING)` with a POSIX parent-directory
+fsync; the temporary is removed on every failure and there is no retry
+(the 2A.1 retry convention was test-harness only). The lock mkdirs parents,
+creates `lodge.lock` with `O_CREAT|O_EXCL`/`CREATE_NEW` and 0600, refuses
+with the exact reference message, writes `{"pid": .., "host": ..,
+"created_at": ..}` in default-separator form, fsyncs, and unlinks only a
+lock it created; a content failure unlinks and rethrows. The transaction
+copies the retained manifest, edits, revalidates, compares sorted dumps,
+reads current bytes through the reviewed safe reader into `lodge.json.bak`
+and then writes `display` bytes plus LF, keeping the reference order so a
+nonfinite encoding failure leaves the backup exactly as Python does. Blob
+names pass the reference absolute/`..`/backslash/colon checks through the
+PurePath normalizer; POSIX fsyncs the reference's directory set deepest
+first. A narrow test-only hook names each durability phase with the acted-on
+path; production passes none.
+
+Deviations and ambiguities recorded for review: OS failures are
+`filesystem_error`; the `WriterLock` destructor cannot report an unlink
+failure during unwinding (Python's `finally` would replace the original
+exception), while `release()` on the success path reports it; `new_id` and
+temporary names draw from the OS CSPRNG rather than Python's seeded
+`random.Random`; `now()` truncates to microseconds where Python rounds. The
+reference joins a rooted drive-less NT blob name (`/x`) below the drive
+root because `PureWindowsPath('/x').is_absolute()` is false; the native
+port reproduces that join rather than adding a check, and the harness never
+uses such a name. Capture cannot produce it.
+
+Verification used the pinned CPython 3.12.14 oracle and separate external
+Debug and ASan/UBSan build trees, each session fully awaited. Full Debug
+passed 27/27 CTests in 126.15 seconds (all unchanged 154 Python tests in
+18.520 seconds without skips; the three POSIX permission capabilities
+Passed). The new `frontend-native-store-write` gate passed 139 authoritative
+comparisons, `frontend-store-write-file-link` 10 and
+`frontend-store-write-posix-durability` 11; both named modes return skip 77
+only when the host cannot create links or is not POSIX. Focused ASan/UBSan
+(`ASAN_OPTIONS=detect_leaks=0` because LSan is unavailable under ptrace,
+`UBSAN_OPTIONS=halt_on_error=1`) passed 7/7 in 47.80 seconds with no
+sanitizer report (store-write 3.32, generation 36.60, store 6.13). Logs:
+`/home/willvdb/code/games/c2-build/wp-debug-full.log`,
+`wp-debug-backend-verbose.log`, `wp-asan-focused.log`. Actual Windows CI,
+independent review and merge remain gates; this checkpoint approves nothing.
