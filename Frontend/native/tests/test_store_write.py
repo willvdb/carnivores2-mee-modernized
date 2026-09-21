@@ -396,6 +396,9 @@ def default_mode(parent):
         assert error is not None
         p = run([api, 'transaction', store], framed([]))
         expect(p, error)
+        # A plain directory at lodge.lock is the standard refusal on every platform
+        # (Python on Windows raises PermissionError instead; deferred).
+        assert p.returncode == 2 and p.stderr == f'error: {LOCK_MESSAGE.format(lock)}\n'.encode(), (foreign, p)
         same_trees(before, snapshot(store), f'foreign lock {foreign!r}')
         if foreign == 'directory': lock.rmdir()
         else: lock.unlink()
@@ -665,6 +668,28 @@ def file_link_mode(parent):
     case('linked-lock', linked_lock_untouched)
     def dangling_directory_lock(d): d.mkdir(parents=True); (d / 'lodge.lock').symlink_to(d / 'absent-dir', target_is_directory=True)
     case('dangling-directory-lock', lock_link_case, parent, 'dangling-directory-lock', dangling_directory_lock, 'absent-dir')
+    def directory_link_lock(d): d.mkdir(parents=True); (d / 'elsewhere').mkdir(); (d / 'lodge.lock').symlink_to(d / 'elsewhere', target_is_directory=True)
+    def directory_link_untouched():
+        lock_link_case(parent, 'directory-link-lock', directory_link_lock, 'never-created')
+        assert not any((parent / 'directory-link-lock-native-only' / 'store' / 'elsewhere').iterdir())
+    case('directory-link-lock', directory_link_untouched)
+    if os.name == 'nt':
+        # Junctions are not symlinks to Python's is_symlink on older versions; the
+        # native lock must still refuse and never write through them.
+        def junction_lock(d):
+            d.mkdir(parents=True); (d / 'elsewhere').mkdir()
+            p = run(['cmd', '/c', 'mklink', '/J', str(d / 'lodge.lock'), str(d / 'elsewhere')])
+            assert p.returncode == 0, p.stderr
+        def junction_untouched():
+            store = parent / 'junction-lock-native-only' / 'store'
+            junction_lock(store)
+            lock = store / 'lodge.lock'
+            before = snapshot(store.parent)
+            result = run([api, 'transaction', store], framed([]))
+            assert result.returncode == 2 and result.stderr == f'error: {LOCK_MESSAGE.format(lock)}\n'.encode(), result
+            assert lock.exists() and (lock.lstat().st_file_attributes & 1024) and not any((store / 'elsewhere').iterdir())
+            same_trees(before, snapshot(store.parent), 'junction-lock')
+        case('junction-lock', junction_untouched)
     def linked_bak(d): write(d, copy.deepcopy(data)); (d / 'lodge.json.bak').symlink_to(d / 'elsewhere.bak')
     case('linked-bak', transaction_case, parent, 'linked-bak', None, [['set', ['host_settings', 'x'], 1]], linked_bak)
     # write_blobs aliases: linked target, linked intermediate directory, linked ancestor.

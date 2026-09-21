@@ -1738,3 +1738,16 @@ processes structurally, and runs every independent case to completion,
 reporting all failures at the end while still exiting nonzero. Linux:
 default 144, no-elision 144, file-link 11, posix 11, utilities 25; Debug
 29/29. Windows is proven only by actual CI.
+
+Round 4 (Windows run 35653430598, file-link at `dangling-directory-lock`):
+with `CREATE_NEW|FILE_FLAG_OPEN_REPARSE_POINT`, an existing directory,
+directory link or junction at `lodge.lock` reports `ERROR_ACCESS_DENIED`
+rather than `ERROR_FILE_EXISTS`, so native failed closed with the OS
+error instead of the standard refusal. The lock create now confirms
+existence without following (`GetFileAttributesW` reports the link
+itself) and raises the standard refusal for any existing entry, while a
+genuine error on an absent path still propagates; the `.pending-`
+temporary applies the same rule (existing entry retries, genuine error
+propagates). The harness asserts the exact refusal for a plain directory
+on every platform and adds directory-link and Windows junction lock cases.
+Windows is proven only by actual CI.
