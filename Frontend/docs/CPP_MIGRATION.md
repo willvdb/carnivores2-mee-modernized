@@ -87,16 +87,17 @@ escaping and indentation are reviewable independently of checkout line endings.
 
 ## Current state
 
-Main is `74ee0d69f658805545732e9d329d7c1f7e75b895` (PR #26, 2C.1, reviewed
-head `86c1ea08dae987ceb6daa618ee88de132a4f9911`; independent Fable review
-APPROVE with no blockers, disposition recorded on PR #26; 28/28 CI green).
-Slice **3A** private write primitives are implemented on
-`frontend/cpp-write-primitives` from that merge (see the 3A implementation
-checkpoint; independent review, actual Windows CI and merge remain gates):
-atomic replacement, the store writer lock, id/timestamp generation, the
-manifest transaction with backup, and blob writes as private `store_write`
-interfaces only. Journal persistence/transitions stay in 3B; backup
-restoration stays in 5B.
+Main is `a86be96faec2aacb4594d253bb9385091a0c2739` (PR #27, slice 3A, head
+`d0a8c9d`; 28/28 CI green including actual Windows store-write tests).
+Review limitation: independent Fable review approved an earlier 3A revision;
+the final Windows lock-link correction rounds were not routed for re-review,
+so the merged 3A head is not independently approved by every reviewer.
+Inherited 3A follow-ups: Python-side Windows safety fixes, lone-surrogate
+path policy, the older copyable handle in `store_paths`, and
+clustered-Windows hostname behaviour.
+An **unreviewed implementation sprint** continues 2C.2/3B on
+`frontend/cpp-session-sprint`; see `CPP_SPRINT_HANDOFF.md`. Nothing on that
+branch is approved or merged.
 Deferred to **2C.2**, after 3A: the `genesis-observer-plan`, `native-hunt plan`
 and `launch-dry-run` wrappers (store lock, pin snapshot/capture, codec-helper
 evidence, the `StateObservation` producer and the `last_observation` write).
@@ -146,8 +147,8 @@ coordinator records final dispositions in the PR, not in this ledger.
 | 2B.1 pure catalog parser/scalars | Reviewed and merged in PR #24 |
 | 2B.2 filesystem catalog projection | Reviewed and merged in PR #25 |
 | 2C.1 pure planning policies | Reviewed and merged in PR #26 |
-| 2C.2 planning wrappers (lock, pins, observation write) | Pending; after 3A |
-| 3A safe paths/capture/atomic I/O | In progress on `frontend/cpp-write-primitives` |
+| 2C.2 planning wrappers (lock, pins, observation write) | Unreviewed draft on `frontend/cpp-session-sprint` |
+| 3A safe paths/capture/atomic I/O | Merged in PR #27 (final correction rounds not re-reviewed) |
 | 3B preparation/journal | Pending |
 | 4A trust/process/capabilities | Pending |
 | 4B runner/log/cancel | Pending |
