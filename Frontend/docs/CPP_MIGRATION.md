@@ -1718,3 +1718,23 @@ comparison, and every tree comparison prints the differing keys with both
 values so a remaining mismatch diagnoses itself. No production change;
 Linux gates unchanged (144/144/10/11/25; Debug 29/29). Windows is proven
 only by actual CI.
+
+Round 3 (Windows run 35650728265, file-link at `dangling-lock`): on
+Windows, `CreateFileW(CREATE_NEW)` and Python's `os.open(O_CREAT|O_EXCL)`
+follow a symlink or junction at `lodge.lock`, so both writers created the
+link target and wrote lock content through it (the trees differed only in
+pid/created_at, but the target could lie outside the store); POSIX O_EXCL
+refuses. Reviewed Windows safety correction beyond Python-on-Windows
+parity: the lock create adds `FILE_FLAG_OPEN_REPARSE_POINT` (same
+CREATE_NEW and share modes), so any existing entry yields the standard
+refusal and is never followed, written through or removed; the
+`.pending-` temporary create gains the same flag for POSIX-equivalent
+semantics although its random name makes a planted link impractical. No
+other create disposition exists in `store_write.cpp`. Python is unchanged;
+its fix is deferred. The harness now checks link-at-lock cases natively on
+every platform (exact refusal, link untouched, target absent) with parity
+additionally on POSIX, compares lock content written by independent
+processes structurally, and runs every independent case to completion,
+reporting all failures at the end while still exiting nonzero. Linux:
+default 144, no-elision 144, file-link 11, posix 11, utilities 25; Debug
+29/29. Windows is proven only by actual CI.

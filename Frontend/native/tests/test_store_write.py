@@ -17,6 +17,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import traceback
 import uuid
 from unittest.mock import patch
 
@@ -34,6 +35,17 @@ LOCK_MESSAGE = 'frontend writer lock exists: {}; verify its owner before manual 
 
 
 children = []
+failures = []
+
+
+def case(label, action, *args, **kw):
+    """Run one independent case; record a failure and continue so a single CI run
+    reports every remaining mismatch. The harness exits nonzero if any failed."""
+    try:
+        return action(*args, **kw)
+    except Exception:
+        failures.append(f'--- {label}\n{traceback.format_exc()}')
+        return None
 
 
 def run(args, stdin=b'', env=None, timeout=60):
@@ -83,8 +95,25 @@ def snapshot(top):
     return out
 
 
+def lock_shape(value):
+    """Lock content written by two independent processes differs only in pid and
+    created_at; compare its shape (key order and formats) instead of bytes."""
+    if not isinstance(value, tuple) or len(value) != 4 or not isinstance(value[3], bytes): return value
+    try: info = json.loads(value[3])
+    except ValueError: return value
+    if not isinstance(info, dict) or list(info) != ['pid', 'host', 'created_at']: return value
+    stamp = info['created_at']
+    formats = (type(info['pid']) is int and info['pid'] > 0, info['host'],
+               isinstance(stamp, str) and datetime.fromisoformat(stamp).isoformat() == stamp and stamp.endswith('+00:00'),
+               json.dumps(info).encode() == value[3])
+    return value[:3] + ('lock-shaped', formats)
+
+
 def same_trees(expected, actual, label):
     """Assert equal snapshots; on mismatch print every differing key with both values."""
+    if expected == actual: return
+    expected = {k: lock_shape(v) for k, v in expected.items()}
+    actual = {k: lock_shape(v) for k, v in actual.items()}
     if expected == actual: return
     keys = sorted(set(expected) | set(actual))
     lines = [f'{label}: {len(keys)} keys compared']
@@ -96,6 +125,10 @@ def same_trees(expected, actual, label):
 
 def residue(directory):
     return sorted(p.name for p in Path(directory).glob('.pending-*')) if Path(directory).is_dir() else []
+
+
+def fail(message):
+    raise AssertionError(message)
 
 
 def python_outcome(action):
@@ -201,6 +234,23 @@ def blob_case(parent, name, blobs, prepare=None, target='out'):
         python_tree.pop(target, None); python_tree.pop('.', None); native_tree.pop('.', None)  # root nlink/size follow that directory
     same_trees(python_tree, native_tree, f'{name} ({error!r})')
     return error
+
+
+def lock_link_case(parent, name, plant, target_name):
+    """A link at lodge.lock: native refuses with the exact message, never follows,
+    writes through or removes it (reviewed Windows correction beyond Python
+    parity). POSIX O_EXCL already refuses, so parity with Python is also checked."""
+    store = parent / f'{name}-native-only' / 'store'
+    plant(store)
+    lock = store / 'lodge.lock'
+    link_target = os.readlink(lock)
+    before = snapshot(store.parent)
+    result = run([api, 'transaction', store], framed([]))
+    assert result.returncode == 2 and result.stderr == f'error: {LOCK_MESSAGE.format(lock)}\n'.encode(), (name, result)
+    assert lock.is_symlink() and os.readlink(lock) == link_target and not (store / target_name).exists(), name
+    same_trees(before, snapshot(store.parent), name)
+    if os.name == 'posix':
+        assert isinstance(transaction_case(parent, name, None, [], plant), FrontendError)
 
 
 def hold_python_lock(directory):
@@ -435,11 +485,13 @@ def default_mode(parent):
     }
     outcomes = {}
     for name, initial, ops in cases:
-        outcomes[name] = transaction_case(parent, name, initial, ops, extras.get(name))
-    assert outcomes['invalid-active'] is not None and outcomes['callback-throws'] is not None
-    assert outcomes['nan-unchanged'] is None and outcomes['nan-same'] is None and outcomes['inf-unchanged'] is None
-    assert type(outcomes['nan-changed']) is ValueError and type(outcomes['nan-introduced']) is ValueError
-    assert (parent / 'nan-changed-native' / 'store' / 'lodge.json.bak').exists()  # reference order: backup, then encode
+        outcomes[name] = case(name, transaction_case, parent, name, initial, ops, extras.get(name))
+    def outcome_kinds():
+        assert outcomes['invalid-active'] is not None and outcomes['callback-throws'] is not None
+        assert outcomes['nan-unchanged'] is None and outcomes['nan-same'] is None and outcomes['inf-unchanged'] is None
+        assert type(outcomes['nan-changed']) is ValueError and type(outcomes['nan-introduced']) is ValueError
+        assert (parent / 'nan-changed-native' / 'store' / 'lodge.json.bak').exists()  # reference order: backup, then encode
+    case('transaction-outcome-kinds', outcome_kinds)
     # Failure injection inside the transaction: original bytes intact, lock released.
     store = parent / 'inject' / 'store'; write(store, data)
     _ = python_transaction(store, [['set', ['unknown', 'a'], 'canonical']])
@@ -510,7 +562,7 @@ def default_mode(parent):
         'large': [('big.bin', os.urandom(2 * 1024 * 1024))],
         'none': [],
     }
-    for name, blobs in blob_sets.items(): blob_case(parent, 'blobs-' + name, blobs)
+    for name, blobs in blob_sets.items(): case('blobs-' + name, blob_case, parent, 'blobs-' + name, blobs)
     # Reviewed safety correction beyond parity: native validates every member
     # lexically and checks strict containment before any mkdir or write, so a
     # rooted drive-less name (which PureWindowsPath joins below the drive root),
@@ -529,7 +581,8 @@ def default_mode(parent):
     sandbox = parent / 'containment'; sandbox.mkdir()
     outside = [Path(sandbox.anchor) / 'escaped.sav', sandbox.parent / 'escape.bin', sandbox.parent / 'escaped.sav']
     assert not any(q.exists() for q in outside)
-    for index, (name, blobs) in enumerate(containment.items()):
+    def contained(index, name, blobs):
+        global count
         # Directory names are index based: case labels such as 'nul' are DOS device names.
         out = sandbox / f'case-{index:02d}' / 'out'
         before = snapshot(parent)
@@ -540,6 +593,8 @@ def default_mode(parent):
         same_trees(before, snapshot(parent), f'containment {name}')
         assert not any(q.exists() for q in outside), name
         count += 1
+    for index, (name, blobs) in enumerate(containment.items()):
+        case('containment ' + name, contained, index, name, blobs)
     # Legitimate capture-produced names are unaffected by containment: exact parity remains.
     blob_case(parent, 'blobs-contained', [('trophy00.sav', b'a'), ('work/state/trophy00.sab', b'b'), ('獵人/x.bin', b'c')])
     def existing(directory):
@@ -597,32 +652,38 @@ def file_link_mode(parent):
     # Store directory alias resolves at construction; a linked manifest is refused.
     real = parent / 'real'; write(real, data)
     linked = parent / 'linked'; linked.symlink_to(real, target_is_directory=True)
-    transaction_case(parent, 'linked-root', None, [['set', ['host_settings', 'x'], 1]], lambda d: (d.parent.mkdir(parents=True, exist_ok=True), d.rmdir() if d.exists() else None, write(d.parent / 'target', copy.deepcopy(data)), d.symlink_to(d.parent / 'target', target_is_directory=True)))
+    case('linked-root', transaction_case, parent, 'linked-root', None, [['set', ['host_settings', 'x'], 1]], lambda d: (d.parent.mkdir(parents=True, exist_ok=True), d.rmdir() if d.exists() else None, write(d.parent / 'target', copy.deepcopy(data)), d.symlink_to(d.parent / 'target', target_is_directory=True)))
     def linked_manifest(d):
         d.mkdir(parents=True); write(d.parent / 'elsewhere', copy.deepcopy(data)); (d / 'lodge.json').symlink_to(d.parent / 'elsewhere' / 'lodge.json')
-    assert isinstance(transaction_case(parent, 'linked-manifest', None, [], linked_manifest), FrontendError)
+    case('linked-manifest', lambda: isinstance(transaction_case(parent, 'linked-manifest', None, [], linked_manifest), FrontendError) or fail('expected refusal'))
     def dangling_lock(d): d.mkdir(parents=True); (d / 'lodge.lock').symlink_to(d / 'absent')
-    error = transaction_case(parent, 'dangling-lock', None, [], dangling_lock)
-    assert error is not None
+    case('dangling-lock', lock_link_case, parent, 'dangling-lock', dangling_lock, 'absent')
     def linked_lock(d): d.mkdir(parents=True); (d / 'target.lock').write_bytes(b'x'); (d / 'lodge.lock').symlink_to(d / 'target.lock')
-    assert transaction_case(parent, 'linked-lock', None, [], linked_lock) is not None
+    def linked_lock_untouched():
+        lock_link_case(parent, 'linked-lock', linked_lock, 'never-created')
+        assert (parent / 'linked-lock-native-only' / 'store' / 'target.lock').read_bytes() == b'x'
+    case('linked-lock', linked_lock_untouched)
+    def dangling_directory_lock(d): d.mkdir(parents=True); (d / 'lodge.lock').symlink_to(d / 'absent-dir', target_is_directory=True)
+    case('dangling-directory-lock', lock_link_case, parent, 'dangling-directory-lock', dangling_directory_lock, 'absent-dir')
     def linked_bak(d): write(d, copy.deepcopy(data)); (d / 'lodge.json.bak').symlink_to(d / 'elsewhere.bak')
-    transaction_case(parent, 'linked-bak', None, [['set', ['host_settings', 'x'], 1]], linked_bak)
+    case('linked-bak', transaction_case, parent, 'linked-bak', None, [['set', ['host_settings', 'x'], 1]], linked_bak)
     # write_blobs aliases: linked target, linked intermediate directory, linked ancestor.
     def linked_target(d): (d / 'out').mkdir(); (d / 'elsewhere').write_bytes(b'e'); (d / 'out' / 'e.bin').symlink_to(d / 'elsewhere')
-    assert isinstance(blob_case(parent, 'link-target', [('a/b/c.bin', b'1'), ('e.bin', b'3')], linked_target), FrontendError)
+    case('link-target', lambda: isinstance(blob_case(parent, 'link-target', [('a/b/c.bin', b'1'), ('e.bin', b'3')], linked_target), FrontendError) or fail('expected refusal'))
     def linked_dir(d): (d / 'out').mkdir(); (d / 'elsewhere').mkdir(); (d / 'out' / 'a').symlink_to(d / 'elsewhere', target_is_directory=True)
-    assert isinstance(blob_case(parent, 'link-dir', [('a/b/c.bin', b'1')], linked_dir), FrontendError)
+    case('link-dir', lambda: isinstance(blob_case(parent, 'link-dir', [('a/b/c.bin', b'1')], linked_dir), FrontendError) or fail('expected refusal'))
     def linked_root(d): (d / 'elsewhere').mkdir(); (d / 'out').symlink_to(d / 'elsewhere', target_is_directory=True)
-    assert isinstance(blob_case(parent, 'link-root', [('c.bin', b'1')], linked_root), FrontendError)
+    case('link-root', lambda: isinstance(blob_case(parent, 'link-root', [('c.bin', b'1')], linked_root), FrontendError) or fail('expected refusal'))
     def dangling_target(d): (d / 'out').mkdir(); (d / 'out' / 'e.bin').symlink_to(d / 'absent')
-    assert isinstance(blob_case(parent, 'link-dangling', [('e.bin', b'3')], dangling_target), FrontendError)
+    case('link-dangling', lambda: isinstance(blob_case(parent, 'link-dangling', [('e.bin', b'3')], dangling_target), FrontendError) or fail('expected refusal'))
     # session_root under a linked sessions directory.
     store = parent / 'session-store'; write(store, data); (store / 'elsewhere').mkdir(); (store / 'sessions').symlink_to(store / 'elsewhere', target_is_directory=True)
     identity = str(uuid.uuid4())
-    _, error = python_outcome(lambda: session_root(Store(store), identity))
-    assert isinstance(error, FrontendError)
-    expect(run([api, 'session-root', store], framed(identity)), error)
+    def linked_sessions():
+        _, error = python_outcome(lambda: session_root(Store(store), identity))
+        assert isinstance(error, FrontendError)
+        expect(run([api, 'session-root', store], framed(identity)), error)
+    case('linked-sessions', linked_sessions)
     return 0
 
 
@@ -718,4 +779,8 @@ with tempfile.TemporaryDirectory(prefix='c2-native-store-write-') as temporary:
     if code == 77:
         print(f'{mode}: capability unavailable on this host; skipped')
         sys.exit(77)
+if failures:
+    print(f'{len(failures)} case(s) failed ({mode}) on {os.name}; {count} checks passed before/around them')
+    for failure in failures: print(failure)
+    sys.exit(1)
 print(f'{count} authoritative write-primitive comparisons and safety checks passed ({mode}) on {os.name}')
