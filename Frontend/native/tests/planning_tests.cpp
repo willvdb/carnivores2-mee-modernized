@@ -1,12 +1,13 @@
 // Test-only line-framed adapter for the pure planning policies. It obtains the
 // supplied observations through the already verified native readers (store,
-// catalog projection) and supplied JSON values; it is never added to the
-// production CLI.
+// instance inspection, catalog projection) and supplied JSON values; it is
+// never added to the production CLI.
 #include "c2/frontend/planning.hpp"
 #include "c2/frontend/store.hpp"
 #include "catalog_internal.hpp"
 #include "content_internal.hpp"
 #include "discovery_internal.hpp"
+#include "manifest_access.hpp"
 #include "planning_internal.hpp"
 #include "store_paths.hpp"
 #include <iostream>
@@ -22,7 +23,9 @@ using compat::Kind;
 namespace pi = planning_internal;
 static_assert(!std::is_default_constructible_v<planning::Revision>);
 static_assert(!std::is_default_constructible_v<planning::Selection>);
+static_assert(!std::is_default_constructible_v<planning::StateObservation>);
 static_assert(!std::is_default_constructible_v<planning::GenesisPlan>);
+static_assert(!std::is_default_constructible_v<planning::LaunchRequest>);
 static void require(bool ok, const char* what) { if (!ok) throw std::runtime_error(std::string("planning typed assertion: ") + what); }
 static std::vector<std::u32string> texts(const Value& array) {
     std::vector<std::u32string> out;
@@ -100,10 +103,54 @@ static std::string genesis(const Value& r, bool hunt) {
     if (seam_error) throw *seam_error;
     return seam_bytes;
 }
+static std::string launch(const Value& r) {
+    auto store = content_internal::native_units(r.at(U"store").string);
+    auto manifest = Store(store).read();
+    const auto& association_id = r.at(U"association").string;
+    const Value& associations = ManifestAccess::data(manifest).at(U"associations");
+    std::optional<InstanceObservation> instance;
+    if (associations.contains(association_id)) instance.emplace(get_instance(manifest, associations.at(association_id).at(U"instance_id").string));
+    // An unknown association fails before any observation is consulted; the
+    // driver still has to hand over some owned observation.
+    DiscoveryObservation observation = instance ? inspect_instance(*instance) : recognize(store);
+    const Value& arguments = r.at(U"arguments");
+    const auto &id = r.at(U"id").string, &created_at = r.at(U"created_at").string;
+    std::string seam_bytes; std::optional<planning::Error> seam_error;
+    std::optional<planning::LaunchRequest> stage_one;
+    try { stage_one.emplace(pi::begin_launch(manifest, association_id, observation, arguments, id, created_at)); seam_bytes = stage_one->export_json(); }
+    catch (const planning::Error& e) { seam_error.emplace(e); }
+    if (r.contains(U"typed") && r.at(U"typed").boolean) {
+        planning::LaunchSelection selection{arguments.at(U"area").string, strings_of(arguments.at(U"licenses")), strings_of(arguments.at(U"weapons")),
+            strings_of(arguments.at(U"equipment")), arguments.at(U"mode").string, planning::Integer{arguments.at(U"time_of_day").integer}};
+        same_outcome(seam_bytes, seam_error ? &*seam_error : nullptr, [&] { return planning::begin_launch(manifest, association_id, observation, selection, id, created_at).export_json(); });
+    }
+    if (seam_error) throw *seam_error;
+    require(stage_one->selection_status() == U"blocked" && stage_one->candidate_argv().empty() && !stage_one->process_launch_allowed(), "stage one shape");
+    // An unrecognized installation is final here: no projection or state is consulted.
+    if (stage_one->complete()) return seam_bytes;
+    auto parsed = compat::parse(seam_bytes);
+    require(parsed.at(U"capabilities").at(U"installation_recognized").string == U"yes" && !parsed.contains(U"affordability"), "recognized stage one");
+    const Value& instance_value = discovery_internal::instance_value(*instance);
+    std::optional<catalog::Projection> projection{catalog::project(content_internal::native_units(instance_value.at(U"path").string), instance_value.at(U"dialect_hint").string)};
+    auto state = planning::PlanningAccess::state(r.at(U"state"));
+    auto result = planning::evaluate_launch(*stage_one, *projection, state);
+    require(result.complete() && !result.process_launch_allowed(), "stage two completion");
+    bool rejected = false;
+    try { (void)planning::evaluate_launch(result, *projection, state); } catch (const std::invalid_argument&) { rejected = true; }
+    require(rejected, "complete request evaluated twice");
+    auto copy = result;
+    projection.reset(); stage_one.reset(); instance.reset();
+    auto bytes = copy.export_json();
+    auto value = compat::parse(bytes);
+    require(copy.selection_status() == value.at(U"selection_status").string && copy.candidate_argv() == texts(value.at(U"candidate_argv")), "stage two typed");
+    require(copy.diagnostic_codes() == codes(value.at(U"diagnostics")) && state.export_json() == compat::display(value.at(U"state_observation")), "stage two state");
+    return bytes;
+}
 static std::string run(const Value& r) {
     const auto& op = r.at(U"op").string;
     if (op == U"observer") return genesis(r, false);
     if (op == U"hunt") return genesis(r, true);
+    if (op == U"launch") return launch(r);
     throw std::runtime_error("unknown test operation");
 }
 int main() {

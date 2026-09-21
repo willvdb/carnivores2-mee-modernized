@@ -1,6 +1,7 @@
 #pragma once
 // Pure planning policies (2C.1): the revision-pinned Genesis observer and hunt
-// policies (lodge.genesis / lodge.genesis_hunt). Every input is supplied by the
+// policies (lodge.genesis / lodge.genesis_hunt) and the evaluation core of the
+// generic launch dry-run (lodge.launch.prepare). Every input is supplied by the
 // caller as an owned observation; nothing here reads the filesystem, takes the
 // store lock, snapshots or captures pins, executes the codec helper or an
 // engine, generates identities or timestamps, or writes the manifest. The
@@ -92,4 +93,49 @@ GenesisPlan observer_policy(const Revision&, const catalog::Projection&, const I
 GenesisPlan hunt_policy(const Revision&, const catalog::Projection&, const Integer& slot,
                         const Selection&, const std::optional<Integer>& score);
 
+// lodge.launch.prepare arguments (CLI --area/--license/--weapon/--equipment/--mode/--time).
+struct LaunchSelection {
+    std::u32string area;
+    std::vector<std::u32string> licenses, weapons, equipment;
+    std::u32string mode = U"hunt";
+    Integer time_of_day{"1"};
+};
+// The association state observation exactly as refresh_association returns it
+// (status, diagnostics, inspected files with decoded saves, or missing-state).
+// 2C.1 only consumes it; its native producer is the 2C.2 refresh wrapper.
+class StateObservation {
+public:
+    std::string export_json() const;
+private:
+    struct Impl;
+    std::shared_ptr<const Impl> impl_;
+    explicit StateObservation(std::shared_ptr<const Impl>);
+    friend struct PlanningAccess;
+};
+// Immutable launch dry-run request. complete() is false only for a recognized
+// stage-one request, which evaluate_launch completes.
+class LaunchRequest {
+public:
+    bool complete() const noexcept;
+    const std::u32string& selection_status() const noexcept;
+    std::vector<std::u32string> candidate_argv() const;
+    std::vector<std::u32string> diagnostic_codes() const;
+    bool process_launch_allowed() const noexcept; // always false
+    std::string export_json() const;
+private:
+    struct Impl;
+    std::shared_ptr<const Impl> impl_;
+    explicit LaunchRequest(std::shared_ptr<const Impl>);
+    friend struct PlanningAccess;
+};
+// Stage one: manifest lookups plus the supplied installation observation of the
+// association's instance, with the caller's request id and creation time. When
+// the installation is not recognized the request is final; the reference never
+// projects the catalog or refreshes state on that path, so neither is taken.
+LaunchRequest begin_launch(const Manifest&, std::u32string_view association_id,
+                           const DiscoveryObservation& observation, const LaunchSelection&,
+                           std::u32string_view id, std::u32string_view created_at);
+// Stage two over the supplied catalog projection of the instance and the
+// refreshed association state. A complete request throws std::invalid_argument.
+LaunchRequest evaluate_launch(const LaunchRequest&, const catalog::Projection&, const StateObservation&);
 }

@@ -8,14 +8,27 @@
 namespace c2::frontend::planning {
 struct Revision::Impl { compat::Value value; };
 struct Selection::Impl { compat::Value value; };
+struct StateObservation::Impl { compat::Value value; };
 struct GenesisPlan::Impl { compat::Value value; };
+struct LaunchRequest::Impl {
+    compat::Value request;
+    bool complete = true;
+    // Stage-one inputs retained for stage two.
+    compat::Value association, instance, hunter, observation, arguments;
+};
 struct PlanningAccess {
     static Revision revision(compat::Value v) { auto p = std::make_shared<Revision::Impl>(); p->value = std::move(v); return Revision(std::move(p)); }
     static Selection selection(compat::Value v) { auto p = std::make_shared<Selection::Impl>(); p->value = std::move(v); return Selection(std::move(p)); }
+    static StateObservation state(compat::Value v) { auto p = std::make_shared<StateObservation::Impl>(); p->value = std::move(v); return StateObservation(std::move(p)); }
     static GenesisPlan plan(compat::Value v) { auto p = std::make_shared<GenesisPlan::Impl>(); p->value = std::move(v); return GenesisPlan(std::move(p)); }
+    static std::shared_ptr<LaunchRequest::Impl> request_impl() { return std::make_shared<LaunchRequest::Impl>(); }
+    static std::shared_ptr<LaunchRequest::Impl> request_impl(const LaunchRequest& r) { return std::make_shared<LaunchRequest::Impl>(*r.impl_); }
+    static LaunchRequest request(std::shared_ptr<const LaunchRequest::Impl> p) { return LaunchRequest(std::move(p)); }
     static const compat::Value& value(const Revision& r) { return r.impl_->value; }
     static const compat::Value& value(const Selection& s) { return s.impl_->value; }
+    static const compat::Value& value(const StateObservation& s) { return s.impl_->value; }
     static const compat::Value& value(const GenesisPlan& p) { return p.impl_->value; }
+    static const LaunchRequest::Impl& impl(const LaunchRequest& r) { return *r.impl_; }
 };
 }
 namespace c2::frontend::planning_internal {
@@ -42,4 +55,8 @@ Value observer_policy(const Value& revision, const catalog::Projection&, const V
                       const Value& selection, const Value& score);
 Value hunt_policy(const Value& revision, const catalog::Projection&, const Value& slot,
                   const Value& selection, const Value& score);
+// Supplied-value launch stage one; `arguments` is an object with area,
+// licenses, weapons, equipment, mode and time_of_day of any retained kinds.
+planning::LaunchRequest begin_launch(const Manifest&, std::u32string_view association_id,
+    const DiscoveryObservation&, const Value& arguments, std::u32string_view id, std::u32string_view created_at);
 }
