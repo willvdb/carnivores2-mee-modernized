@@ -71,6 +71,9 @@ std::u32string hostname() {
     return store_paths::native_points(fs::path(name));
 }
 std::string pid() { return std::to_string(GetCurrentProcessId()); }
+// Existence of a directory entry without following it (lstat equivalent):
+// GetFileAttributesW reports a symbolic link or junction itself.
+bool entry_exists(const fs::path& path) { return GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES; }
 #else
 std::error_code last_error() { return {errno, std::system_category()}; }
 // Move-only owner: a copy would let two destructors close one descriptor and
@@ -170,7 +173,11 @@ Handle create_temporary(const fs::path& parent, fs::path& temporary) {
                              CREATE_NEW, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
         if (h.open()) { temporary = candidate; return h; }
         auto ec = last_error();
-        if (ec.value() != ERROR_FILE_EXISTS && ec.value() != ERROR_ALREADY_EXISTS)
+        // An existing entry of any kind means a colliding name: files and file
+        // links report ERROR_FILE_EXISTS, directories, directory links and
+        // junctions ERROR_ACCESS_DENIED. Only a genuine error on an absent
+        // name propagates; the entry is never opened, followed or removed.
+        if (ec.value() != ERROR_FILE_EXISTS && ec.value() != ERROR_ALREADY_EXISTS && !entry_exists(candidate))
             throw fs::filesystem_error("cannot create temporary", candidate, ec);
 #else
         Handle h(::open(candidate.c_str(), O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600));
@@ -302,7 +309,11 @@ WriterLock::WriterLock(const fs::path& directory, const FailureHook& hook) : pat
                          FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
     if (!h.open()) {
         auto ec = last_error();
-        if (ec.value() == ERROR_FILE_EXISTS || ec.value() == ERROR_ALREADY_EXISTS)
+        // Any existing entry is the standard refusal: files and file links
+        // report ERROR_FILE_EXISTS; directories, directory links and junctions
+        // report ERROR_ACCESS_DENIED, so existence is confirmed without
+        // following. A genuine error on an absent path propagates unchanged.
+        if (ec.value() == ERROR_FILE_EXISTS || ec.value() == ERROR_ALREADY_EXISTS || entry_exists(path_))
             throw StoreError("frontend writer lock exists: " + display_path(path_) + "; verify its owner before manual recovery");
         throw fs::filesystem_error("cannot create writer lock", path_, ec);
     }
