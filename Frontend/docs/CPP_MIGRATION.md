@@ -90,7 +90,9 @@ escaping and indentation are reviewable independently of checkout line endings.
 Main is `d1c83566668fd55007f02cbcc2e703623523fa8a` (PR #24, 2B.1, head
 `220fa93d513fb64aa0d74ef56727bf96e0a31aaf`; 28/28 CI green; approved by the
 prior coordinator). Active slice: **2B.2** on `frontend/cpp-catalog-projection`
-from that merge. Unresolved findings: none recorded. Next: 2C Genesis planning.
+from that merge; its implementation checkpoint is published below and awaits
+independent review, actual final-head CI and merge. Unresolved findings: none
+recorded. Next: 2C Genesis planning.
 Implementation and independent review use separately routed Fable agents; the
 coordinator records final dispositions in the PR, not in this ledger.
 
@@ -101,7 +103,7 @@ coordinator records final dispositions in the PR, not in this ledger.
 | `status`, `host-settings` (read), `hunter list`, `expedition list`, `managed-state inspect` | CLI views (1A.2, 1B.1) |
 | `profiles` | Library only (1B.2/1B.3); CLI pending 7 |
 | `expedition discover` (read-only), `expedition refresh` observation | Library only (2A); refresh write pending 5A |
-| `catalog` | Parser 2B.1; projection 2B.2; CLI pending 7 |
+| `catalog` | Parser 2B.1; projection library 2B.2 (review pending); CLI pending 7 |
 | `launch-dry-run`, `genesis-observer-plan`, `native-hunt plan` | Pending 2C |
 | `session prepare-synthetic/inspect/run/reconcile/recover`, `simulate-return` | Pending 3B-4C (synthetic sessions remain developer tooling) |
 | `native-observer prepare/run`, `native-hunt prepare/run/inspect` | Pending 3B-4C |
@@ -1489,3 +1491,45 @@ evidence remains applicable; no redundant full local rerun is claimed. This
 attribute plus ledger correction is published as a focused non-force follow-up.
 Actual final-head Windows/Linux CI and independent review remain required; no
 merge or later slice is authorized by this implementation checkpoint.
+
+### Slice 2B.2 implementation checkpoint
+
+The additive `catalog.hpp` API adds `text_reference` and `project` with owned
+immutable `TextObservation`, `Entry` and `Projection` handles, typed queries
+and exact Python-order `export_json`. A private `catalog_internal.hpp` seam
+shares the parser's handle representation with the sibling projection TU so
+parsed scripts embed without re-parsing exported JSON; no foundation helper
+changed. Root resolution, reference resolution, walking, prefix reads and
+SHA-256 reuse the existing native pieces. Script size is checked by stat
+before a read bounded just past 8 MiB; text references are gated by regular
+file, strictly greater than 1 MiB is `too-large`, otherwise actual bytes are
+split with Python `str.splitlines` semantics over the Latin-1 projection.
+The unusual-label regex is reproduced over the Latin-1 domain with the
+Unicode word table and ASCII-only case folding that Python exhibits there;
+`\b` over labels beyond Latin-1 is unreachable from parsed scripts and throws.
+Arbitrary-magnitude AI values keep decimal arithmetic for `DINO{ai-9}` and
+numeric duplicate-AI ordering; conversion errors propagate as
+`ScalarConversionError` exactly where the reference raises `ValueError`.
+Substituted FIFOs and directories at found script/text references fail closed
+where Python would block or raise, as in prior slices. No CLI, Genesis,
+mutation, Python or golden change is included.
+
+The new `frontend-native-catalog-projection` CTest authors temporary trees
+only and compares exact display bytes, compact values, error kinds and
+messages, typed handles retained after every projection dies, and unchanged
+source snapshots: 257 cases including MENU/RES/both, missing/ambiguous/
+unsafe scripts, exact and over-limit scripts, multiple blocks, AI edge
+cases, every Latin-1 byte around instruction words, int/str/blank labels,
+declared reference kinds, surplus and non-integer prices, slot-six
+combinations, 4/5/6 accessories with conflicts, 1 MiB boundaries, every
+separator, high bytes in text and names, `.map`/`.c2map`/`'.map'` files,
+explicit areas, conversion limits, eight dialect hints and forty random roots.
+
+Verification used separate external Debug and ASan/UBSan build directories
+with a pinned CPython 3.12.14 (Unicode 15.0.0) oracle, each session fully
+awaited. Full Debug passed all 23 CTests in 109.00 seconds (projection 17.66
+seconds; all unchanged 154 Python tests in 19.118 seconds; the three POSIX
+permission capabilities Passed under the local identity). Focused ASan/UBSan
+with `ASAN_OPTIONS=detect_leaks=0` (LSan unavailable under ptrace) passed 4/4
+in 97.39 seconds (projection 65.15, catalog 30.76). Actual Windows/Linux CI,
+independent review and merge remain gates; this checkpoint approves nothing.
