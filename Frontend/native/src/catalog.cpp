@@ -1,23 +1,12 @@
 #include "c2/frontend/catalog.hpp"
+#include "catalog_internal.hpp"
 #include "c2/frontend/core.hpp"
-#include "json_compat.hpp"
 #include "schema_compat.hpp"
 #include <algorithm>
 
 namespace c2::frontend::catalog {
 using compat::Value;
 using compat::Kind;
-struct Node::Impl { std::shared_ptr<const Value> value; };
-struct Script::Impl {
-    std::shared_ptr<const Value> value;
-    std::string bytes, hash;
-};
-struct Access {
-    static Node node(std::shared_ptr<const Value> value) {
-        auto p = std::make_shared<Node::Impl>(); p->value = std::move(value);
-        return Node(std::move(p));
-    }
-};
 namespace {
 #include "profile_unicode.inc" // Existing pinned Unicode 15.0 Nd table and oracle.
 Value string(std::u32string s) { Value v; v.kind = Kind::string; v.string = std::move(s); return v; }
