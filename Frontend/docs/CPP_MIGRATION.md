@@ -87,20 +87,25 @@ escaping and indentation are reviewable independently of checkout line endings.
 
 ## Current state
 
-Main is `aac4b33a1e6420e047c5fbfd9633b2d7071d9219` (PR #25, 2B.2, reviewed
-head `7f28dbef9f21c382ed4e79096d8b557926a8c996`; independent Fable review
-APPROVE with no blockers, disposition recorded on PR #25; 28/28 CI green).
-Active slice: **2C.1** pure planning policies on `frontend/cpp-planning-policies`
-from that merge: Genesis observer and hunt policies plus the generic
-launch-dry-run evaluation over supplied observations are implemented
-(`planning.hpp`; checkpoint below) and await independent review and CI.
-Deferred to **2C.2**, after 3A locking: the `genesis-observer-plan`,
-`native-hunt plan` and `launch-dry-run` wrappers (store lock, pin
-snapshot/capture, codec-helper evidence, the native `StateObservation`
-producer and the `last_observation` manifest write). Unresolved findings: none.
-Carried forward from the 2B.2 review: `project`/`text_reference` also propagate
-`ContentError`, `StoreError` and `filesystem_error`; a future CLI must catch
-`std::exception`.
+Main is `74ee0d69f658805545732e9d329d7c1f7e75b895` (PR #26, 2C.1, reviewed
+head `86c1ea08dae987ceb6daa618ee88de132a4f9911`; independent Fable review
+APPROVE with no blockers, disposition recorded on PR #26; 28/28 CI green).
+Active slice: **3A** private write primitives on `frontend/cpp-write-primitives`
+from that merge: atomic replacement, the store writer lock, id/timestamp
+generation, the manifest transaction with backup, and blob writes. Journal
+persistence/transitions stay in 3B; backup restoration stays in 5B.
+Deferred to **2C.2**, after 3A: the `genesis-observer-plan`, `native-hunt plan`
+and `launch-dry-run` wrappers (store lock, pin snapshot/capture, codec-helper
+evidence, the `StateObservation` producer and the `last_observation` write).
+Carried into 2C.2 from the 2C.1 review: assert `kind == 'unexpected'` for the
+two KeyError oracle cases; bind or document that `evaluate_launch` receives the
+projection/state of the same stage-one instance and that callers check
+`complete()`; add a canonical non-negative ordinal guard before masks.
+Convention since 2C.1: reference `TypeError` paths map to `std::invalid_argument`;
+module errors carry only reference `FrontendError` messages. From 2B.2:
+`project`/`text_reference` also propagate `ContentError`, `StoreError` and
+`filesystem_error`; a future CLI must catch `std::exception`.
+Unresolved findings: none.
 Implementation and independent review use separately routed Fable agents; the
 coordinator records final dispositions in the PR, not in this ledger.
 
@@ -134,9 +139,9 @@ coordinator records final dispositions in the PR, not in this ledger.
 | 2A.2 coherent-root discovery/instance observations | Reviewed and merged in PR #23; overall 2A complete |
 | 2B.1 pure catalog parser/scalars | Reviewed and merged in PR #24 |
 | 2B.2 filesystem catalog projection | Reviewed and merged in PR #25 |
-| 2C.1 pure planning policies | In progress on `frontend/cpp-planning-policies` |
+| 2C.1 pure planning policies | Reviewed and merged in PR #26 |
 | 2C.2 planning wrappers (lock, pins, observation write) | Pending; after 3A |
-| 3A safe paths/capture/atomic I/O | Pending |
+| 3A safe paths/capture/atomic I/O | In progress on `frontend/cpp-write-primitives` |
 | 3B preparation/journal | Pending |
 | 4A trust/process/capabilities | Pending |
 | 4B runner/log/cancel | Pending |
