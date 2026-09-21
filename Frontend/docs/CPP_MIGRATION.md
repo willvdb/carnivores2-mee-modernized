@@ -85,6 +85,30 @@ unknown metadata, duplicates, type distinctions, numeric boundaries, fixed
 binary64 samples and Unicode cases. Expected payloads are stored as hex so LF,
 escaping and indentation are reviewable independently of checkout line endings.
 
+## Current state
+
+Main is `d1c83566668fd55007f02cbcc2e703623523fa8a` (PR #24, 2B.1, head
+`220fa93d513fb64aa0d74ef56727bf96e0a31aaf`; 28/28 CI green; approved by the
+prior coordinator). Active slice: **2B.2** on `frontend/cpp-catalog-projection`
+from that merge. Unresolved findings: none recorded. Next: 2C Genesis planning.
+Implementation and independent review use separately routed Fable agents; the
+coordinator records final dispositions in the PR, not in this ledger.
+
+### Operation coverage (Python CLI to native)
+
+| Python command | Native status |
+| --- | --- |
+| `status`, `host-settings` (read), `hunter list`, `expedition list`, `managed-state inspect` | CLI views (1A.2, 1B.1) |
+| `profiles` | Library only (1B.2/1B.3); CLI pending 7 |
+| `expedition discover` (read-only), `expedition refresh` observation | Library only (2A); refresh write pending 5A |
+| `catalog` | Parser 2B.1; projection 2B.2; CLI pending 7 |
+| `launch-dry-run`, `genesis-observer-plan`, `native-hunt plan` | Pending 2C |
+| `session prepare-synthetic/inspect/run/reconcile/recover`, `simulate-return` | Pending 3B-4C (synthetic sessions remain developer tooling) |
+| `native-observer prepare/run`, `native-hunt prepare/run/inspect` | Pending 3B-4C |
+| `hunter create/select/rename/archive`, `host-settings --json`, `associate`, `refresh-state` | Pending 5A |
+| `expedition register/relocate`, `discover --register-managed`, `managed-state upgrade`, `recover-backup` | Pending 5B |
+| `managed-state preview/accept/recover-acceptance` | Pending 6A/6B |
+
 ## Relay checklist
 
 | Slice | Status |
@@ -98,8 +122,8 @@ escaping and indentation are reviewable independently of checkout line endings.
 | 1B.3 filesystem profile inventory/inspection | Reviewed and merged in PR #21; overall 1B read observations complete |
 | 2A.1 reference resolution/content fingerprint | Reviewed and merged in PR #22 |
 | 2A.2 coherent-root discovery/instance observations | Reviewed and merged in PR #23; overall 2A complete |
-| 2B.1 pure catalog parser/scalars | In progress; independent review pending |
-| 2B.2 filesystem catalog projection | Pending |
+| 2B.1 pure catalog parser/scalars | Reviewed and merged in PR #24 |
+| 2B.2 filesystem catalog projection | In progress on `frontend/cpp-catalog-projection` |
 | 2C Genesis planning | Pending |
 | 3A safe paths/capture/atomic I/O | Pending |
 | 3B preparation/journal | Pending |
