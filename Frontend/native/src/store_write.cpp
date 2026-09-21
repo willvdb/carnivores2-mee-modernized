@@ -9,6 +9,7 @@
 #include <ctime>
 #include <set>
 #include <system_error>
+#include <type_traits>
 #include <utility>
 #ifdef _WIN32
 #define NOMINMAX
@@ -29,8 +30,19 @@ using compat::Value;
 namespace {
 #ifdef _WIN32
 std::error_code last_error() { return {static_cast<int>(GetLastError()), std::system_category()}; }
+// Move-only owner: a copy would let two destructors close one HANDLE and a
+// later write reach an unrelated reopened handle. Never rely on elision.
 struct Handle {
     HANDLE value = INVALID_HANDLE_VALUE;
+    Handle() = default;
+    explicit Handle(HANDLE h) noexcept : value(h) {}
+    Handle(const Handle&) = delete;
+    Handle& operator=(const Handle&) = delete;
+    Handle(Handle&& other) noexcept : value(other.value) { other.value = INVALID_HANDLE_VALUE; }
+    Handle& operator=(Handle&& other) noexcept {
+        if (this != &other) { close(); value = other.value; other.value = INVALID_HANDLE_VALUE; }
+        return *this;
+    }
     bool open() const { return value != INVALID_HANDLE_VALUE; }
     void close() { if (open()) { CloseHandle(value); value = INVALID_HANDLE_VALUE; } }
     ~Handle() { close(); }
@@ -62,8 +74,19 @@ std::u32string hostname() {
 std::string pid() { return std::to_string(GetCurrentProcessId()); }
 #else
 std::error_code last_error() { return {errno, std::system_category()}; }
+// Move-only owner: a copy would let two destructors close one descriptor and
+// a later write reach an unrelated reused descriptor. Never rely on elision.
 struct Handle {
     int value = -1;
+    Handle() = default;
+    explicit Handle(int fd) noexcept : value(fd) {}
+    Handle(const Handle&) = delete;
+    Handle& operator=(const Handle&) = delete;
+    Handle(Handle&& other) noexcept : value(other.value) { other.value = -1; }
+    Handle& operator=(Handle&& other) noexcept {
+        if (this != &other) { close(); value = other.value; other.value = -1; }
+        return *this;
+    }
     bool open() const { return value >= 0; }
     void close() { if (open()) { ::close(value); value = -1; } }
     ~Handle() { close(); }
@@ -80,7 +103,7 @@ void random_bytes(unsigned char* out, std::size_t n) {
     }
     if (offset == n) return;
 #endif
-    Handle device{::open("/dev/urandom", O_RDONLY | O_CLOEXEC)};
+    Handle device(::open("/dev/urandom", O_RDONLY | O_CLOEXEC));
     if (!device.open()) throw StoreError("system random source unavailable");
     while (offset < n) {
         auto got = ::read(device.value, out + offset, n - offset);
@@ -97,11 +120,13 @@ std::u32string hostname() {
 }
 std::string pid() { return std::to_string(::getpid()); }
 void fsync_directory(const fs::path& directory) {
-    Handle h{::open(directory.c_str(), O_RDONLY | O_CLOEXEC)};
+    Handle h(::open(directory.c_str(), O_RDONLY | O_CLOEXEC));
     if (!h.open()) throw fs::filesystem_error("cannot open directory", directory, last_error());
     if (::fsync(h.value) != 0) throw fs::filesystem_error("cannot fsync directory", directory, last_error());
 }
 #endif
+static_assert(!std::is_copy_constructible_v<Handle> && !std::is_copy_assignable_v<Handle>, "handles are move-only");
+static_assert(std::is_nothrow_move_constructible_v<Handle> && std::is_nothrow_move_assignable_v<Handle>, "handles move without throwing");
 void fire(const FailureHook& hook, WritePhase phase, const fs::path& path) { if (hook) hook(phase, path); }
 void write_all(Handle& h, std::string_view content, const fs::path& path) {
     std::size_t offset = 0;
@@ -139,14 +164,14 @@ Handle create_temporary(const fs::path& parent, fs::path& temporary) {
         for (auto b : raw) name.push_back(alphabet[b % 37]);
         auto candidate = parent / name;
 #ifdef _WIN32
-        Handle h{CreateFileW(candidate.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
-                             CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr)};
+        Handle h(CreateFileW(candidate.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                             CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr));
         if (h.open()) { temporary = candidate; return h; }
         auto ec = last_error();
         if (ec.value() != ERROR_FILE_EXISTS && ec.value() != ERROR_ALREADY_EXISTS)
             throw fs::filesystem_error("cannot create temporary", candidate, ec);
 #else
-        Handle h{::open(candidate.c_str(), O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600)};
+        Handle h(::open(candidate.c_str(), O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600));
         if (h.open()) { temporary = candidate; return h; }
         if (errno != EEXIST) throw fs::filesystem_error("cannot create temporary", candidate, last_error());
 #endif
@@ -257,8 +282,8 @@ void atomic_write(const fs::path& path, std::string_view content, const FailureH
 WriterLock::WriterLock(const fs::path& directory, const FailureHook& hook) : path_(directory / "lodge.lock") {
     fs::create_directories(directory);
 #ifdef _WIN32
-    Handle h{CreateFileW(path_.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, CREATE_NEW,
-                         FILE_ATTRIBUTE_NORMAL, nullptr)};
+    Handle h(CreateFileW(path_.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, CREATE_NEW,
+                         FILE_ATTRIBUTE_NORMAL, nullptr));
     if (!h.open()) {
         auto ec = last_error();
         if (ec.value() == ERROR_FILE_EXISTS || ec.value() == ERROR_ALREADY_EXISTS)
@@ -266,7 +291,7 @@ WriterLock::WriterLock(const fs::path& directory, const FailureHook& hook) : pat
         throw fs::filesystem_error("cannot create writer lock", path_, ec);
     }
 #else
-    Handle h{::open(path_.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600)};
+    Handle h(::open(path_.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600));
     if (!h.open()) {
         if (errno == EEXIST)
             throw StoreError("frontend writer lock exists: " + display_path(path_) + "; verify its owner before manual recovery");
