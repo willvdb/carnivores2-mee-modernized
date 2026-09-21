@@ -156,7 +156,13 @@ def blob_case(parent, name, blobs, prepare=None, target='out'):
     header = json.dumps([[k, len(v)] for k, v in blobs], ensure_ascii=True).encode()
     result = run([api, 'write-blobs', trees['native'] / target], framed(header) + b''.join(v for _, v in blobs))
     expect(result, error, (trees['python'], trees['native']))
-    assert snapshot(trees['python']) == snapshot(trees['native']), (name, error)
+    python_tree, native_tree = snapshot(trees['python']), snapshot(trees['native'])
+    if isinstance(error, FrontendError) and str(error) == 'unsafe captured state path':
+        # Native validates every member before creating the target directory,
+        # so only Python's empty target directory may differ (fail closed).
+        assert target not in native_tree and not any(k.startswith(target + '/') for k in python_tree), (name, python_tree)
+        python_tree.pop(target, None); python_tree.pop('.', None); native_tree.pop('.', None)  # root nlink/size follow that directory
+    assert python_tree == native_tree, (name, error)
     return error
 
 
@@ -436,21 +442,45 @@ def default_mode(parent):
         'nested': [('a/b/c.bin', b'1'), ('a/d.bin', b'2'), ('e.bin', b'3'), ('a/b/f/g.bin', b'4')],
         'unicode': [('獵人-🦖-é.sav', b'u'), ('diré/\U0001f985.bin', b'v')],
         'normalized': [('./x/.//y.bin', b'n'), ('z/', b'trailing')],
-        'empty-name': [('', b'empty')],
-        'dot-name': [('.', b'dot')],
         'parent': [('../escape.bin', b'x')],
         'parent-inner': [('a/../b.bin', b'x')],
-        # Native-absolute and UNC spellings are absolute on every flavor; a rooted
-        # drive-less name is NOT absolute under PureWindowsPath and must never be used here.
         'absolute': [(str(parent / 'escape.bin'), b'x')],
         'unc-absolute': [('//server/share/escape.bin', b'x')],
         'backslash': [('a\\b.bin', b'x')],
         'colon': [('a:b.bin', b'x')],
-        'ordered-partial': [('ok.bin', b'first'), ('bad:name', b'second')],
         'large': [('big.bin', os.urandom(2 * 1024 * 1024))],
         'none': [],
     }
     for name, blobs in blob_sets.items(): blob_case(parent, 'blobs-' + name, blobs)
+    # Reviewed safety correction beyond parity: native validates every member
+    # lexically and checks strict containment before any mkdir or write, so a
+    # rooted drive-less name (which PureWindowsPath joins below the drive root),
+    # an empty/dot name (the directory itself) or a late bad member creates
+    # nothing. Python is deliberately not run on these: only the native driver.
+    containment = {
+        'rooted': [('/escaped.sav', b'x')], 'rooted-nested': [('/a/escaped.sav', b'x')],
+        'rooted-dot': [('/./escaped.sav', b'x')], 'unc': [('//server/share/x', b'x')],
+        'drive-colon': [('c:escaped.sav', b'x')], 'drive-rooted': [('c:/escaped.sav', b'x')],
+        'empty': [('', b'x')], 'dot': [('.', b'x')], 'dot-slash': [('./', b'x')],
+        'parent-only': [('..', b'x')], 'parent-deep': [('a/../../b', b'x')], 'parent-trailing': [('a/..', b'x')],
+        'nul': [('a\x00b', b'x')], 'backslash-root': [('\\x', b'x')],
+        'late-bad': [('ok.bin', b'first'), ('a/ok2.bin', b'second'), ('/escaped.sav', b'third')],
+        'late-parent': [('ok.bin', b'first'), ('../escape.bin', b'second')],
+    }
+    sandbox = parent / 'containment'; sandbox.mkdir()
+    outside = [Path(sandbox.anchor) / 'escaped.sav', sandbox.parent / 'escape.bin', sandbox.parent / 'escaped.sav']
+    assert not any(q.exists() for q in outside)
+    for name, blobs in containment.items():
+        out = sandbox / name / 'out'
+        before = snapshot(parent)
+        header = json.dumps([[k, len(v)] for k, v in blobs], ensure_ascii=True).encode()
+        p = run([api, 'write-blobs', out], framed(header) + b''.join(v for _, v in blobs))
+        assert p.returncode == 2 and p.stderr == b'error: unsafe captured state path\n', (name, p)
+        assert not out.exists() and not (sandbox / name).exists() and snapshot(parent) == before, name
+        assert not any(q.exists() for q in outside), name
+        count += 1
+    # Legitimate capture-produced names are unaffected by containment: exact parity remains.
+    blob_case(parent, 'blobs-contained', [('trophy00.sav', b'a'), ('work/state/trophy00.sab', b'b'), ('獵人/x.bin', b'c')])
     def existing(directory):
         (directory / 'out').mkdir(); (directory / 'out' / 'a').mkdir()
         (directory / 'out' / 'a' / 'd.bin').write_bytes(b'old'); (directory / 'out' / 'keep.bin').write_bytes(b'keep')

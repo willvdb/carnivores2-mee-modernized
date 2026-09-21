@@ -360,32 +360,43 @@ fs::path session_root(const Store& store, std::u32string_view identity) {
     store_paths::safe_path(root);
     return root;
 }
+// Lexical containment: every component of directory prefixes path exactly and
+// path continues below it. No filesystem access and no alias resolution.
+bool strictly_beneath(const fs::path& path, const fs::path& directory) {
+    auto p = path.begin(), d = directory.begin();
+    for (; d != directory.end(); ++p, ++d)
+        if (p == path.end() || *p != *d) return false;
+    return p != path.end();
+}
 void write_blobs(const fs::path& directory, const std::vector<CapturedBlob>& blobs, const FailureHook& hook) {
     store_paths::safe_path(directory);
+#ifdef _WIN32
+    constexpr bool nt = true;
+#else
+    constexpr bool nt = false;
+#endif
+    // Reviewed safety correction beyond reference parity: the reference joins
+    // a rooted drive-less NT member below the drive root. Every member is
+    // validated lexically, and its destination checked for strict containment,
+    // before any directory or file is created; nothing is partially written.
+    std::vector<fs::path> targets;
+    for (const auto& blob : blobs) {
+        const auto parsed = schema::path(blob.path, nt);
+        bool unsafe = !parsed.drive.empty() || !parsed.root.empty() || parsed.parent() || parsed.parts.empty() ||
+            blob.path.find_first_of(U"\\:") != std::u32string::npos || blob.path.find(U'\0') != std::u32string::npos;
+        auto path = directory;
+        for (const auto& part : parsed.parts) if (!unsafe) path /= units(part);
+        if (unsafe || !strictly_beneath(path, directory)) throw StoreError("unsafe captured state path");
+        targets.push_back(std::move(path));
+    }
     fs::create_directories(directory);
     std::set<fs::path> directories{directory, directory.parent_path()};
-    for (const auto& blob : blobs) {
-#ifdef _WIN32
-        constexpr bool nt = true;
-#else
-        constexpr bool nt = false;
-#endif
-        const auto parsed = schema::path(blob.path, nt);
-        if (parsed.absolute() || parsed.parent() || blob.path.find(U'\\') != std::u32string::npos ||
-            blob.path.find(U':') != std::u32string::npos)
-            throw StoreError("unsafe captured state path");
-        // PurePath join: a rooted drive-less NT name replaces the directory
-        // tail exactly as the reference does; parts are already normalized.
-        auto path = directory;
-        if (!parsed.root.empty()) path /= units(parsed.drive + parsed.root);
-        for (const auto& part : parsed.parts) path /= units(part);
+    for (std::size_t i = 0; i < blobs.size(); ++i) {
+        const auto& path = targets[i];
         store_paths::safe_path(path);
         fs::create_directories(path.parent_path());
-        atomic_write(path, blob.bytes, hook);
-        if (parsed.root.empty()) {
-            auto ancestor = directory;
-            for (std::size_t i = 0; i + 1 < parsed.parts.size(); ++i) { ancestor /= units(parsed.parts[i]); directories.insert(ancestor); }
-        }
+        atomic_write(path, blobs[i].bytes, hook);
+        for (auto ancestor = path.parent_path(); ancestor != directory; ancestor = ancestor.parent_path()) directories.insert(ancestor);
     }
 #ifndef _WIN32
     // File replacement fsyncs its own directory. Also persist every new
