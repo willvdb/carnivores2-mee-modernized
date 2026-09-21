@@ -1,13 +1,16 @@
 """Differential write-primitive tests against unchanged Python store/session_io.
 
-Disposable stores only. Modes: default (portable), file-link (symlink aliases;
-skip 77 when the host cannot create links), posix (durability phases, modes,
-FIFOs and raw names; skip 77 elsewhere).
+Disposable stores only. Modes: default (portable persistence), utilities
+(timestamps and identities, kept apart so they cannot mask persistence
+failures), file-link (symlink aliases; skip 77 when the host cannot create
+links), posix (durability phases, modes, FIFOs and raw names; skip 77
+elsewhere), elision-unavailable (explicit skip 77 when the compiler cannot
+disable copy elision for the no-elision driver).
 """
 import copy
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import socket
 import stat
@@ -50,8 +53,6 @@ def reap():
             p.kill()
         try: p.communicate(timeout=30)
         except (ValueError, OSError, subprocess.TimeoutExpired): pass
-
-
 
 
 def framed(payload):
@@ -201,6 +202,43 @@ def check_lock_content(content, pid):
     assert datetime.fromisoformat(info['created_at']).isoformat() == info['created_at']
 
 
+def utilities_mode(parent):
+    global count
+    # Timestamps: exact strings across the datetime range (years 1..9999), computed
+    # with timedelta so the oracle itself never depends on the platform's fromtimestamp.
+    epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    cases = [(0, 0), (0, 1), (1, 999999), (951782400, 0), (951868799, 123456), (1700000000, 5), (4102444800, 100000), (-1, 0), (-1, 999999),
+             (-86400, 0), (-2208988800, 0), (-62135596800, 0), (-62135596800, 1), (253402300799, 0), (253402300799, 999999), (951782400 - 86400, 0),
+             (int(datetime.now(timezone.utc).timestamp()), 0)]
+    for seconds, micros in cases:
+        expected = (epoch + timedelta(seconds=seconds)).replace(microsecond=micros).isoformat()
+        p = run([api, 'isoformat', seconds, micros])
+        assert p.returncode == 0 and p.stdout == expected.encode() + b'\n', (seconds, micros, p.stdout, expected)
+        count += 1
+    for seconds, micros in [(253402300800, 0), (-62135596801, 0), (10**12, 0), (-10**12, 0), (0, 1000000)]:
+        try: (epoch + timedelta(seconds=seconds)).replace(microsecond=micros)
+        except (OverflowError, ValueError): pass
+        else: raise AssertionError((seconds, micros))
+        p = run([api, 'isoformat', seconds, micros])
+        assert p.returncode == 2 and not p.stdout and p.stderr == b'error: timestamp outside the supported range (years 1-9999)\n', (seconds, micros, p)
+        count += 1
+    before = datetime.now(timezone.utc)
+    stamp = run([api, 'now']).stdout.decode().strip()
+    after = datetime.now(timezone.utc)
+    parsed = datetime.fromisoformat(stamp)
+    assert parsed.isoformat() == stamp and stamp.endswith('+00:00') and before <= parsed <= after, (stamp, before, after)
+    count += 1
+    # Identities: canonical lowercase uuid4 strings; valid_id agrees with the reference.
+    ids = run([api, 'new-id', 500]).stdout.decode().split()
+    assert len(ids) == 500 == len(set(ids)) and all(valid_id(v) and uuid.UUID(v).version == 4 and uuid.UUID(v).variant == uuid.RFC_4122 for v in ids)
+    candidates = [ids[0], ids[0].upper(), '{' + ids[0] + '}', 'urn:uuid:' + ids[0], ids[0].replace('-', ''), ids[0][:-1], ids[0] + '0', ids[0].replace('-', '_', 1), '', 'x' * 36,
+                  ids[0][:8] + '\u2010' + ids[0][9:], ids[0][:35] + 'g', ' ' + ids[0][1:], 'S\ud800\U0001f985' + ids[0][2:], 3, None, ['a']]
+    p = run([api, 'valid-id'], framed(candidates))
+    assert p.stdout.decode().split() == [str(int(valid_id(c))) for c in candidates], (p.stdout, candidates)
+    count += 2
+    return 0
+
+
 def default_mode(parent):
     global count
     # Foundation: json.dumps default separators with and without sort_keys.
@@ -211,24 +249,6 @@ def default_mode(parent):
             p = run([api, 'dumps', str(sort_keys)], framed(value))
             assert p.returncode == 0 and p.stdout == json.dumps(value, sort_keys=bool(sort_keys)).encode() + b'\n', (value, sort_keys, p)
             count += 1
-    # Timestamps and identities.
-    for seconds, micros in [(0, 0), (0, 1), (1, 999999), (951782400, 0), (951868799, 123456), (1700000000, 5), (4102444800, 100000), (253402300799, 0)]:
-        p = run([api, 'isoformat', seconds, micros])
-        expected = datetime.fromtimestamp(seconds, timezone.utc).replace(microsecond=micros).isoformat()
-        assert p.returncode == 0 and p.stdout == expected.encode() + b'\n', (seconds, micros, p.stdout, expected)
-        count += 1
-    before = datetime.now(timezone.utc)
-    stamp = run([api, 'now']).stdout.decode().strip()
-    after = datetime.now(timezone.utc)
-    parsed = datetime.fromisoformat(stamp)
-    assert parsed.isoformat() == stamp and stamp.endswith('+00:00') and before <= parsed <= after, (stamp, before, after)
-    ids = run([api, 'new-id', 500]).stdout.decode().split()
-    assert len(ids) == 500 == len(set(ids)) and all(valid_id(v) and uuid.UUID(v).version == 4 and uuid.UUID(v).variant == uuid.RFC_4122 for v in ids)
-    candidates = [ids[0], ids[0].upper(), '{' + ids[0] + '}', 'urn:uuid:' + ids[0], ids[0].replace('-', ''), ids[0][:-1], ids[0] + '0', ids[0].replace('-', '_', 1), '', 'x' * 36,
-                  ids[0][:8] + '‐' + ids[0][9:], ids[0][:35] + 'g', ' ' + ids[0][1:], 'S\ud800\U0001f985' + ids[0][2:], 3, None, ['a']]
-    p = run([api, 'valid-id'], framed(candidates))
-    assert p.stdout.decode().split() == [str(int(valid_id(c))) for c in candidates], (p.stdout, candidates)
-    count += 1
     # atomic_write: bytes, missing/present targets, failures and residue.
     target = parent / 'atomic'; target.mkdir()
     contents = [b'', b'\x00\xff\n\r\x1a' * 3, os.urandom(5 * 1024 * 1024)]
@@ -449,6 +469,7 @@ def default_mode(parent):
         count += 1
     # session_root: identity validation and safe path checks.
     store = parent / 'sessions-store'; write(store, base())
+    ids = [str(uuid.uuid4()) for _ in range(2)]
     for identity in [ids[0], ids[0].upper(), 'x', '', '../x', H]:
         expected, error = python_outcome(lambda: session_root(Store(store), identity))
         p = run([api, 'session-root', store], framed(identity))
@@ -667,10 +688,13 @@ def posix_mode(parent):
     return 0
 
 
+if mode == 'elision-unavailable':
+    print('Compiler cannot disable copy elision; the no-elision write-primitive gate is skipped on this host')
+    sys.exit(77)
 with tempfile.TemporaryDirectory(prefix='c2-native-store-write-') as temporary:
     parent = Path(temporary).resolve()
     try:
-        code = {'default': default_mode, 'file-link': file_link_mode, 'posix': posix_mode}[mode](parent) or 0
+        code = {'default': default_mode, 'utilities': utilities_mode, 'file-link': file_link_mode, 'posix': posix_mode}[mode](parent) or 0
     finally:
         reap()
     if code == 77:

@@ -19,6 +19,8 @@ enum class WritePhase {
 // The path is the object acted on (temporary, target, directory or lock).
 using FailureHook = std::function<void(WritePhase, const std::filesystem::path&)>;
 // datetime.now(timezone.utc).isoformat(): microseconds omitted when zero.
+// Seconds since the epoch within years 1..9999 on every platform; outside
+// that range (or microseconds >= 1000000) throws StoreError.
 std::string isoformat_utc(std::int64_t seconds, unsigned microseconds);
 std::string now();
 // str(uuid.uuid4()) from the operating-system CSPRNG.

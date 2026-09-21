@@ -188,6 +188,8 @@ if(BUILD_TESTING)
       "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_store_write.py" "$<TARGET_FILE:c2-frontend-store-write-no-elision-tests>" elision-unavailable)
   endif()
   set_tests_properties(frontend-store-write-no-elision PROPERTIES SKIP_RETURN_CODE 77)
+  add_test(NAME frontend-store-write-utilities COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_store_write.py" "$<TARGET_FILE:c2-frontend-store-write-tests>" utilities)
   # Named capabilities return CTest skip 77 when the host cannot exercise them.
   add_test(NAME frontend-store-write-file-link COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_store_write.py" "$<TARGET_FILE:c2-frontend-store-write-tests>" file-link)

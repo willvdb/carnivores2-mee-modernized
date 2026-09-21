@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
-#include <ctime>
 #include <set>
 #include <system_error>
 #include <type_traits>
@@ -206,19 +205,28 @@ fs::path units(const std::u32string& points) {
 std::string two(int v) { return (v < 10 ? "0" : "") + std::to_string(v); }
 }
 std::string isoformat_utc(std::int64_t seconds, unsigned microseconds) {
-    std::time_t t = static_cast<std::time_t>(seconds);
-    std::tm parts{};
-#ifdef _WIN32
-    if (gmtime_s(&parts, &t) != 0) throw StoreError("cannot format UTC timestamp");
-#else
-    if (!gmtime_r(&t, &parts)) throw StoreError("cannot format UTC timestamp");
-#endif
-    int year = parts.tm_year + 1900;
-    if (year < 1 || year > 9999 || microseconds >= 1000000) throw StoreError("cannot format UTC timestamp");
+    // datetime supports years 1..9999 on every platform; the C library's
+    // gmtime does not, so the civil date is computed directly (proleptic
+    // Gregorian, days-from-epoch to year/month/day) and the range is explicit.
+    constexpr std::int64_t minimum = -62135596800, maximum = 253402300799;
+    if (seconds < minimum || seconds > maximum || microseconds >= 1000000)
+        throw StoreError("timestamp outside the supported range (years 1-9999)");
+    std::int64_t days = seconds / 86400, second_of_day = seconds % 86400;
+    if (second_of_day < 0) { second_of_day += 86400; --days; }
+    const std::int64_t z = days + 719468;
+    const std::int64_t era = (z >= 0 ? z : z - 146096) / 146097;
+    const std::int64_t doe = z - era * 146097;
+    const std::int64_t yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    const std::int64_t doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    const std::int64_t mp = (5 * doy + 2) / 153;
+    const int day = static_cast<int>(doy - (153 * mp + 2) / 5 + 1);
+    const int month = static_cast<int>(mp < 10 ? mp + 3 : mp - 9);
+    const std::int64_t year = yoe + era * 400 + (month <= 2 ? 1 : 0);
     std::string y = std::to_string(year);
     y.insert(0, 4 - y.size(), '0');
-    std::string out = y + "-" + two(parts.tm_mon + 1) + "-" + two(parts.tm_mday) + "T" + two(parts.tm_hour) + ":" +
-                      two(parts.tm_min) + ":" + two(parts.tm_sec);
+    const int hour = static_cast<int>(second_of_day / 3600), minute = static_cast<int>(second_of_day / 60 % 60),
+        second = static_cast<int>(second_of_day % 60);
+    std::string out = y + "-" + two(month) + "-" + two(day) + "T" + two(hour) + ":" + two(minute) + ":" + two(second);
     if (microseconds) {
         std::string fraction = std::to_string(microseconds);
         out += "." + std::string(6 - fraction.size(), '0') + fraction;
