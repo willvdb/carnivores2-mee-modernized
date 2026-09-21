@@ -145,6 +145,25 @@ if(BUILD_TESTING)
   add_test(NAME frontend-native-store COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_store_read.py"
     "$<TARGET_FILE:c2-frontend-native>" "$<TARGET_FILE:c2-frontend-store-tests>")
+  add_executable(c2-frontend-store-write-tests native/tests/store_write_tests.cpp)
+  target_link_libraries(c2-frontend-store-write-tests PRIVATE c2_frontend_core)
+  target_include_directories(c2-frontend-store-write-tests PRIVATE native/src)
+  if(MSVC)
+    target_compile_options(c2-frontend-store-write-tests PRIVATE /W4 /utf-8)
+  else()
+    target_compile_options(c2-frontend-store-write-tests PRIVATE -Wall -Wextra -Wpedantic)
+  endif()
+  add_test(NAME frontend-native-store-write COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_store_write.py" "$<TARGET_FILE:c2-frontend-store-write-tests>")
+  # Named capabilities return CTest skip 77 when the host cannot exercise them.
+  add_test(NAME frontend-store-write-file-link COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_store_write.py" "$<TARGET_FILE:c2-frontend-store-write-tests>" file-link)
+  set_tests_properties(frontend-store-write-file-link PROPERTIES SKIP_RETURN_CODE 77)
+  if(UNIX)
+    add_test(NAME frontend-store-write-posix-durability COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_store_write.py" "$<TARGET_FILE:c2-frontend-store-write-tests>" posix)
+    set_tests_properties(frontend-store-write-posix-durability PROPERTIES SKIP_RETURN_CODE 77)
+  endif()
   add_executable(c2-frontend-schema-tests native/tests/schema_tests.cpp)
   target_link_libraries(c2-frontend-schema-tests PRIVATE c2_frontend_core)
   target_include_directories(c2-frontend-schema-tests PRIVATE native/src)
