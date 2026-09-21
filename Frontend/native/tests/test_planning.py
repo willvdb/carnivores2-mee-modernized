@@ -79,6 +79,9 @@ def compare(request, expected):
             assert (actual['kind'], actual['error']) == (kind, message), (request, expected, actual)
         elif kind == 'type':
             assert actual['kind'] == 'type', (request, expected, actual)
+        else:
+            # Reference KeyError and similar non-FrontendError, non-TypeError paths.
+            assert kind == 'unexpected' and actual['kind'] == 'unexpected', (request, expected, actual)
     else:
         expected_json = json.dumps(expected, indent=2, ensure_ascii=True, allow_nan=False) + '\n'
         assert actual['ok'], (request, expected_json, actual)
