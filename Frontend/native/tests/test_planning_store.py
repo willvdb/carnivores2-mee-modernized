@@ -11,12 +11,30 @@ import unittest
 FRONTEND = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(FRONTEND), str(FRONTEND / 'tests')]
 from lodge.discovery import register  # noqa: E402
+from lodge.launch import prepare  # noqa: E402
 from lodge.profiles import associate, refresh_association  # noqa: E402
 from lodge.store import FrontendError, Store, hunter  # noqa: E402
 from support import game  # noqa: E402
 from test_profiles import room_bytes, save_bytes  # noqa: E402
 
 DRIVER, PROBE = sys.argv[1], sys.argv[2]
+SCRIPT = """weapons {
+{
+ name = 'Synthetic weapon'
+}
+}
+characters {
+{
+ name = 'Synthetic group'
+ ai = 10
+}
+}
+prices {
+ area = 5
+ dino = 10
+ weapon = 20
+}
+"""
 
 
 def native(directory, identity, probe=PROBE):
@@ -34,6 +52,7 @@ class RefreshState(unittest.TestCase):
         os.environ.pop('C2_PROFILE_PROBE', None)
         self.base = Path(self.temp.name).resolve()
         self.root = game(self.base)
+        (self.root / 'HUNTDAT/_MENU.TXT').write_text(SCRIPT)
         (self.root / 'trophy00.sav').write_bytes(save_bytes())
         (self.root / 'trophy00.sab').write_bytes(room_bytes())
         self.store = Store(self.base / 'Lodge')
@@ -90,6 +109,45 @@ class RefreshState(unittest.TestCase):
             # The managed copy is observed, not the installation.
             (self.root / 'trophy00.sav').write_bytes(save_bytes()[:-1] + b'\x7f')
             self.assertEqual(self.both(managed['id'])[1]['status'], 'unchanged-state')
+
+    def launch(self, identity, area, licenses, weapons, mode='hunt', time_of_day=1):
+        twin = self.base / 'Twin'
+        shutil.rmtree(twin, ignore_errors=True)
+        shutil.copytree(self.store.directory, twin)
+        try:
+            with self.store.transaction() as data:
+                expected = prepare(self.store, data, identity, area, licenses, weapons, (), mode, time_of_day, PROBE)
+        except FrontendError as error:
+            expected = str(error)
+        environment = {k: v for k, v in os.environ.items() if k != 'C2_PROFILE_PROBE'}
+        done = subprocess.run([DRIVER, 'launch-dry-run', str(twin), identity, PROBE, area, ','.join(licenses),
+                               ','.join(weapons), mode, str(time_of_day)], capture_output=True, timeout=60,
+                              env=environment, check=True)
+        kind, _, rest = done.stdout.decode().partition(' ')
+        if isinstance(expected, str):
+            self.assertEqual((kind, rest.rstrip('\n')), ('frontend', expected))
+        else:
+            self.assertEqual(kind, 'ok', rest)
+            actual = json.loads(rest)
+            for volatile in ('id', 'created_at'):
+                self.assertIsInstance(actual.pop(volatile), str)
+                expected.pop(volatile)
+            self.assertEqual(json.dumps(actual), json.dumps(expected))
+        self.assertEqual((twin / 'lodge.json').read_bytes(), (self.store.directory / 'lodge.json').read_bytes())
+        self.assertFalse((twin / 'lodge.lock').exists())
+        return expected
+
+    def test_launch_dry_run_matches_reference_and_writes_observation(self):
+        result = self.launch(self.referenced, 'areas:0', ['licenses:0'], ['weapons:0'])
+        self.assertEqual(result['candidate_argv'], ['reg=0', 'prj=huntdat/areas/area1', 'din=1', 'wep=1', 'dtm=1'])
+        self.assertFalse(result['process_launch_allowed'])
+        self.assertIn('last_observation', self.store.read()['associations'][self.referenced])
+        self.assertEqual(self.launch(self.referenced, 'areas:99', [], [])['selection_status'], 'blocked')
+        (self.root / 'trophy00.sav').write_bytes(save_bytes()[:-1] + b'\x7f')
+        drifted = self.launch(self.referenced, 'areas:0', ['licenses:0'], ['weapons:0'])
+        self.assertIn('native-state-review-required', [d['code'] for d in drifted['diagnostics']])
+        self.assertEqual(drifted['candidate_argv'], [])
+        self.launch('0a9b8c7d-1234-4abc-8def-001122334455', 'areas:0', [], [])
 
     def test_unknown_association_writes_nothing(self):
         before = (self.store.directory / 'lodge.json').read_bytes()

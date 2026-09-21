@@ -1,4 +1,6 @@
 #include "planning_store.hpp"
+#include "c2/frontend/catalog.hpp"
+#include "c2/frontend/discovery.hpp"
 #include "c2/frontend/profile_files.hpp"
 #include "content_internal.hpp"
 #include "planning_internal.hpp"
@@ -84,5 +86,31 @@ Value refresh_state(const Store& store, std::u32string_view identity, const std:
     Value result;
     store_write::transaction(store, [&](Value& data) { result = refresh_association(store, data, identity, probe); }, hook);
     return result;
+}
+
+planning::LaunchRequest launch_dry_run(const Store& store, std::u32string_view association_id,
+                                       const planning::LaunchSelection& selection,
+                                       const std::optional<fs::path>& probe, const store_write::FailureHook& hook) {
+    std::optional<planning::LaunchRequest> request;
+    store_write::transaction(store, [&](Value& data) {
+        Value* associations = member(data, U"associations");
+        Value* association = associations ? member(*associations, association_id) : nullptr;
+        if (!association) throw StoreError("unknown association ID");
+        const std::u32string instance_id = text(*association, U"instance_id");
+        // The writer lock is held: this read observes the bytes the transaction read.
+        const Manifest manifest = store.read();
+        const InstanceObservation instance = get_instance(manifest, instance_id);
+        const DiscoveryObservation observation = inspect_instance(instance);
+        const std::string id = store_write::new_id(), created_at = store_write::now();
+        auto stage_one = planning::begin_launch(manifest, association_id, observation, selection,
+            std::u32string(id.begin(), id.end()), std::u32string(created_at.begin(), created_at.end()));
+        if (stage_one.complete()) { request.emplace(std::move(stage_one)); return; }
+        const Value& instance_value = member(data, U"instances")->at(instance_id);
+        const auto projection = catalog::project(content_internal::native_units(text(instance_value, U"path")),
+                                                 text(instance_value, U"dialect_hint"));
+        const Value state = refresh_association(store, data, association_id, probe);
+        request.emplace(planning::evaluate_launch(stage_one, projection, planning::PlanningAccess::state(state)));
+    }, hook);
+    return *request;
 }
 }
