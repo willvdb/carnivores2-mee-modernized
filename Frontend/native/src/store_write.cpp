@@ -163,8 +163,11 @@ Handle create_temporary(const fs::path& parent, fs::path& temporary) {
         for (auto b : raw) name.push_back(alphabet[b % 37]);
         auto candidate = parent / name;
 #ifdef _WIN32
+        // The name is unpredictable, so following a planted link is not a
+        // practical hazard; the flag still keeps CREATE_NEW equivalent to the
+        // POSIX O_EXCL|O_NOFOLLOW create and retries a colliding entry unfollowed.
         Handle h(CreateFileW(candidate.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
-                             CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr));
+                             CREATE_NEW, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
         if (h.open()) { temporary = candidate; return h; }
         auto ec = last_error();
         if (ec.value() != ERROR_FILE_EXISTS && ec.value() != ERROR_ALREADY_EXISTS)
@@ -290,8 +293,13 @@ void atomic_write(const fs::path& path, std::string_view content, const FailureH
 WriterLock::WriterLock(const fs::path& directory, const FailureHook& hook) : path_(directory / "lodge.lock") {
     fs::create_directories(directory);
 #ifdef _WIN32
+    // Reviewed Windows safety correction beyond Python-on-Windows parity:
+    // CREATE_NEW alone follows a symlink or junction at lodge.lock and would
+    // create and write its target (possibly outside the store). Opening the
+    // reparse point itself makes any existing entry the standard refusal,
+    // matching POSIX O_EXCL, and never follows, writes through or removes it.
     Handle h(CreateFileW(path_.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, CREATE_NEW,
-                         FILE_ATTRIBUTE_NORMAL, nullptr));
+                         FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
     if (!h.open()) {
         auto ec = last_error();
         if (ec.value() == ERROR_FILE_EXISTS || ec.value() == ERROR_ALREADY_EXISTS)
