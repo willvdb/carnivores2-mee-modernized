@@ -16,4 +16,7 @@ struct Access {
     }
     static const std::shared_ptr<const compat::Value>& value(const Script& script) { return script.impl_->value; }
 };
+// Retained complete projection value (the Python project result), for sibling
+// TUs that evaluate over it without serializing and reparsing exported JSON.
+const std::shared_ptr<const compat::Value>& projection_value(const Projection&);
 }

@@ -175,6 +175,8 @@ Value inspect(const Value& instance) {
 }
 struct DiscoveryObservation::Impl { Value value; std::optional<std::vector<std::u32string>> executables; };
 struct DiscoveryAccess {
+    static const Value& value(const DiscoveryObservation& o) { return o.impl_->value; }
+    static const Value& value(const InstanceObservation& i);
     static DiscoveryObservation make(Value value) {
         auto p = std::make_shared<DiscoveryObservation::Impl>(); p->value = std::move(value);
         if (p->value.contains(U"executables")) {
@@ -185,6 +187,7 @@ struct DiscoveryAccess {
     }
 };
 DiscoveryObservation::DiscoveryObservation(std::shared_ptr<const Impl> p) : impl_(std::move(p)) {}
+const Value& discovery_internal::observation_value(const DiscoveryObservation& o) { return DiscoveryAccess::value(o); }
 bool DiscoveryObservation::recognized() const noexcept { return impl_->value.at(U"recognized").boolean; }
 std::optional<std::u32string> DiscoveryObservation::path() const {
     return impl_->value.contains(U"path") ? std::optional<std::u32string>(impl_->value.at(U"path").string) : std::nullopt;
@@ -234,6 +237,8 @@ std::vector<DiscoveryObservation> discover(const fs::path& source) {
     return out;
 }
 struct InstanceObservation::Impl { Value value; ReadPolicy policy; };
+const Value& DiscoveryAccess::value(const InstanceObservation& i) { return i.impl_->value; }
+const Value& discovery_internal::instance_value(const InstanceObservation& i) { return DiscoveryAccess::value(i); }
 InstanceObservation::InstanceObservation(std::shared_ptr<const Impl> p) : impl_(std::move(p)) {}
 const std::u32string& InstanceObservation::id() const noexcept { return impl_->value.at(U"id").string; }
 const std::u32string& InstanceObservation::path() const noexcept { return impl_->value.at(U"path").string; }
