@@ -475,6 +475,7 @@ std::string TextObservation::export_json() const { return compat::display(text_v
 struct Entry::Impl { std::shared_ptr<const Value> value; };
 struct Projection::Impl { std::shared_ptr<const Value> value; std::string sha256; std::vector<std::pair<std::u32string, Script>> scripts; };
 struct ProjectionAccess {
+    static const std::shared_ptr<const Value>& value(const Projection& p) { return p.impl_->value; }
     static Entry entry(std::shared_ptr<const Value> value) {
         auto p = std::make_shared<Entry::Impl>(); p->value = std::move(value);
         return Entry(std::move(p));
@@ -487,6 +488,7 @@ struct ProjectionAccess {
 };
 Entry::Entry(std::shared_ptr<const Impl> p) : impl_(std::move(p)) {}
 Projection::Projection(std::shared_ptr<const Impl> p) : impl_(std::move(p)) {}
+const std::shared_ptr<const Value>& projection_value(const Projection& p) { return ProjectionAccess::value(p); }
 const std::u32string& Entry::id() const noexcept { return impl_->value->at(U"id").string; }
 const std::u32string& Entry::kind() const noexcept { return impl_->value->at(U"kind").string; }
 std::size_t Entry::ordinal() const { return index_of(impl_->value->at(U"ordinal")); }

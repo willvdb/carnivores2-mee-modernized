@@ -36,6 +36,7 @@ private:
     explicit InstanceObservation(std::shared_ptr<const Impl>);
     friend InstanceObservation get_instance(const Manifest&, const std::u32string&);
     friend DiscoveryObservation inspect_instance(const InstanceObservation&);
+    friend struct DiscoveryAccess;
 };
 DiscoveryObservation recognize(const std::filesystem::path&);
 std::vector<DiscoveryObservation> discover(const std::filesystem::path&);

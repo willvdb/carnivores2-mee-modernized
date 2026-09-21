@@ -9,6 +9,7 @@
 namespace c2::frontend {
 using compat::Value;
 struct Manifest::Impl { Value data; ReadPolicy policy; std::filesystem::path directory; };
+const Value& ManifestAccess::data(const Manifest& m) { return m.impl_->data; }
 const Value& ManifestAccess::instances(const Manifest& m) { return m.impl_->data.at(U"instances"); }
 const ReadPolicy& ManifestAccess::policy(const Manifest& m) { return m.impl_->policy; }
 struct GenerationObservation::Impl {
