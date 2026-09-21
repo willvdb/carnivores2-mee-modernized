@@ -50,6 +50,7 @@ private:
     struct Impl;
     std::shared_ptr<const Impl> impl_;
     explicit Script(std::shared_ptr<const Impl>);
+    friend struct Access;
     friend Script parse_script(std::string_view, std::u32string_view);
 };
 // Pure memory observations. Source is an opaque label, including NUL/surrogates.
