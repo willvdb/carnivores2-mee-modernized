@@ -92,10 +92,12 @@ head `7f28dbef9f21c382ed4e79096d8b557926a8c996`; independent Fable review
 APPROVE with no blockers, disposition recorded on PR #25; 28/28 CI green).
 Active slice: **2C.1** pure planning policies on `frontend/cpp-planning-policies`
 from that merge: Genesis observer and hunt policies plus the generic
-launch-dry-run evaluation over supplied observations. Deferred to **2C.2**,
-after 3A locking: the `genesis-observer-plan`, `native-hunt plan` and
-`launch-dry-run` wrappers (store lock, pin snapshot/capture, codec-helper
-evidence and the `last_observation` manifest write). Unresolved findings: none.
+launch-dry-run evaluation over supplied observations are implemented
+(`planning.hpp`; checkpoint below) and await independent review and CI.
+Deferred to **2C.2**, after 3A locking: the `genesis-observer-plan`,
+`native-hunt plan` and `launch-dry-run` wrappers (store lock, pin
+snapshot/capture, codec-helper evidence, the native `StateObservation`
+producer and the `last_observation` manifest write). Unresolved findings: none.
 Carried forward from the 2B.2 review: `project`/`text_reference` also propagate
 `ContentError`, `StoreError` and `filesystem_error`; a future CLI must catch
 `std::exception`.
@@ -110,7 +112,7 @@ coordinator records final dispositions in the PR, not in this ledger.
 | `profiles` | Library only (1B.2/1B.3); CLI pending 7 |
 | `expedition discover` (read-only), `expedition refresh` observation | Library only (2A); refresh write pending 5A |
 | `catalog` | Parser 2B.1; projection library 2B.2; CLI pending 7 |
-| `launch-dry-run`, `genesis-observer-plan`, `native-hunt plan` | Pure policies 2C.1; wrappers 2C.2 (after 3A) |
+| `launch-dry-run`, `genesis-observer-plan`, `native-hunt plan` | Pure policies library 2C.1 (review pending); wrappers 2C.2 (after 3A) |
 | `session prepare-synthetic/inspect/run/reconcile/recover`, `simulate-return` | Pending 3B-4C (synthetic sessions remain developer tooling) |
 | `native-observer prepare/run`, `native-hunt prepare/run/inspect` | Pending 3B-4C |
 | `hunter create/select/rename/archive`, `host-settings --json`, `associate`, `refresh-state` | Pending 5A |
@@ -1540,3 +1542,55 @@ permission capabilities Passed under the local identity). Focused ASan/UBSan
 with `ASAN_OPTIONS=detect_leaks=0` (LSan unavailable under ptrace) passed 4/4
 in 97.39 seconds (projection 65.15, catalog 30.76). Actual Windows/Linux CI,
 independent review and merge remain gates; this checkpoint approves nothing.
+
+### Slice 2C.1 implementation checkpoint
+
+The additive `planning.hpp` API ports `genesis.observer_policy`,
+`genesis_hunt.hunt_policy` and the evaluation core of `launch.prepare` as
+pure functions over supplied observations: no filesystem reads, store lock,
+pin snapshot/capture, codec-helper or engine execution, id/time generation
+or manifest write. `Revision` (from `revision_of(InstanceObservation)`),
+`Selection` (typed constructors reproduce the plan_observer and native-hunt
+CLI key orders), `catalog::Integer` slot and optional-integer score (nullopt
+is every non-exact-integer kind, which the reference refuses identically)
+yield an immutable `GenesisPlan`; `begin_launch(Manifest, association,
+DiscoveryObservation, LaunchSelection, id, created_at)` returns a
+`LaunchRequest` that is final for an unrecognized installation and otherwise
+completed by `evaluate_launch(request, Projection, StateObservation)`.
+`StateObservation` is consumed only; its native producer (the
+refresh_association wrapper and its `last_observation` write) is 2C.2. Every
+reference check is evaluated over the retained values through the private
+seams of the preceding commit, including the hunt contiguous-identity,
+non-slot-six stem and `ai < 10` checks that a fresh native projection cannot
+fail; Python dict equality (numeric equality, exact key set) pins the
+revision, `str.lower`/`strip`/whitespace and `in` semantics follow the
+schema helpers, cost sums and bounds use canonical decimals, and the
+`1 << ordinal` masks are computed only behind the reference's ten-entry gate.
+Errors are `planning::Error` with the reference messages; reference
+TypeError paths (unhashable or non-iterable selections, unorderable native
+scores) throw `std::invalid_argument`. No CLI, wrapper, Python, golden,
+engine/Menu or format change is included.
+
+The new `frontend-native-planning` CTest drives authored trees and stores
+only: pinned and near-miss revisions (each field, extra/missing keys,
+int/float/bool/text kinds, manifest-sourced), dialect hints and script
+families, every expected count off by one, modifier and ambiguity
+diagnostics, slots and scores at every boundary, every area/license/weapon
+ordinal, slot-six candidates, labels including Latin-1 NBSP, unresolved,
+negative, int32-boundary and arbitrary-magnitude prices, selection shapes
+and kinds in reference check order, and for the launch core an unknown
+association, unrecognized/foreign/missing installations, every diagnostic
+branch alone and combined, duplicate/unknown selections, ordinals at and
+above ten, supplied state kinds and shapes, manifest provenance edits and
+engine evidence. 602 cases compare exact display bytes, values, error
+kinds and messages, typed handles retained after every input dies, and the
+typed API against the supplied-value seam.
+
+Verification used separate external Debug and ASan/UBSan build directories
+with the pinned CPython 3.12.14 oracle, each session fully awaited. Full
+Debug passed all 24 CTests in 128.11 seconds
+(planning 22.05 seconds; all unchanged 154 Python tests in
+18.649 seconds; the three POSIX permission capabilities Passed under the local identity). Focused ASan/UBSan with
+`ASAN_OPTIONS=detect_leaks=0` (LSan unavailable under ptrace) passed
+2/2 in 126.81 seconds (planning 62.80, projection 64.00) with no sanitizer report. Actual Windows/Linux CI, independent review and merge
+remain gates; this checkpoint approves nothing.
