@@ -1,5 +1,7 @@
 #include "probe_process.hpp"
+#include "c2/frontend/core.hpp"
 #include "content_internal.hpp"
+#include "schema_compat.hpp"
 #include "planning_internal.hpp"
 #include "store_paths.hpp"
 #include <cerrno>
@@ -401,6 +403,93 @@ compat::Value codec_inspect(std::string_view content, std::string_view kind,
     for (auto& member : result.object)
         if (member.first == U"name_display_latin1") { member.second = string_value(std::move(display)); return result; }
     result.object.emplace_back(U"name_display_latin1", string_value(std::move(display)));
+    return result;
+}
+
+namespace {
+std::string narrow_ascii(const std::u32string& text) {
+    std::string out;
+    for (const char32_t c : text) out.push_back(c < 0x80 ? static_cast<char>(c) : '?');
+    return out;
+}
+compat::Value* member(compat::Value& object, std::u32string_view key) {
+    for (auto& m : object.object) if (m.first == key) return &m.second;
+    return nullptr;
+}
+void assign(compat::Value& object, std::u32string_view key, compat::Value value) {
+    if (auto* existing = member(object, key)) { *existing = std::move(value); return; }
+    object.object.emplace_back(std::u32string(key), std::move(value));
+}
+// decoded.get(key, fallback) over a helper result of any kind; a non-object
+// has no .get in the reference (AttributeError).
+const compat::Value* lookup(const compat::Value& decoded, std::u32string_view key) {
+    if (decoded.kind != compat::Kind::object) throw std::invalid_argument("codec helper result is not an object");
+    return decoded.contains(key) ? &decoded.at(key) : nullptr;
+}
+}
+
+compat::Value inspect_set(const ProfileState& state, const std::optional<fs::path>& probe,
+                          std::string_view dialect, std::chrono::milliseconds timeout) {
+    using namespace planning_internal;
+    const auto blobs = state.stable_read();
+    compat::Value result = compat::parse(state.export_json());
+    const compat::Value entries = result.at(U"files");
+    const compat::Value slot = integer_value(state.filename_slot());
+    assign(result, U"files", array_value());
+    compat::Value files = array_value();
+    compat::Value& diagnostics = *member(result, U"diagnostics");
+    for (const compat::Value& entry : entries.array) {
+        const std::u32string& path = entry.at(U"path").string;
+        const std::string* content = nullptr;
+        for (const auto& blob : blobs) if (blob.path == path) content = &blob.bytes;
+        if (!content) throw std::logic_error("stable read omitted an inventoried member");
+        const compat::Value decoded = codec_inspect(*content, narrow_ascii(entry.at(U"kind").string), probe, dialect, timeout);
+        compat::Value file = entry;
+        assign(file, U"size", integer_value(std::to_string(content->size())));
+        assign(file, U"sha256", ascii_value(sha256(*content)));
+        assign(file, U"decoded", decoded);
+        files.array.push_back(std::move(file));
+        const compat::Value* registration = lookup(decoded, U"registration");
+        if (registration && !schema::equal(*registration, slot))
+            diagnostics.array.push_back(diagnostic_value(U"registration-mismatch", U"Filename slot disagrees with embedded registration; no normalization performed."));
+        const compat::Value* exact = lookup(decoded, U"codec_roundtrip_exact");
+        if (!exact || !schema::truth(*exact)) {
+            auto d = diagnostic_value(U"unreadable-layout", U"Preserved as opaque bytes; no save compatibility claim.");
+            d.object.emplace_back(U"path", string_value(path));
+            diagnostics.array.push_back(std::move(d));
+        }
+    }
+    diagnostics.array.push_back(diagnostic_value(U"pair-coherence-unverified", U"Two equal observations cannot certify an externally updated SAV/SAB transaction."));
+    *member(result, U"files") = std::move(files);
+    return result;
+}
+
+compat::Value inspect_bytes(const std::vector<CapturedBlob>& blobs, int slot, const fs::path& probe,
+                            std::chrono::milliseconds timeout) {
+    using namespace planning_internal;
+    if (slot < 0 || slot > 7) throw std::invalid_argument("native slot outside 0..7");
+    const std::u32string stem = U"trophy0" + std::u32string(1, static_cast<char32_t>(U'0' + slot));
+    const compat::Value expected = integer_value(std::to_string(slot));
+    compat::Value decoded = object_value(), diagnostics = array_value();
+    for (const auto& blob : blobs) {
+        const bool save = blob.path == stem + U".sav";
+        if (!save && blob.path != stem + U".sab") continue;
+        compat::Value value = codec_inspect(blob.bytes, save ? "sav" : "sab", probe, "unknown", timeout);
+        auto diagnostic = [&](std::string_view code) {
+            auto d = object_value();
+            d.object.emplace_back(U"code", ascii_value(code));
+            d.object.emplace_back(U"path", string_value(blob.path));
+            diagnostics.array.push_back(std::move(d));
+        };
+        const compat::Value* exact = lookup(value, U"codec_roundtrip_exact");
+        if (!exact || !schema::truth(*exact)) diagnostic("unreadable-state");
+        const compat::Value* registration = lookup(value, U"registration");
+        if (registration && !schema::equal(*registration, expected)) diagnostic("registration-mismatch");
+        assign(decoded, blob.path, std::move(value));
+    }
+    compat::Value result = object_value();
+    result.object.emplace_back(U"decoded", std::move(decoded));
+    result.object.emplace_back(U"diagnostics", std::move(diagnostics));
     return result;
 }
 }

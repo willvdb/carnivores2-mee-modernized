@@ -1,5 +1,6 @@
 // Test-only driver for the private probe runner; authored helpers only.
 #include "probe_process.hpp"
+#include "capture.hpp"
 #include <filesystem>
 #include <iostream>
 #include <iterator>
@@ -42,6 +43,21 @@ int main(int argc, char** argv) {
             const auto result = probe_process::run(fs::u8path(argv[4]), arguments, content,
                 std::chrono::milliseconds(std::stol(argv[2])), static_cast<std::size_t>(std::stoull(argv[3])));
             std::cout << "ok " << result.returncode << ' ' << hex(result.out) << ' ' << hex(result.err) << '\n';
+        } else if (command == "inspect-set" && argc == 6) {
+            // inspect-set <root> <key> <dialect> <probe|->
+            const auto inventory = inventory_profiles(fs::u8path(argv[2]));
+            const std::string key = argv[3];
+            for (const auto& state : inventory.states())
+                if (state.key() == std::u32string(key.begin(), key.end())) {
+                    const auto value = probe_process::inspect_set(state, optional_path(argv[5]), argv[4]);
+                    std::cout << "ok " << compat::compact(value) << '\n';
+                    return 0;
+                }
+            std::cout << "missing\n";
+        } else if (command == "inspect-bytes" && argc == 5) {
+            const auto captured = capture(fs::u8path(argv[2]));
+            const auto value = probe_process::inspect_bytes(captured.blobs, std::stoi(argv[3]), fs::u8path(argv[4]));
+            std::cout << "ok " << compat::compact(value) << '\n';
         } else if (command == "evidence" && argc == 3) {
             const auto value = probe_process::codec_evidence(optional_path(argv[2]));
             std::cout << "ok " << compat::compact(value) << '\n';

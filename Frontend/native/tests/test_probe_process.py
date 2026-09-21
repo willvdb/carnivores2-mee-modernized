@@ -131,6 +131,38 @@ class ProbeProcess(unittest.TestCase):
         kind, _ = native('run', '30000', '1000', sys.executable, '-c', 'print("x" * 100000)')
         self.assertEqual(kind, 'limit')
 
+    def test_inspect_set_through_helper_matches_reference(self):
+        root = self.root.resolve() / 'game'
+        root.mkdir()
+        (root / 'trophy03.sav').write_bytes(save(registration=3))
+        (root / 'trophy03.sab').write_bytes(bytes(7176))
+        (root / 'trophy04.sav').write_bytes(save(registration=6))
+        (root / 'TROPHY05.SAV').write_bytes(b'short')
+        (root / 'trophy03.bak').write_bytes(b'companion')
+        for dialect in ('unknown', 'iceage-triassic'):
+            for probe in (PROBE, None):
+                for state in profiles.inventory(root):
+                    expected = profiles.inspect_set(root, state, probe, dialect)
+                    got = native('inspect-set', str(root), state['key'], dialect, probe or '-')
+                    self.assertEqual(got[0], 'ok', got)
+                    self.assertEqual(json.dumps(json.loads(got[1])), json.dumps(expected))
+        codes = [d['code'] for d in profiles.inspect_set(root, profiles.inventory(root)[1], PROBE)['diagnostics']]
+        self.assertIn('registration-mismatch', codes)
+
+    def test_inspect_bytes_matches_reference(self):
+        from lodge import session_io
+        root = self.root.resolve() / 'state'
+        root.mkdir()
+        (root / 'trophy03.sav').write_bytes(save(registration=5))
+        (root / 'trophy03.sab').write_bytes(b'bad')
+        (root / 'trophy04.sav').write_bytes(save(registration=4))
+        _, blobs = session_io.capture(root)
+        decoded, diagnostics = session_io.inspect_bytes(blobs, 3, PROBE)
+        self.assertEqual([d['code'] for d in diagnostics], ['unreadable-state', 'registration-mismatch'])
+        got = native('inspect-bytes', str(root), '3', PROBE)
+        self.assertEqual(got[0], 'ok', got)
+        self.assertEqual(json.dumps(json.loads(got[1])), json.dumps({'decoded': decoded, 'diagnostics': diagnostics}))
+
     def test_codec_evidence(self):
         self.assertEqual(json.loads(native('evidence', PROBE)[1]), sessions.codec_evidence(PROBE))
         self.assertEqual(native('evidence', '-'), ('frontend', 'session requires an explicit profile codec helper'))

@@ -7,6 +7,8 @@
 // process abstraction, engine runner or scheduler. The executable is always
 // supplied by the caller (argument or C2_PROFILE_PROBE); nothing here reads a
 // path out of a journal.
+#include "c2/frontend/generation.hpp"
+#include "c2/frontend/profile_files.hpp"
 #include "json_compat.hpp"
 #include <chrono>
 #include <cstddef>
@@ -50,5 +52,15 @@ compat::Value codec_evidence(const std::optional<std::filesystem::path>& probe);
 compat::Value codec_inspect(std::string_view content, std::string_view kind,
                             const std::optional<std::filesystem::path>& probe,
                             std::string_view dialect = "unknown",
+                            std::chrono::milliseconds timeout = std::chrono::seconds(15));
+// profiles.inspect_set through the configured helper (never the linked
+// codec): stable read, per-member decode, sha256 and the reference
+// diagnostics in order. The state's own projection keeps its key order.
+compat::Value inspect_set(const ProfileState& state, const std::optional<std::filesystem::path>& probe,
+                          std::string_view dialect = "unknown",
+                          std::chrono::milliseconds timeout = std::chrono::seconds(15));
+// session_io.inspect_bytes over captured blobs for a validated slot 0..7:
+// {"decoded": {name: value}, "diagnostics": [...]} in blob order.
+compat::Value inspect_bytes(const std::vector<CapturedBlob>& blobs, int slot, const std::filesystem::path& probe,
                             std::chrono::milliseconds timeout = std::chrono::seconds(15));
 }
