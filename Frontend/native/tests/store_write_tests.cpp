@@ -163,7 +163,8 @@ int run(const std::vector<fs::path>& args) {
 }
 #ifdef _WIN32
 int wmain(int argc, wchar_t** argv) {
-    _setmode(_fileno(stdin), _O_BINARY); _setmode(_fileno(stdout), _O_BINARY);
+    // The harness compares exact LF bytes on every stream, stderr included.
+    _setmode(_fileno(stdin), _O_BINARY); _setmode(_fileno(stdout), _O_BINARY); _setmode(_fileno(stderr), _O_BINARY);
 #else
 int main(int argc, char** argv) {
 #endif

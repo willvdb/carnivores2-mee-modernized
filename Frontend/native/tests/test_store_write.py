@@ -30,8 +30,28 @@ count = 0
 LOCK_MESSAGE = 'frontend writer lock exists: {}; verify its owner before manual recovery'
 
 
+children = []
+
+
 def run(args, stdin=b'', env=None, timeout=60):
     return subprocess.run(list(map(str, args)), input=stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout, env=env)
+
+
+def spawn(args, **kw):
+    """Owned child on binary pipes; every spawned child is reaped at exit."""
+    p = subprocess.Popen(list(map(str, args)), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kw)
+    children.append(p)
+    return p
+
+
+def reap():
+    for p in children:
+        if p.poll() is None:
+            p.kill()
+        try: p.communicate(timeout=30)
+        except (ValueError, OSError, subprocess.TimeoutExpired): pass
+
+
 
 
 def framed(payload):
@@ -167,8 +187,10 @@ def blob_case(parent, name, blobs, prepare=None, target='out'):
 
 
 def hold_python_lock(directory):
-    code = 'import sys; from lodge.store import Store\nwith Store(sys.argv[1]).lock():\n    print("ready", flush=True); sys.stdin.readline()\nprint("released")'
-    return subprocess.Popen([sys.executable, '-c', code, str(directory)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=str(root))
+    # Binary control channel with explicit LF: text-mode print would emit CRLF on Windows.
+    code = ('import sys; from lodge.store import Store\nout = sys.stdout.buffer\nwith Store(sys.argv[1]).lock():\n'
+            '    out.write(b"ready\\n"); out.flush(); sys.stdin.buffer.readline()\nout.write(b"released\\n"); out.flush()')
+    return spawn([sys.executable, '-c', code, str(directory)], cwd=str(root))
 
 
 def check_lock_content(content, pid):
@@ -230,7 +252,7 @@ def default_mode(parent):
     p = run([api, 'atomic-write', target / 'file.bin', 'fail=replace'], framed(b'y'))
     assert p.returncode == 4 and residue(target) == ['.pending-foreign'] and foreign.read_bytes() == b'foreign'
     # Interrupted (killed) before replacement: old bytes intact, temporary left like Python.
-    p = subprocess.Popen([api, 'atomic-write', str(target / 'file.bin'), 'hold=replace'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    p = spawn([api, 'atomic-write', target / 'file.bin', 'hold=replace'])
     p.stdin.write(framed(b'never published')); p.stdin.flush()
     assert p.stdout.readline() == b'ready\n'
     pending = [n for n in residue(target) if n != '.pending-foreign']
@@ -240,7 +262,7 @@ def default_mode(parent):
     assert (target / 'file.bin').read_bytes() == original and (target / pending[0]).exists()
     (target / pending[0]).unlink(); foreign.unlink()
     # Resumed hold completes normally.
-    p = subprocess.Popen([api, 'atomic-write', str(target / 'file.bin'), 'hold=replace'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    p = spawn([api, 'atomic-write', target / 'file.bin', 'hold=replace'])
     p.stdin.write(framed(b'published')); p.stdin.flush()
     assert p.stdout.readline() == b'ready\n'
     out, err = p.communicate(b'go\n', timeout=60)
@@ -256,7 +278,7 @@ def default_mode(parent):
     assert not residue(target) and (target / 'file.bin').read_bytes() == b'published'
     # Writer lock: content, refusal, foreign locks and failure paths.
     store = parent / 'lock' / 'nested'
-    p = subprocess.Popen([api, 'lock', str(store), 'hold'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    p = spawn([api, 'lock', store, 'hold'])
     assert p.stdout.readline() == b'ready\n'
     lock = store / 'lodge.lock'
     content = lock.read_bytes()
@@ -306,7 +328,7 @@ def default_mode(parent):
     # Cross-implementation contention: exactly one of eight simultaneous writers wins.
     arena = parent / 'arena'
     for round_index in range(3):
-        native = [subprocess.Popen([api, 'lock', str(arena), 'hold'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE) for _ in range(4)]
+        native = [spawn([api, 'lock', arena, 'hold']) for _ in range(4)]
         python = [hold_python_lock(arena) for _ in range(4)]
         winners, losers = [], []
         for p in native + python:
@@ -596,14 +618,14 @@ def posix_mode(parent):
     old = os.umask(0)
     try:
         target = parent / 'mode.bin'
-        p = subprocess.Popen([api, 'atomic-write', str(target), 'hold=replace'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = spawn([api, 'atomic-write', target, 'hold=replace'])
         p.stdin.write(framed(b'm')); p.stdin.flush(); assert p.stdout.readline() == b'ready\n'
         pending = residue(parent); assert len(pending) == 1 and stat.S_IMODE((parent / pending[0]).stat().st_mode) == 0o600
         p.communicate(b'go\n', timeout=60); assert p.returncode == 0 and stat.S_IMODE(target.stat().st_mode) == 0o600
         reference = parent / 'reference.bin'; atomic_write(reference, b'm')
         assert stat.S_IMODE(reference.stat().st_mode) == stat.S_IMODE(target.stat().st_mode)
         store = parent / 'modes'
-        p = subprocess.Popen([api, 'lock', str(store), 'hold'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = spawn([api, 'lock', store, 'hold'])
         assert p.stdout.readline() == b'ready\n' and stat.S_IMODE((store / 'lodge.lock').stat().st_mode) == 0o600
         p.communicate(b'go\n', timeout=60); assert p.returncode == 0
     finally: os.umask(old)
@@ -647,7 +669,10 @@ def posix_mode(parent):
 
 with tempfile.TemporaryDirectory(prefix='c2-native-store-write-') as temporary:
     parent = Path(temporary).resolve()
-    code = {'default': default_mode, 'file-link': file_link_mode, 'posix': posix_mode}[mode](parent) or 0
+    try:
+        code = {'default': default_mode, 'file-link': file_link_mode, 'posix': posix_mode}[mode](parent) or 0
+    finally:
+        reap()
     if code == 77:
         print(f'{mode}: capability unavailable on this host; skipped')
         sys.exit(77)
