@@ -8,6 +8,19 @@ namespace c2::frontend::schema {
 using compat::Kind;
 using compat::Value;
 using S = std::u32string;
+bool valid_id(std::u32string_view s) {
+    if (s.size() != 36)
+        return false;
+    for (std::size_t i = 0; i < 36; ++i) {
+        auto c = s[i];
+        if (i == 8 || i == 13 || i == 18 || i == 23) {
+            if (c != U'-')
+                return false;
+        } else if (!((c >= U'0' && c <= U'9') || (c >= U'a' && c <= U'f')))
+            return false;
+    }
+    return true;
+}
 namespace {
 const Value missing;
 const Value &get(const Value &v, std::u32string_view k) {
@@ -40,19 +53,7 @@ bool digest(const Value &v) {
                return (c >= U'0' && c <= U'9') || (c >= U'a' && c <= U'f');
            });
 }
-bool id(const Value &v) {
-    if (!str(v) || v.string.size() != 36)
-        return false;
-    for (std::size_t i = 0; i < 36; ++i) {
-        auto c = v.string[i];
-        if (i == 8 || i == 13 || i == 18 || i == 23) {
-            if (c != U'-')
-                return false;
-        } else if (!((c >= U'0' && c <= U'9') || (c >= U'a' && c <= U'f')))
-            return false;
-    }
-    return true;
-}
+bool id(const Value &v) { return str(v) && valid_id(v.string); }
 Value string_value(const S &s) {
     Value v;
     v.kind = Kind::string;

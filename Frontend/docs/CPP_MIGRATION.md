@@ -87,20 +87,31 @@ escaping and indentation are reviewable independently of checkout line endings.
 
 ## Current state
 
-Main is `aac4b33a1e6420e047c5fbfd9633b2d7071d9219` (PR #25, 2B.2, reviewed
-head `7f28dbef9f21c382ed4e79096d8b557926a8c996`; independent Fable review
-APPROVE with no blockers, disposition recorded on PR #25; 28/28 CI green).
-Active slice: **2C.1** pure planning policies on `frontend/cpp-planning-policies`
-from that merge: Genesis observer and hunt policies plus the generic
-launch-dry-run evaluation over supplied observations are implemented
-(`planning.hpp`; checkpoint below) and await independent review and CI.
-Deferred to **2C.2**, after 3A locking: the `genesis-observer-plan`,
-`native-hunt plan` and `launch-dry-run` wrappers (store lock, pin
-snapshot/capture, codec-helper evidence, the native `StateObservation`
-producer and the `last_observation` manifest write). Unresolved findings: none.
-Carried forward from the 2B.2 review: `project`/`text_reference` also propagate
-`ContentError`, `StoreError` and `filesystem_error`; a future CLI must catch
-`std::exception`.
+Main is `74ee0d69f658805545732e9d329d7c1f7e75b895` (PR #26, 2C.1, reviewed
+head `86c1ea08dae987ceb6daa618ee88de132a4f9911`; independent Fable review
+APPROVE with no blockers, disposition recorded on PR #26; 28/28 CI green).
+Slice **3A** private write primitives are implemented on
+`frontend/cpp-write-primitives` from that merge (see the 3A implementation
+checkpoint; independent review, actual Windows CI and merge remain gates):
+atomic replacement, the store writer lock, id/timestamp generation, the
+manifest transaction with backup, and blob writes as private `store_write`
+interfaces only. Journal persistence/transitions stay in 3B; backup
+restoration stays in 5B.
+Deferred to **2C.2**, after 3A: the `genesis-observer-plan`, `native-hunt plan`
+and `launch-dry-run` wrappers (store lock, pin snapshot/capture, codec-helper
+evidence, the `StateObservation` producer and the `last_observation` write).
+Carried into 2C.2 from the 2C.1 review: assert `kind == 'unexpected'` for the
+two KeyError oracle cases; bind or document that `evaluate_launch` receives the
+projection/state of the same stage-one instance and that callers check
+`complete()`; add a canonical non-negative ordinal guard before masks.
+Convention since 2C.1: reference `TypeError` paths map to `std::invalid_argument`;
+module errors carry only reference `FrontendError` messages. From 3A: write
+primitives propagate reference `OSError` paths as
+`std::filesystem::filesystem_error`, and the reference's bare `ValueError`
+from `allow_nan=False` encoding maps to `StoreError`. From 2B.2:
+`project`/`text_reference` also propagate `ContentError`, `StoreError` and
+`filesystem_error`; a future CLI must catch `std::exception`.
+Unresolved findings: none.
 Implementation and independent review use separately routed Fable agents; the
 coordinator records final dispositions in the PR, not in this ledger.
 
@@ -134,9 +145,9 @@ coordinator records final dispositions in the PR, not in this ledger.
 | 2A.2 coherent-root discovery/instance observations | Reviewed and merged in PR #23; overall 2A complete |
 | 2B.1 pure catalog parser/scalars | Reviewed and merged in PR #24 |
 | 2B.2 filesystem catalog projection | Reviewed and merged in PR #25 |
-| 2C.1 pure planning policies | In progress on `frontend/cpp-planning-policies` |
+| 2C.1 pure planning policies | Reviewed and merged in PR #26 |
 | 2C.2 planning wrappers (lock, pins, observation write) | Pending; after 3A |
-| 3A safe paths/capture/atomic I/O | Pending |
+| 3A safe paths/capture/atomic I/O | In progress on `frontend/cpp-write-primitives` |
 | 3B preparation/journal | Pending |
 | 4A trust/process/capabilities | Pending |
 | 4B runner/log/cancel | Pending |
@@ -1594,3 +1605,149 @@ Debug passed all 24 CTests in 128.11 seconds
 `ASAN_OPTIONS=detect_leaks=0` (LSan unavailable under ptrace) passed
 2/2 in 126.81 seconds (planning 62.80, projection 64.00) with no sanitizer report. Actual Windows/Linux CI, independent review and merge
 remain gates; this checkpoint approves nothing.
+
+### Slice 3A implementation checkpoint
+
+Private `native/src/store_write.hpp` (no public header, no CLI, no Python
+change) ports `atomic_write`, `Store.lock` (`WriterLock`),
+`Store.transaction` (`transaction` over an authored mutation callback),
+`now`/`new_id`, `session_root` and `write_blobs`, reusing `store_paths`
+safe paths and the reviewed reader, the 1A validator, the 1B.1 capture and
+the private encoders. Foundation extension in its own commit:
+`compat::dumps` reproduces `json.dumps(value, sort_keys=...)` with default
+separators and `allow_nan=True` (the transaction change comparison and the
+lock text), and `schema::valid_id` is shared. The capture was confirmed
+against `session_io.capture` for the write side (two passes, 128 entries,
+16/32 MiB, link/alias/unsafe/oversized typing, name checks) and reused
+without extension.
+
+Semantics: the temporary is `.pending-` plus eight characters from the
+mkstemp alphabet, created exclusively (0600 and `O_NOFOLLOW` on POSIX,
+`CREATE_NEW` on Windows), written, fsynced, then `rename` or
+`MoveFileExW(MOVEFILE_REPLACE_EXISTING)` with a POSIX parent-directory
+fsync; the temporary is removed on every failure and there is no retry
+(the 2A.1 retry convention was test-harness only). The lock mkdirs parents,
+creates `lodge.lock` with `O_CREAT|O_EXCL`/`CREATE_NEW` and 0600, refuses
+with the exact reference message, writes `{"pid": .., "host": ..,
+"created_at": ..}` in default-separator form, fsyncs, and unlinks only a
+lock it created; a content failure unlinks and rethrows. The transaction
+copies the retained manifest, edits, revalidates, compares sorted dumps,
+reads current bytes through the reviewed safe reader into `lodge.json.bak`
+and then writes `display` bytes plus LF, keeping the reference order so a
+nonfinite encoding failure leaves the backup exactly as Python does. Blob
+names pass the reference absolute/`..`/backslash/colon checks through the
+PurePath normalizer; POSIX fsyncs the reference's directory set deepest
+first. A narrow test-only hook names each durability phase with the acted-on
+path; production passes none.
+
+Deviations and ambiguities recorded for review: OS failures are
+`filesystem_error`; the `WriterLock` destructor cannot report an unlink
+failure during unwinding (Python's `finally` would replace the original
+exception), while `release()` on the success path reports it; `new_id` and
+temporary names draw from the OS CSPRNG rather than Python's seeded
+`random.Random`; `now()` truncates to microseconds where Python rounds. The
+reference joins a rooted drive-less NT blob name (`/x`) below the drive
+root because `PureWindowsPath('/x').is_absolute()` is false; the native
+port reproduces that join rather than adding a check, and the harness never
+uses such a name. Capture cannot produce it.
+
+Initial head `13b70f6071adfdab3a8441e41041a312ee298af4` passed locally
+(Debug 27/27, focused ASan/UBSan 7/7) but **failed actual CI on both
+platforms** (PR #27 merge-ref run 35635139112: Linux 24/27, Windows 42/44;
+all new write tests failed). The local pass depended on the compiler
+eliding a copy; see the correction below. Actual Windows CI, independent
+review and merge remain gates; this checkpoint approves nothing.
+
+#### Slice 3A correction after CI failure
+
+R1 (production, data safety): both OS `Handle` owners in `store_write.cpp`
+closed a raw descriptor/HANDLE in their destructor yet were implicitly
+copyable; `create_temporary` returned a loop-local handle, so without
+named-return-value optimization the copy's destructor closed the value and
+`atomic_write` then wrote and fsynced a closed, possibly reused descriptor
+(CI: `cannot fsync: Bad file descriptor`, `cannot write: The handle is
+invalid` on the `.pending-` temporary). The owners are now move-only with
+noexcept, source-invalidating moves and static_asserts. Regression: the
+driver is rebuilt from the production core sources with
+`-fno-elide-constructors` (`/Zc:nrvo-` on MSVC) as
+`frontend-store-write-no-elision` and runs the full default gate; the
+pre-fix source fails that gate with the CI symptom, the fixed source
+passes. Unsupported compilers register a named explicit skip 77.
+
+R4 (safety beyond parity, reviewed decision): `write_blobs` fails closed.
+Every member is validated lexically (rooted, drive-qualified or UNC, `..`,
+backslash, colon, NUL, empty or dot names) and its destination must be
+strictly beneath the target directory, all before any mkdir or write; the
+reference's rooted drive-less NT join below the drive root is no longer
+reproduced. A Python-side fix is deferred; no Python changed. Native-only
+sandboxed lexical cases assert the exact message and that nothing was
+created inside or outside the sandbox; capture-produced names retain exact
+parity including the round trip.
+
+R2: `isoformat_utc` no longer uses the C library `gmtime` (MSVC range is
+narrower); it computes the proleptic Gregorian civil date directly and
+defines the supported range as datetime's years 1-9999, rejecting outside
+it with `StoreError`. Timestamp/identity checks moved to a separate
+`frontend-store-write-utilities` gate whose oracle uses timedelta
+arithmetic (the previous `datetime.fromtimestamp(253402300799)` raised
+OSError on Windows and aborted the suite). R3: the driver's stderr is
+binary on Windows and the Python lock holder writes explicit LF bytes, so
+exact LF assertions hold; every owned child is reaped on failure.
+Persisted bytes remain compared exactly.
+
+Verification of the corrected source used the same pinned oracle and
+external Debug/ASan trees, each session awaited: full Debug 29/29 in
+127.84 seconds (unchanged Python suite within `frontend-backend`, 17.75
+seconds; store-write 144 comparisons, no-elision 144, utilities 25,
+file-link 10, posix-durability 11); focused ASan/UBSan
+(`ASAN_OPTIONS=detect_leaks=0`, `UBSAN_OPTIONS=halt_on_error=1`) 9/9 in
+53.27 seconds with no sanitizer report. Logs:
+`/home/willvdb/code/games/c2-build/r-final-debug-full.log`,
+`r-final-asan-focused.log`, `r1-proof-old-code.log`. Windows is proven
+only by actual CI.
+
+Round 2 (harness only, after the independent review of `a09315b` judged
+R1-R4 correct and Windows run 35648432320 failed 43/46): the containment
+case label `nul` had been used as a directory component (a DOS device on
+Windows, failing `safe_path` before member validation and aborting the
+default and no-elision gates), and the snapshot helper compared raw
+`os.readlink` targets, which Windows reports with the `\\?\` prefix, so
+`file-link` failed at its first case. Containment directories are now
+index based, extended-prefix targets are normalized before the relative
+comparison, and every tree comparison prints the differing keys with both
+values so a remaining mismatch diagnoses itself. No production change;
+Linux gates unchanged (144/144/10/11/25; Debug 29/29). Windows is proven
+only by actual CI.
+
+Round 3 (Windows run 35650728265, file-link at `dangling-lock`): on
+Windows, `CreateFileW(CREATE_NEW)` and Python's `os.open(O_CREAT|O_EXCL)`
+follow a symlink or junction at `lodge.lock`, so both writers created the
+link target and wrote lock content through it (the trees differed only in
+pid/created_at, but the target could lie outside the store); POSIX O_EXCL
+refuses. Reviewed Windows safety correction beyond Python-on-Windows
+parity: the lock create adds `FILE_FLAG_OPEN_REPARSE_POINT` (same
+CREATE_NEW and share modes), so any existing entry yields the standard
+refusal and is never followed, written through or removed; the
+`.pending-` temporary create gains the same flag for POSIX-equivalent
+semantics although its random name makes a planted link impractical. No
+other create disposition exists in `store_write.cpp`. Python is unchanged;
+its fix is deferred. The harness now checks link-at-lock cases natively on
+every platform (exact refusal, link untouched, target absent) with parity
+additionally on POSIX, compares lock content written by independent
+processes structurally, and runs every independent case to completion,
+reporting all failures at the end while still exiting nonzero. Linux:
+default 144, no-elision 144, file-link 11, posix 11, utilities 25; Debug
+29/29. Windows is proven only by actual CI.
+
+Round 4 (Windows run 35653430598, file-link at `dangling-directory-lock`):
+with `CREATE_NEW|FILE_FLAG_OPEN_REPARSE_POINT`, an existing directory,
+directory link or junction at `lodge.lock` reports `ERROR_ACCESS_DENIED`
+rather than `ERROR_FILE_EXISTS`, so native failed closed with the OS
+error instead of the standard refusal. The lock create now confirms
+existence without following (`GetFileAttributesW` reports the link
+itself) and raises the standard refusal for any existing entry, while a
+genuine error on an absent path still propagates; the `.pending-`
+temporary applies the same rule (existing entry retries, genuine error
+propagates). The harness asserts the exact refusal for a plain directory
+on every platform and adds directory-link and Windows junction lock cases.
+Windows is proven only by actual CI.

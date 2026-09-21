@@ -47,6 +47,9 @@ class ResourceError : public Error { public: using Error::Error; };
 Value parse(std::string_view utf8, std::size_t max_depth = 1000);
 std::string display(const Value&, std::size_t max_depth = 1000);
 std::string compact(const Value& value);
+// json.dumps(value, sort_keys=...) with default separators, ensure_ascii and
+// allow_nan=True: the reference's transaction change comparison and lock text.
+std::string dumps(const Value& value, bool sort_keys, std::size_t max_depth = 1000);
 std::string ContentFingerprintV1(const Value& entries);
 std::string JournalEvidenceV1(const Value& decoded_journal);
 } // namespace c2::frontend::compat

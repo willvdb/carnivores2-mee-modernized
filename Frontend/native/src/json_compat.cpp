@@ -300,7 +300,10 @@ std::string float_text(double value, bool allow_nonfinite) {
     return result;
 }
 
-void encode(std::string& output, const Value& value, bool pretty, bool sort_keys = true, std::size_t max_depth = 1000) {
+// pretty: indent=2 and allow_nan=False (journal/manifest encoders); spaced:
+// json.dumps default separators (', ', ': ') without indent. Both
+// separators and sorting are independent of allow_nan handling.
+void encode(std::string& output, const Value& value, bool pretty, bool sort_keys = true, std::size_t max_depth = 1000, bool spaced = false) {
     struct Frame {
         const Value* container;
         std::size_t next = 0;
@@ -322,7 +325,7 @@ void encode(std::string& output, const Value& value, bool pretty, bool sort_keys
             Frame frame{&node, 0, {}};
             if (object) {
                 for (std::size_t i = 0; i < node.object.size(); ++i) frame.order.push_back(i);
-                if (pretty && sort_keys) std::sort(frame.order.begin(), frame.order.end(), [&](auto a, auto b) {
+                if (sort_keys) std::sort(frame.order.begin(), frame.order.end(), [&](auto a, auto b) {
                     return node.object[a].first < node.object[b].first;
                 });
             }
@@ -343,13 +346,13 @@ void encode(std::string& output, const Value& value, bool pretty, bool sort_keys
             stack.pop_back();
             continue;
         }
-        if (frame.next) output += ',';
+        if (frame.next) output += spaced ? ", " : ",";
         if (pretty) { output += '\n'; output.append(stack.size() * 2, ' '); }
         const auto index = frame.next++;
         if (object) {
             const auto& member = node.object[frame.order[index]];
             quoted(output, member.first);
-            output += pretty ? ": " : ":";
+            output += pretty || spaced ? ": " : ":";
             atom(member.second);
         } else atom(node.array[index]);
     }
@@ -445,7 +448,12 @@ bool Value::contains(std::u32string_view key) const {
 }
 std::string compact(const Value& value) {
     std::string output;
-    encode(output, value, false);
+    encode(output, value, false, false);
+    return output;
+}
+std::string dumps(const Value& value, bool sort_keys, std::size_t max_depth) {
+    std::string output;
+    encode(output, value, false, sort_keys, max_depth, true);
     return output;
 }
 std::string JournalEvidenceV1(const Value& decoded_journal) {
