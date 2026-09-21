@@ -87,12 +87,18 @@ escaping and indentation are reviewable independently of checkout line endings.
 
 ## Current state
 
-Main is `d1c83566668fd55007f02cbcc2e703623523fa8a` (PR #24, 2B.1, head
-`220fa93d513fb64aa0d74ef56727bf96e0a31aaf`; 28/28 CI green; approved by the
-prior coordinator). Active slice: **2B.2** on `frontend/cpp-catalog-projection`
-from that merge; its implementation checkpoint is published below and awaits
-independent review, actual final-head CI and merge. Unresolved findings: none
-recorded. Next: 2C Genesis planning.
+Main is `aac4b33a1e6420e047c5fbfd9633b2d7071d9219` (PR #25, 2B.2, reviewed
+head `7f28dbef9f21c382ed4e79096d8b557926a8c996`; independent Fable review
+APPROVE with no blockers, disposition recorded on PR #25; 28/28 CI green).
+Active slice: **2C.1** pure planning policies on `frontend/cpp-planning-policies`
+from that merge: Genesis observer and hunt policies plus the generic
+launch-dry-run evaluation over supplied observations. Deferred to **2C.2**,
+after 3A locking: the `genesis-observer-plan`, `native-hunt plan` and
+`launch-dry-run` wrappers (store lock, pin snapshot/capture, codec-helper
+evidence and the `last_observation` manifest write). Unresolved findings: none.
+Carried forward from the 2B.2 review: `project`/`text_reference` also propagate
+`ContentError`, `StoreError` and `filesystem_error`; a future CLI must catch
+`std::exception`.
 Implementation and independent review use separately routed Fable agents; the
 coordinator records final dispositions in the PR, not in this ledger.
 
@@ -103,8 +109,8 @@ coordinator records final dispositions in the PR, not in this ledger.
 | `status`, `host-settings` (read), `hunter list`, `expedition list`, `managed-state inspect` | CLI views (1A.2, 1B.1) |
 | `profiles` | Library only (1B.2/1B.3); CLI pending 7 |
 | `expedition discover` (read-only), `expedition refresh` observation | Library only (2A); refresh write pending 5A |
-| `catalog` | Parser 2B.1; projection library 2B.2 (review pending); CLI pending 7 |
-| `launch-dry-run`, `genesis-observer-plan`, `native-hunt plan` | Pending 2C |
+| `catalog` | Parser 2B.1; projection library 2B.2; CLI pending 7 |
+| `launch-dry-run`, `genesis-observer-plan`, `native-hunt plan` | Pure policies 2C.1; wrappers 2C.2 (after 3A) |
 | `session prepare-synthetic/inspect/run/reconcile/recover`, `simulate-return` | Pending 3B-4C (synthetic sessions remain developer tooling) |
 | `native-observer prepare/run`, `native-hunt prepare/run/inspect` | Pending 3B-4C |
 | `hunter create/select/rename/archive`, `host-settings --json`, `associate`, `refresh-state` | Pending 5A |
@@ -125,8 +131,9 @@ coordinator records final dispositions in the PR, not in this ledger.
 | 2A.1 reference resolution/content fingerprint | Reviewed and merged in PR #22 |
 | 2A.2 coherent-root discovery/instance observations | Reviewed and merged in PR #23; overall 2A complete |
 | 2B.1 pure catalog parser/scalars | Reviewed and merged in PR #24 |
-| 2B.2 filesystem catalog projection | In progress on `frontend/cpp-catalog-projection` |
-| 2C Genesis planning | Pending |
+| 2B.2 filesystem catalog projection | Reviewed and merged in PR #25 |
+| 2C.1 pure planning policies | In progress on `frontend/cpp-planning-policies` |
+| 2C.2 planning wrappers (lock, pins, observation write) | Pending; after 3A |
 | 3A safe paths/capture/atomic I/O | Pending |
 | 3B preparation/journal | Pending |
 | 4A trust/process/capabilities | Pending |
