@@ -68,7 +68,12 @@ def snapshot(top):
         s = p.lstat()
         value = (stat.S_IFMT(s.st_mode), s.st_nlink, s.st_size)
         if stat.S_ISLNK(s.st_mode):
-            target = Path(os.readlink(p))
+            # Windows readlink reports extended (\\?\ or \\?\UNC\) targets: strip the
+            # prefix so in-tree targets compare relative to each tree.
+            raw = os.readlink(p)
+            if raw.startswith('\\\\?\\UNC\\'): raw = '\\\\' + raw[8:]
+            elif raw.startswith('\\\\?\\'): raw = raw[4:]
+            target = Path(raw)
             value += (target.relative_to(top).as_posix() if target.is_absolute() and target.is_relative_to(top) else str(target),)
         elif stat.S_ISREG(s.st_mode): value += (p.read_bytes(),)
         out[p.relative_to(top).as_posix()] = value
@@ -76,6 +81,17 @@ def snapshot(top):
             for child in p.iterdir(): visit(child)
     visit(top)
     return out
+
+
+def same_trees(expected, actual, label):
+    """Assert equal snapshots; on mismatch print every differing key with both values."""
+    if expected == actual: return
+    keys = sorted(set(expected) | set(actual))
+    lines = [f'{label}: {len(keys)} keys compared']
+    for key in keys:
+        if expected.get(key) != actual.get(key):
+            lines.append(f'  {key!r}\n    python: {expected.get(key)!r}\n    native: {actual.get(key)!r}')
+    raise AssertionError('\n'.join(lines))
 
 
 def residue(directory):
@@ -160,7 +176,7 @@ def transaction_case(parent, name, initial, ops, extra=None):
     expect(result, error, (trees['python'], trees['native']))
     if error is None:
         assert result.stdout == f'written {int(expected)}\n'.encode(), (name, result.stdout, expected)
-    assert snapshot(trees['python'].parent) == snapshot(trees['native'].parent), name
+    same_trees(snapshot(trees['python'].parent), snapshot(trees['native'].parent), name)
     for directory in trees.values():
         assert ((directory / 'lodge.lock').is_symlink() or (directory / 'lodge.lock').exists(), residue(directory)) == planted, name
     return error
@@ -183,7 +199,7 @@ def blob_case(parent, name, blobs, prepare=None, target='out'):
         # so only Python's empty target directory may differ (fail closed).
         assert target not in native_tree and not any(k.startswith(target + '/') for k in python_tree), (name, python_tree)
         python_tree.pop(target, None); python_tree.pop('.', None); native_tree.pop('.', None)  # root nlink/size follow that directory
-    assert python_tree == native_tree, (name, error)
+    same_trees(python_tree, native_tree, f'{name} ({error!r})')
     return error
 
 
@@ -330,7 +346,7 @@ def default_mode(parent):
         assert error is not None
         p = run([api, 'transaction', store], framed([]))
         expect(p, error)
-        assert snapshot(store) == before, foreign
+        same_trees(before, snapshot(store), f'foreign lock {foreign!r}')
         if foreign == 'directory': lock.rmdir()
         else: lock.unlink()
     # Lock content failures unlink our own lock; the store directory remains.
@@ -436,7 +452,7 @@ def default_mode(parent):
         if phase == 'directory_fsync':
             assert (store / 'lodge.json.bak').read_bytes() == original and (store / 'lodge.json').read_bytes() == original
         else:
-            assert snapshot(store) == before, phase
+            same_trees(before, snapshot(store), f'inject {phase}')
         (store / 'lodge.json.bak').unlink(missing_ok=True)
         p = run([api, 'transaction', store, f'fail-second={phase}'], framed(edit))
         assert p.returncode == 4 and not (store / 'lodge.lock').exists() and not residue(store), (phase, p)
@@ -449,7 +465,7 @@ def default_mode(parent):
             assert (store / 'lodge.json').read_bytes() == original, phase
         (store / 'lodge.json.bak').unlink()
         count += 2
-    assert snapshot(store) == before
+    same_trees(before, snapshot(store), 'after injection')
     # Interop sequence: Python and native alternate on one store; each backup is the predecessor.
     store = parent / 'interop' / 'store'
     history = []
@@ -513,13 +529,15 @@ def default_mode(parent):
     sandbox = parent / 'containment'; sandbox.mkdir()
     outside = [Path(sandbox.anchor) / 'escaped.sav', sandbox.parent / 'escape.bin', sandbox.parent / 'escaped.sav']
     assert not any(q.exists() for q in outside)
-    for name, blobs in containment.items():
-        out = sandbox / name / 'out'
+    for index, (name, blobs) in enumerate(containment.items()):
+        # Directory names are index based: case labels such as 'nul' are DOS device names.
+        out = sandbox / f'case-{index:02d}' / 'out'
         before = snapshot(parent)
         header = json.dumps([[k, len(v)] for k, v in blobs], ensure_ascii=True).encode()
         p = run([api, 'write-blobs', out], framed(header) + b''.join(v for _, v in blobs))
         assert p.returncode == 2 and p.stderr == b'error: unsafe captured state path\n', (name, p)
-        assert not out.exists() and not (sandbox / name).exists() and snapshot(parent) == before, name
+        assert not out.exists() and not out.parent.exists(), name
+        same_trees(before, snapshot(parent), f'containment {name}')
         assert not any(q.exists() for q in outside), name
         count += 1
     # Legitimate capture-produced names are unaffected by containment: exact parity remains.

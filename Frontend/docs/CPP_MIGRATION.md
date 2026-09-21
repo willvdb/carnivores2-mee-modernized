@@ -1705,3 +1705,16 @@ file-link 10, posix-durability 11); focused ASan/UBSan
 `/home/willvdb/code/games/c2-build/r-final-debug-full.log`,
 `r-final-asan-focused.log`, `r1-proof-old-code.log`. Windows is proven
 only by actual CI.
+
+Round 2 (harness only, after the independent review of `a09315b` judged
+R1-R4 correct and Windows run 35648432320 failed 43/46): the containment
+case label `nul` had been used as a directory component (a DOS device on
+Windows, failing `safe_path` before member validation and aborting the
+default and no-elision gates), and the snapshot helper compared raw
+`os.readlink` targets, which Windows reports with the `\\?\` prefix, so
+`file-link` failed at its first case. Containment directories are now
+index based, extended-prefix targets are normalized before the relative
+comparison, and every tree comparison prints the differing keys with both
+values so a remaining mismatch diagnoses itself. No production change;
+Linux gates unchanged (144/144/10/11/25; Debug 29/29). Windows is proven
+only by actual CI.
