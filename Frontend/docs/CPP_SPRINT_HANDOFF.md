@@ -70,6 +70,9 @@ approval and no merge. Nothing was merged; `main` was not changed.
   failure output was overwritten before it was read, so the cause is
   **undiagnosed**; this sprint did not touch catalog code. Check for a
   load-sensitive flake before trusting either result.
+- A second `ctest -j8 --output-on-failure` at the same commit passed 32 of 32
+  (22 s). The first failure was therefore intermittent and was not reproduced;
+  it remains undiagnosed.
 - New suites, all passing: `frontend-native-probe-process` (15 tests),
   `frontend-native-session-journal` (9 tests, more than 150 refused mutations
   compared with the reference), `frontend-native-planning-store` (4 tests).
