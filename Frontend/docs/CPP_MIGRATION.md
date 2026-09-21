@@ -1651,17 +1651,57 @@ root because `PureWindowsPath('/x').is_absolute()` is false; the native
 port reproduces that join rather than adding a check, and the harness never
 uses such a name. Capture cannot produce it.
 
-Verification used the pinned CPython 3.12.14 oracle and separate external
-Debug and ASan/UBSan build trees, each session fully awaited. Full Debug
-passed 27/27 CTests in 126.15 seconds (all unchanged 154 Python tests in
-18.520 seconds without skips; the three POSIX permission capabilities
-Passed). The new `frontend-native-store-write` gate passed 139 authoritative
-comparisons, `frontend-store-write-file-link` 10 and
-`frontend-store-write-posix-durability` 11; both named modes return skip 77
-only when the host cannot create links or is not POSIX. Focused ASan/UBSan
-(`ASAN_OPTIONS=detect_leaks=0` because LSan is unavailable under ptrace,
-`UBSAN_OPTIONS=halt_on_error=1`) passed 7/7 in 47.80 seconds with no
-sanitizer report (store-write 3.32, generation 36.60, store 6.13). Logs:
-`/home/willvdb/code/games/c2-build/wp-debug-full.log`,
-`wp-debug-backend-verbose.log`, `wp-asan-focused.log`. Actual Windows CI,
-independent review and merge remain gates; this checkpoint approves nothing.
+Initial head `13b70f6071adfdab3a8441e41041a312ee298af4` passed locally
+(Debug 27/27, focused ASan/UBSan 7/7) but **failed actual CI on both
+platforms** (PR #27 merge-ref run 35635139112: Linux 24/27, Windows 42/44;
+all new write tests failed). The local pass depended on the compiler
+eliding a copy; see the correction below. Actual Windows CI, independent
+review and merge remain gates; this checkpoint approves nothing.
+
+#### Slice 3A correction after CI failure
+
+R1 (production, data safety): both OS `Handle` owners in `store_write.cpp`
+closed a raw descriptor/HANDLE in their destructor yet were implicitly
+copyable; `create_temporary` returned a loop-local handle, so without
+named-return-value optimization the copy's destructor closed the value and
+`atomic_write` then wrote and fsynced a closed, possibly reused descriptor
+(CI: `cannot fsync: Bad file descriptor`, `cannot write: The handle is
+invalid` on the `.pending-` temporary). The owners are now move-only with
+noexcept, source-invalidating moves and static_asserts. Regression: the
+driver is rebuilt from the production core sources with
+`-fno-elide-constructors` (`/Zc:nrvo-` on MSVC) as
+`frontend-store-write-no-elision` and runs the full default gate; the
+pre-fix source fails that gate with the CI symptom, the fixed source
+passes. Unsupported compilers register a named explicit skip 77.
+
+R4 (safety beyond parity, reviewed decision): `write_blobs` fails closed.
+Every member is validated lexically (rooted, drive-qualified or UNC, `..`,
+backslash, colon, NUL, empty or dot names) and its destination must be
+strictly beneath the target directory, all before any mkdir or write; the
+reference's rooted drive-less NT join below the drive root is no longer
+reproduced. A Python-side fix is deferred; no Python changed. Native-only
+sandboxed lexical cases assert the exact message and that nothing was
+created inside or outside the sandbox; capture-produced names retain exact
+parity including the round trip.
+
+R2: `isoformat_utc` no longer uses the C library `gmtime` (MSVC range is
+narrower); it computes the proleptic Gregorian civil date directly and
+defines the supported range as datetime's years 1-9999, rejecting outside
+it with `StoreError`. Timestamp/identity checks moved to a separate
+`frontend-store-write-utilities` gate whose oracle uses timedelta
+arithmetic (the previous `datetime.fromtimestamp(253402300799)` raised
+OSError on Windows and aborted the suite). R3: the driver's stderr is
+binary on Windows and the Python lock holder writes explicit LF bytes, so
+exact LF assertions hold; every owned child is reaped on failure.
+Persisted bytes remain compared exactly.
+
+Verification of the corrected source used the same pinned oracle and
+external Debug/ASan trees, each session awaited: full Debug 29/29 in
+127.84 seconds (unchanged Python suite within `frontend-backend`, 17.75
+seconds; store-write 144 comparisons, no-elision 144, utilities 25,
+file-link 10, posix-durability 11); focused ASan/UBSan
+(`ASAN_OPTIONS=detect_leaks=0`, `UBSAN_OPTIONS=halt_on_error=1`) 9/9 in
+53.27 seconds with no sanitizer report. Logs:
+`/home/willvdb/code/games/c2-build/r-final-debug-full.log`,
+`r-final-asan-focused.log`, `r1-proof-old-code.log`. Windows is proven
+only by actual CI.
