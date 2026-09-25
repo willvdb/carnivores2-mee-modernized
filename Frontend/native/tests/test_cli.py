@@ -38,17 +38,22 @@ class Side:
         self.store = self.base / 'Lodge'
         self.ids, self.tokens = {}, {}
 
-    def command(self, args, fixture):
+    def command(self, args, fixture, probe=True):
+        common = ['--store', str(self.store), *(['--probe', PROBE] if probe else []), *args]
         if self.native:
-            return [FIXTURE if fixture else NATIVE, '--store', str(self.store), '--probe', PROBE, *args]
-        return [sys.executable, str(REFERENCE), *(['--fixture-policy'] if fixture else []),
-                '--store', str(self.store), '--probe', PROBE, *args]
+            return [FIXTURE if fixture else NATIVE, *common]
+        return [sys.executable, str(REFERENCE), *(['--fixture-policy'] if fixture else []), *common]
 
-    def run(self, args, fixture=False, env=None):
+    def run(self, args, fixture=False, env=None, probe=True):
         environment = {k: v for k, v in os.environ.items() if k != 'C2_PROFILE_PROBE'}
         environment.update(env or {})
-        done = subprocess.run(self.command(args, fixture), capture_output=True, timeout=300, env=environment)
-        return done.returncode, done.stdout.decode('utf-8', 'surrogateescape'), done.stderr.decode('utf-8', 'surrogateescape')
+        done = subprocess.run(self.command(args, fixture, probe), capture_output=True, timeout=300, env=environment)
+        out, err = (s.decode('utf-8', 'surrogateescape') for s in (done.stdout, done.stderr))
+        if os.name == 'nt' and not self.native:
+            # Documented difference: frontend.py's text-mode print emits CRLF on
+            # Windows; the native CLI writes LF on every host (binary stdout).
+            out, err = out.replace('\r\n', '\n'), err.replace('\r\n', '\n')
+        return done.returncode, out, err
 
     def normalize(self, text):
         for spelling in {str(self.base), json.dumps(str(self.base))[1:-1]}:
@@ -111,17 +116,22 @@ class Parity(unittest.TestCase):
                  '{managed}': self.managed, '{game}': str(self.game)}
         return [names.get(a, a) for a in args]
 
-    def step(self, *args, fixture=False, expect=None, env=None):
+    def step(self, *args, fixture=False, expect=None, env=None, probe=True):
         args = self.fill(list(args))
         results = []
         for side in (self.reference, self.candidate):
-            code, out, err = side.run(args, fixture, env)
+            code, out, err = side.run(args, fixture, env, probe)
             results.append((code, side.normalize(out), side.normalize(error_message(err)) if code else '', side))
         (rcode, rout, rerr, _), (ncode, nout, nerr, _) = results
         context = f'{args}: reference rc={rcode} err={rerr!r}; native rc={ncode} err={nerr!r}'
         self.assertEqual(ncode, rcode, context)
         self.assertEqual(nout, rout, context)
-        self.assertEqual(nerr, rerr, context)
+        if re.match(r'\[Errno \d+\] ', rerr) or re.match(r'\[WinError \d+\] ', rerr):
+            # Documented difference: OSError text is the native filesystem_error
+            # wording; the outcome (status, output, bytes) is still compared.
+            self.assertTrue(nerr, context)
+        else:
+            self.assertEqual(nerr, rerr, context)
         if expect is not None:
             self.assertEqual(rcode, expect, context)
         self.assertEqual(self.candidate.tree(), self.reference.tree(), context)
@@ -168,6 +178,25 @@ class Parity(unittest.TestCase):
                      ['session', 'prepare-synthetic', '{managed}', '--area', 'a', '--timeout', 'x'],
                      ['associate', 'a', 'b', 'c', '--origin', 'nobody'], ['catalog'],
                      ['native-hunt', 'plan', 'x', '--area', 'a'], ['status', 'extra']):
+            self.step(*args, expect=2)
+
+
+    def test_parsing_edge_cases(self):
+        # Every occurrence of a repeated option is converted and checked.
+        self.step('native-hunt', 'plan', '{managed}', '--area', 'areas:0', '--license', 'licenses:0',
+                  '--weapon', 'weapons:0', '--time', '3', '--time', '1', fixture=True, expect=2)
+        self.step('launch-dry-run', '{managed}', '--area', 'a', '--mode', 'bogus', '--mode', 'hunt', expect=2)
+        self.step('simulate-return', '{managed}', '--exit-code', 'q', '--exit-code', '1', expect=2)
+        # type=Path turns '' into '.', never an absent value.
+        env = {'C2_PROFILE_PROBE': PROBE}
+        self.step('--probe', '', 'refresh-state', '{managed}', probe=False, env=env, expect=2)
+        self.step('--probe', '', 'profiles', '{instance}', probe=False, env=env, expect=2)
+        self.step('genesis-observer-plan', '{managed}', '--area', 'areas:0', '--engine', '', fixture=True, expect=2)
+        # The environment helper applies only without --probe.
+        self.step('refresh-state', '{managed}', probe=False, env=env, expect=0)
+        # frontend.py has no --version; an unconsumed '--' is unrecognized.
+        self.step('--version', 'status', expect=2)
+        for args in (['status', '--'], ['hunter', 'list', '--'], ['host-settings', '--json', '{}', '--']):
             self.step(*args, expect=2)
 
 
