@@ -86,7 +86,7 @@ if(BUILD_TESTING)
     target_compile_options(c2-frontend-planning-store-tests PRIVATE -Wall -Wextra -Wpedantic)
   endif()
   add_test(NAME frontend-native-planning-store COMMAND "${Python3_EXECUTABLE}"
-    "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_planning_store.py" "$<TARGET_FILE:c2-frontend-planning-store-tests>" "$<TARGET_FILE:c2-profile-probe>")
+    "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_planning_store.py" "$<TARGET_FILE:c2-frontend-planning-store-tests>" "$<TARGET_FILE:c2-profile-probe>" "$<TARGET_FILE:c2-frontend-probe-helper>")
   add_executable(c2-frontend-planning-tests native/tests/planning_tests.cpp)
   target_link_libraries(c2-frontend-planning-tests PRIVATE c2_frontend_core)
   target_include_directories(c2-frontend-planning-tests PRIVATE native/src)

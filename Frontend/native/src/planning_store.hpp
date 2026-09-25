@@ -1,18 +1,22 @@
 #pragma once
-// PRIVATE store-backed planning (slice 2C.2, partial): the StateObservation
-// producer profiles.refresh_association and the refresh-state write wrapper.
-// and the launch-dry-run wrapper. The genesis-observer-plan and native-hunt
-// plan wrappers (snapshot_pins) are NOT implemented here yet.
+// PRIVATE store-backed planning (slice 2C.2). No production CLI exposure.
 #include "c2/frontend/planning.hpp"
 #include "c2/frontend/store.hpp"
 #include "json_compat.hpp"
 #include "store_write.hpp"
 #include <optional>
 namespace c2::frontend::planning_store {
-// An association whose authority is 'managed-state-history' needs generation
-// resolution over the mutable manifest value, which is not wired yet. This is
-// thrown instead of guessing a root or silently selecting a generation.
-class NotImplemented : public std::logic_error { public: using std::logic_error::logic_error; };
+struct PinSnapshot {
+    compat::Value pins;
+    std::vector<CapturedBlob> blobs;
+};
+// sessions.snapshot_pins. Caller holds any operation-specific lock (as in
+// Python); this read-only operation never writes a workspace or native bytes.
+PinSnapshot snapshot_pins(const Store&, std::u32string_view association_id,
+    const compat::Value& selection, const std::optional<std::filesystem::path>& probe,
+    const std::optional<compat::Value>& expected_codec = std::nullopt,
+    std::u32string_view mode = U"observer", bool managed = false,
+    const std::optional<std::u32string>& generation = std::nullopt);
 // profiles.refresh_association: observes through the configured helper and
 // sets association['last_observation'] on the supplied manifest value.
 // Returns the observation. Read-only with respect to the filesystem.

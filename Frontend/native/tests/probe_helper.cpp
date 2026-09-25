@@ -24,7 +24,16 @@ int main(int argc, char** argv) {
 #endif
     if (argc < 2) return 2;
     const std::string mode = argv[1];
-    if (mode == "args") {
+    if (mode == "save" || mode == "room") {
+        if (const char* path = std::getenv("C2_TEST_PROBE_MARKER")) {
+            FILE* marker = std::fopen(path, "ab");
+            if (!marker) return 3;
+            std::fputs("invoked\n", marker); std::fclose(marker);
+        }
+        char bytes[8192];
+        while (std::fread(bytes, 1, sizeof bytes, stdin)) {}
+        std::fputs("{\"codec_roundtrip_exact\":true,\"registration\":0,\"score\":1000}", stdout);
+    } else if (mode == "args") {
         for (int i = 2; i < argc; ++i) { std::fwrite(argv[i], 1, std::strlen(argv[i]), stdout); std::fputc('\0', stdout); }
     } else if (mode == "streams") {
         // Fill BOTH output pipes before reading input; writing stdin first in

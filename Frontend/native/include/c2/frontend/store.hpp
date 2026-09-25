@@ -50,5 +50,6 @@ public:
 private:
     std::filesystem::path directory_;
     ReadPolicy policy_;
+    friend struct ManifestAccess;
 };
 } // namespace c2::frontend
