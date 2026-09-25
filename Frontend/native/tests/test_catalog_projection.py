@@ -83,9 +83,12 @@ def snapshot(root):
 
 
 def observed(root, hints=('unknown',), cwd=None):
-    before = snapshot(root)
+    # check() evaluates relative spellings from cwd. Snapshot that same tree,
+    # not CTest's build directory (whose logs change during parallel tests).
+    observed_root = Path(cwd or Path.cwd()) / root
+    before = snapshot(observed_root)
     results = [check('project', root, cwd=cwd, dialect_hint=hint)['value'] if hint != 'unknown' else check('project', root, cwd=cwd)['value'] for hint in hints]
-    assert snapshot(root) == before, 'source modified by projection'
+    assert snapshot(observed_root) == before, 'source modified by projection'
     return results[0]
 
 
