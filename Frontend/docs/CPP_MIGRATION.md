@@ -136,8 +136,20 @@ The original final-code run `36087372781` at `1f2dcee` is now verified green:
 Linux 32/32 and Windows 49/49. Closure-code run `36100210586` at `06673e0`
 also completed successfully: Linux 33/33 and Windows 49/49, with actual runner,
 planning-store, journal and pure-policy execution. Exact SHAs/logs are in the
-handoff. Reviewer acceptance of the closure is separate from its test results;
-this ledger does not approve the cumulative sprint.
+handoff. That threading/deferred-reap/compatibility closure passed focused review.
+The later documentation-head run `36101568340` at `49ec38e` passed Linux 33/33
+but Windows passed 48/49 with one failure: the utilities test's mixed-clock bracket was
+exceeded by 152 microseconds. Targeted test-only fix `75eff4b` samples the same
+precise Windows API as MSVC, retains zero-allowance bracketing and all exact
+format/range checks, and adds deterministic boundaries/conversion tests plus a
+fixed 1,000-sample Windows CI step. At exact code SHA
+`75eff4b45b3bebdbd5294a82eb4ed469fb0d72e6`, local Debug passed 33/33 and run
+`36168144014` passed Linux 33/33 and Windows 49/49; all 1,000 dedicated Windows
+live samples passed without retries or allowance. The original failure and
+remaining clock/image assumptions are retained in `CPP_PLANNING_HANDOFF.md`.
+No production behavior or accepted compatibility decision changed. This is not
+approval of the cumulative sprint; further migration belongs to the Claude
+coordinator. Nothing is merged.
 
 ### Operation coverage (Python CLI to native)
 

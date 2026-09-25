@@ -1,4 +1,4 @@
-# C++ planning completion — review-closure handoff
+# C++ planning completion — final targeted handoff
 
 2C.2 is implemented as private library operations. The source/test-code/CI review
 requested this bounded closure: declare threading, prove deferred reaping, and
@@ -6,6 +6,10 @@ record compatibility decisions and exact-revision verification. This is not a
 full independent audit or approval of every inherited sprint commit. Nothing was
 merged, auto-merged or self-approved. No production CLI, session preparation, runnable
 workspace, engine launch, schema change or native-format change was added.
+
+The threading, deferred-reap and private-compatibility closure passed focused
+review. The final targeted follow-up below addresses only the later Windows
+live-clock test failure; it does not reopen that accepted scope.
 
 ## Identity and review order
 
@@ -15,13 +19,21 @@ workspace, engine launch, schema change or native-format change was added.
 - Branch: `frontend/cpp-planning-completion`.
 - Worktree: `/home/willvdb/code/games/carnivores2-planning-completion`.
   Original main worktree and its two untracked log files were untouched.
-- Review-closure implementation/tested code SHA:
+- Final timestamp-fix/tested code SHA:
+  `75eff4b45b3bebdbd5294a82eb4ed469fb0d72e6`.
+  Integration order: this test/CI-only fix, then its documentation-only evidence
+  update. This document does not predict the latter commit's own SHA.
+- Timestamp follow-up baseline: `49ec38e9b3c17ea5db71512890e2e8869935388d`.
+  Fetch confirmed matching local/remote heads and a clean planning worktree;
+  no newer fix existed. Main and `frontend/cpp-runtime-completion` were untouched.
+- Earlier review-closure implementation/tested code SHA:
   `06673e0ab86716b7f2a6b4b099ea7c6385d5441d`.
-- Previously reviewed head: `1e2a398424f2c114ada7f8bfc3c34b0b9b720956`;
+- Earlier closure baseline: `1e2a398424f2c114ada7f8bfc3c34b0b9b720956`;
   original implementation SHA: `1f2dceedcc4b99548adb28f142a3ca1d6dd22da3`.
   This handoff follows the tested code; its own SHA is not predicted here.
-  Fetch confirmed both live branch refs at the reviewed head and a clean planning
-  worktree before editing; no inherited commits were reset, rebased or replaced.
+  At that earlier closure, fetch confirmed both live branch refs at the reviewed
+  head and a clean planning worktree; no inherited commits were reset, rebased
+  or replaced.
 
 Review the inherited dependency stack first, in the order in
 [CPP_SPRINT_HANDOFF.md](CPP_SPRINT_HANDOFF.md). It remains unreviewed draft,
@@ -40,6 +52,112 @@ including the separate journal component. Then review these additions:
 6. `1f2dceedcc4b99548adb28f142a3ca1d6dd22da3` — **A follow-up**, refuse
    incomplete descriptor isolation; test an inherited fd above a lowered hard
    limit. Review alongside commit 1; its production delta is POSIX-only.
+
+## Final targeted follow-up: Windows live-clock assertion
+
+The earlier successful results at `06673e0` remain valid for that exact SHA.
+The subsequent **documentation-only** head `49ec38e9b3c17ea5db71512890e2e8869935388d`
+exposed an intermittent existing timestamp-test failure in
+[Frontend run 36101568340](https://github.com/willvdb/carnivores2-mee-modernized/actions/runs/36101568340),
+Windows job `107964972433`: **48/49 passed**, with only
+`frontend-store-write-utilities` failing. Linux passed **33/33**. The original
+log is preserved; it is not discarded because an earlier implementation run was
+green. `utilities_mode()` failed `before <= parsed <= after` with:
+
+- Python before: `2026-09-25T06:21:58.788042+00:00`.
+- Native: `2026-09-25T06:21:58.794253+00:00`.
+- Python after: `2026-09-25T06:21:58.794101+00:00`.
+- Native minus after: **152 microseconds**.
+
+The log records Windows Server 2025 **10.0.26100**, runner image
+`windows-2025-vs2026` **20260922.246.2**, CPython **3.12.10**, Visual Studio 18
+2026, and MSVC **19.51.36257.0** (toolset directory `14.51.36231`). Inspection
+confirmed `store_write::now()` calls `system_clock::now()`, converts to whole
+microseconds and formats through the existing `isoformat_utc`; the driver merely
+prints that result. No production timestamp defect was demonstrated.
+
+The source-level mismatch is verified: CPython 3.12.10
+[`datetime_best_possible`](https://github.com/python/cpython/blob/v3.12.10/Modules/_datetimemodule.c#L5087)
+uses `_PyTime_GetSystemClock`, whose
+[Windows backend](https://github.com/python/cpython/blob/v3.12.10/Python/pytime.c#L879)
+uses `GetSystemTimeAsFileTime`. Microsoft's published
+[`system_clock`](https://github.com/microsoft/STL/blob/f023531d8fd0fd668ba9331b349637930611781a/stl/inc/chrono#L79)
+and [`_Xtime_get_ticks`](https://github.com/microsoft/STL/blob/f023531d8fd0fd668ba9331b349637930611781a/stl/src/xtime.cpp#L49)
+use `GetSystemTimePreciseAsFileTime`. This explains why mixed-clock microsecond
+bracketing is not a sound requirement and strongly supports the leading
+resolution/source hypothesis. The original run contains no simultaneous API
+trace; the exact cause of that individual sample (including possible wall-clock
+adjustment) cannot be proved retrospectively from its three readings.
+
+The **test-only** correction samples `GetSystemTimePreciseAsFileTime` through
+`ctypes` on Windows, matching the MSVC clock API. POSIX retains `datetime.now(UTC)`.
+[FILETIME](https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getsystemtimepreciseasfiletime)
+is converted using unsigned high/low words and integer 100 ns-to-microsecond
+conversion from the 1601 epoch, preserving every whole microsecond. The live
+comparison remains **strict and inclusive, with zero allowance**. No arbitrary
+tolerance, microsecond rounding, Windows skip or retry-until-success is added.
+The native command's successful exit is now checked before its output is trusted.
+Failures report all sampled timestamps, signed differences from both bracket
+ends in microseconds, and `allowance_us=0`.
+
+Unchanged checks: canonical ISO formatting, explicit `+00:00`, exact fixed-input
+conversion (including single-microsecond precision), leap/historical cases,
+years 1 and 9999 and their adjacent boundaries, out-of-range rejection, and all
+identity/persistence assertions. The extracted freshness check still rejects a
+value even one microsecond outside the aligned bracket.
+
+Deterministic coverage has **20 checks**: 11 supplied-timestamp comparisons
+(interior, the logged +152 us case and mirrored lower case, exact/inside/outside
+boundaries on both ends, clearly wrong past/future dates) and 9 FILETIME
+conversions (epoch, submicrosecond remainder, second/word rollover, Unix epoch
+and the logged date). The logged mixed-clock tuple intentionally remains a
+rejected counterexample; the fix changes the sampled API, not which out-of-bound
+values pass. These checks also run inside the existing utilities CTest.
+
+At exact code checkpoint **`75eff4b45b3bebdbd5294a82eb4ed469fb0d72e6`**:
+
+- Existing Debug toolchain/build directory reused; no production C++ changed.
+- Deterministic regression mode: **20/20 passed** locally.
+- `frontend-store-write-utilities`: **passed** locally.
+- Complete local frontend Debug suite: **33/33 passed**, no CTest skips.
+- Compatibility generator `--check`: **passed**, fixtures unchanged.
+- Additional local live samples: **1,000 attempted, 1,000 passed, 0 failed**.
+- New [Frontend run 36168144014](https://github.com/willvdb/carnivores2-mee-modernized/actions/runs/36168144014):
+  both jobs **completed successfully** at this exact SHA. Linux job
+  `108180831370`: **33/33 CTests passed**, including utilities (0.13 s).
+  Windows job `108180831083`: **49/49 CTests passed**, including utilities
+  (0.39 s), plus **1,000 attempted / 1,000 passed / 0 failed** in the dedicated
+  live-clock step with `allowance_us=0`, and its 20 deterministic checks.
+  No CTests were skipped. Results were verified from completed logs and job
+  metadata, not compilation alone; no useful run was cancelled.
+- The successful Windows run used Server 2025 10.0.26100, image
+  `windows-2025-vs2026` **20260907.229.1**, CPython **3.12.10**, and MSVC
+  **19.51.36256.0** (toolset directory `14.51.36231`). The hosted image/compiler
+  patch differs from the original failure's **20260922.246.2 / 19.51.36257.0**;
+  this is actual new-code execution, not a reproduction on the identical old
+  image. Linux CI used GCC **13.3.0** and CPython **3.12.14**.
+
+The final documentation-only commit follows this verified code checkpoint.
+These results belong to `75eff4b`; they are not attributed to the later
+documentation commit's own SHA.
+
+The existing workflow gained only a narrow Windows repetition step. It attempts
+exactly 1,000 live samples, reports every failed sample through the existing
+harness and fails if any fail; it does not filter failures or retry. Logs and
+source excerpts are retained as `timestamp-*` under
+`/home/willvdb/.local/state/c2-planning-completion/`, including the original full
+failure log and metadata. No fresh Release or sanitizer result is claimed for
+this Python-test-only fix; earlier results below retain their own exact SHAs.
+
+Remaining limitation: a genuine system wall-clock step during sampling can still
+fail the live assertion. This correction targets the current MSVC Windows clock
+backend; the original exact hosted image/compiler patch and other Windows
+standard-library implementations were not rerun. No requested code-checkpoint
+verification remains blocked.
+No production code, Python production behavior, golden fixtures, process runner,
+planning wrappers or accepted compatibility decisions changed. This is a targeted
+test follow-up, not a new audit or merge approval. The Claude coordinator owns
+subsequent migration and integration.
 
 ## Review-closure diff
 
@@ -292,17 +410,24 @@ closure):
 
 ## Stopping point
 
-Focused self-review checked the threading target coverage/test guards, inert
+The final timestamp follow-up is limited to the test harness, its narrow Windows
+CI repetition step, and this evidence update. Its exact verification is recorded
+above. Focused self-review of this fix confirmed unchanged production paths and
+fixed-input assertions, zero-allowance diagnostics, fail-on-any-sample repetition,
+and the test/CI-only code diff. The previously accepted compatibility decisions
+remain unchanged.
+
+The earlier focused closure self-review checked threading target coverage/test
+guards, inert
 observer defaults, shared deferred lifetimes, ownership-event assertions, bounded
 failure cleanup, Windows scenario retention and the seven-file scope. It found
 no additional defect. Main remains `a86be96`; the Python implementation and all
 inherited commits remain unchanged.
 
-This closure is limited to the requested build dependency, deterministic cleanup
-regression and verification/compatibility documentation. All requested local and
-code-checkpoint CI checks passed; no technical verification blocker remains. Reviewer acceptance of
-these closure revisions and any separate inherited-stack review remain distinct
-from the test results; this pass does not approve the cumulative sprint or mark
+The threading/deferred-cleanup closure passed focused review; the later
+documentation-head timestamp failure and its targeted correction are explicitly
+recorded above. Any separate inherited-stack review remains distinct
+from these test results; this pass does not approve the cumulative sprint or mark
 anything merged. No Python implementation changed. No public CLI, session
 preparation, workspace creation or engine launch was started. **Stop here; do not
 begin another migration slice as part of this handoff.**
