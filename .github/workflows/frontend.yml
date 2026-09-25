@@ -18,5 +18,8 @@ jobs:
         run: cmake -S Frontend -B build/frontend -DCMAKE_BUILD_TYPE=Debug
       - name: Build production codec probe
         run: cmake --build build/frontend --config Debug --parallel 2
+      - name: Repeat Windows live timestamp check (1000 samples, no retries)
+        if: runner.os == 'Windows'
+        run: python Frontend/native/tests/test_store_write.py build/frontend/Debug/c2-frontend-store-write-tests.exe timestamp-repeat
       - name: Run frontend with required codec probe
         run: ctest --test-dir build/frontend -C Debug --output-on-failure --no-tests=error

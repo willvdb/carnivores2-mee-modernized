@@ -5,7 +5,8 @@ Disposable stores only. Modes: default (portable persistence), utilities
 failures), file-link (symlink aliases; skip 77 when the host cannot create
 links), posix (durability phases, modes, FIFOs and raw names; skip 77
 elsewhere), elision-unavailable (explicit skip 77 when the compiler cannot
-disable copy elision for the no-elision driver).
+disable copy elision for the no-elision driver), timestamp-regression (supplied
+clock comparisons/conversions), timestamp-repeat (1000 live samples, no retries).
 """
 import copy
 import json
@@ -20,6 +21,42 @@ import tempfile
 import traceback
 import uuid
 from unittest.mock import patch
+
+
+def filetime_utc(low, high):
+    # FILETIME is unsigned 100 ns ticks since 1601. Integer conversion preserves
+    # every whole microsecond, matching native now() for present-day timestamps.
+    return datetime(1601, 1, 1, tzinfo=timezone.utc) + timedelta(microseconds=((high << 32) | low) // 10)
+
+
+if os.name == 'nt':
+    import ctypes
+    from ctypes.wintypes import FILETIME
+    precise_filetime = ctypes.WinDLL('kernel32').GetSystemTimePreciseAsFileTime
+    precise_filetime.argtypes = [ctypes.POINTER(FILETIME)]
+    precise_filetime.restype = None
+
+
+def timestamp_sample():
+    # CPython 3.12 datetime.now() uses GetSystemTimeAsFileTime on Windows;
+    # MSVC system_clock uses GetSystemTimePreciseAsFileTime. Sample the latter
+    # here too, rather than allowing drift between those different APIs.
+    if os.name == 'nt':
+        value = FILETIME()
+        precise_filetime(ctypes.byref(value))
+        return filetime_utc(value.dwLowDateTime, value.dwHighDateTime)
+    return datetime.now(timezone.utc)
+
+
+def assert_fresh_timestamp(stamp, before, after):
+    parsed = datetime.fromisoformat(stamp)
+    assert parsed.isoformat() == stamp and stamp.endswith('+00:00'), (stamp, before, after)
+    microsecond = timedelta(microseconds=1)
+    detail = (f'before={before.isoformat()} native={stamp} after={after.isoformat()} '
+              f'native-before_us={(parsed - before) // microsecond} '
+              f'native-after_us={(parsed - after) // microsecond} allowance_us=0')
+    assert before <= parsed <= after, detail
+
 
 root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(root))
@@ -268,8 +305,75 @@ def check_lock_content(content, pid):
     assert datetime.fromisoformat(info['created_at']).isoformat() == info['created_at']
 
 
+def timestamp_regression_mode(parent):
+    global count
+    before = datetime.fromisoformat('2026-09-25T06:21:58.788042+00:00')
+    after = datetime.fromisoformat('2026-09-25T06:21:58.794101+00:00')
+    us = timedelta(microseconds=1)
+    # Run 36101568340 mixed these Python readings with native .794253:
+    # +152 us outside the bracket. Preserve that counterexample; aligned
+    # samples still reject it, rather than silently admitting a tolerance.
+    cases = [('middle', before + 1000 * us, True),
+             ('logged-upper', after + 152 * us, False),
+             ('mirrored-lower', before - 152 * us, False),
+             ('lower-exact', before, True), ('lower-inside', before + us, True),
+             ('lower-outside', before - us, False),
+             ('upper-exact', after, True), ('upper-inside', after - us, True),
+             ('upper-outside', after + us, False),
+             ('wrong-past', before - timedelta(days=1), False),
+             ('wrong-future', after + timedelta(days=1), False)]
+    for label, parsed, expected in cases:
+        try:
+            assert_fresh_timestamp(parsed.isoformat(), before, after)
+        except AssertionError as error:
+            assert not expected, (label, str(error))
+            assert 'allowance_us=0' in str(error) and 'native-after_us=' in str(error), error
+        else:
+            assert expected, (label, parsed, before, after)
+        count += 1
+    # Exact epoch, submicrosecond truncation, second/word rollover and the
+    # logged timestamp. No floating-point Unix timestamp conversion is used.
+    conversions = [(0, 0, '1601-01-01T00:00:00+00:00'),
+                   (9, 0, '1601-01-01T00:00:00+00:00'),
+                   (10, 0, '1601-01-01T00:00:00.000001+00:00'),
+                   (19, 0, '1601-01-01T00:00:00.000001+00:00'),
+                   (9999999, 0, '1601-01-01T00:00:00.999999+00:00'),
+                   (10000000, 0, '1601-01-01T00:00:01+00:00'),
+                   (0, 1, '1601-01-01T00:07:09.496729+00:00'),
+                   (0xd53e8000, 0x19db1de, '1970-01-01T00:00:00+00:00'),
+                   (0x2b76b882, 0x1dd4cb6, '2026-09-25T06:21:58.794253+00:00')]
+    for low, high, expected in conversions:
+        actual = filetime_utc(low, high).isoformat()
+        assert actual == expected, (low, high, actual, expected)
+        count += 1
+
+
+def check_live_timestamp():
+    global count
+    before = timestamp_sample()
+    result = run([api, 'now'])
+    after = timestamp_sample()
+    assert result.returncode == 0, (result, before, after)
+    assert_fresh_timestamp(result.stdout.decode().strip(), before, after)
+    count += 1
+
+
+def timestamp_repeat_mode(parent):
+    timestamp_regression_mode(parent)
+    # Fixed sample count, not retry-until-success. Retain every failure and
+    # return nonzero if any sample fails, using the existing harness reporter.
+    samples = 1000
+    passed_before, failed_before = count, len(failures)
+    for sample in range(samples):
+        case(f'live timestamp sample {sample + 1}/{samples}', check_live_timestamp)
+    print(f'Live timestamp samples: {samples} attempted, {count - passed_before} passed, '
+          f'{len(failures) - failed_before} failed; allowance_us=0; '
+          f'clock={"GetSystemTimePreciseAsFileTime" if os.name == "nt" else "datetime.now(UTC)"}')
+
+
 def utilities_mode(parent):
     global count
+    timestamp_regression_mode(parent)
     # Timestamps: exact strings across the datetime range (years 1..9999), computed
     # with timedelta so the oracle itself never depends on the platform's fromtimestamp.
     epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
@@ -288,12 +392,7 @@ def utilities_mode(parent):
         p = run([api, 'isoformat', seconds, micros])
         assert p.returncode == 2 and not p.stdout and p.stderr == b'error: timestamp outside the supported range (years 1-9999)\n', (seconds, micros, p)
         count += 1
-    before = datetime.now(timezone.utc)
-    stamp = run([api, 'now']).stdout.decode().strip()
-    after = datetime.now(timezone.utc)
-    parsed = datetime.fromisoformat(stamp)
-    assert parsed.isoformat() == stamp and stamp.endswith('+00:00') and before <= parsed <= after, (stamp, before, after)
-    count += 1
+    check_live_timestamp()
     # Identities: canonical lowercase uuid4 strings; valid_id agrees with the reference.
     ids = run([api, 'new-id', 500]).stdout.decode().split()
     assert len(ids) == 500 == len(set(ids)) and all(valid_id(v) and uuid.UUID(v).version == 4 and uuid.UUID(v).variant == uuid.RFC_4122 for v in ids)
@@ -798,7 +897,9 @@ if mode == 'elision-unavailable':
 with tempfile.TemporaryDirectory(prefix='c2-native-store-write-') as temporary:
     parent = Path(temporary).resolve()
     try:
-        code = {'default': default_mode, 'utilities': utilities_mode, 'file-link': file_link_mode, 'posix': posix_mode}[mode](parent) or 0
+        code = {'default': default_mode, 'utilities': utilities_mode,
+                'timestamp-regression': timestamp_regression_mode, 'timestamp-repeat': timestamp_repeat_mode,
+                'file-link': file_link_mode, 'posix': posix_mode}[mode](parent) or 0
     finally:
         reap()
     if code == 77:
