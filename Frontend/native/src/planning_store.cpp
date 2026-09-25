@@ -172,6 +172,61 @@ PinSnapshot snapshot_pins(const Store& store, std::u32string_view association_id
     return snapshot_from(store, store.read(), association_id, selection, probe, expected_codec, mode, managed, generation);
 }
 
+namespace {
+Value evaluate_pins(const Value& pins, const PolicyEvaluator& policy) {
+    const auto& instance = pins.at(U"instance");
+    const auto projection = catalog::project(content_internal::native_units(text(instance, U"path")),
+        text(instance, U"dialect_hint"));
+    const auto& slot = pins.at(U"native_slot");
+    const std::u32string save = U"trophy0" + std::u32string(1, static_cast<char32_t>(slot.integer[0])) + U".sav";
+    const auto& decoded = pins.at(U"source_observation").at(save);
+    // A missing score is an unexpected reference KeyError, not a fabricated
+    // zero or a readable-state diagnostic. The retained value lookup throws.
+    return policy(pins.at(U"revision"), projection, slot, pins.at(U"selection"), decoded.at(U"score"));
+}
+}
+Value plan_observer(const Store& store, std::u32string area, std::u32string_view association_id,
+    const planning::Integer& time_of_day, const std::optional<fs::path>& probe,
+    const std::optional<fs::path>& engine, const PolicyEvaluator& test_policy) {
+    using namespace planning_internal;
+    const auto selection = planning::Selection::observer(std::move(area), time_of_day);
+    store_write::WriterLock lock(store.directory());
+    auto captured = snapshot_from(store, store.read(), association_id, planning::PlanningAccess::value(selection),
+        probe, std::nullopt, U"observer", false, std::nullopt);
+    const auto policy = evaluate_pins(captured.pins, test_policy ? test_policy : PolicyEvaluator(observer_policy));
+    *member(captured.pins, U"adapter") = string_value(std::u32string(planning::OBSERVER_POLICY_ID));
+    Value result = object_value();
+    result.object = {{U"kind", ascii_value("genesis-observer-blocked-plan")},
+        {U"id", ascii_value(store_write::new_id())}, {U"created_at", ascii_value(store_write::now())},
+        {U"pins", std::move(captured.pins)}};
+    for (const auto& field : policy.object) result.object.push_back(field);
+    result.object.emplace_back(U"selected_engine", engine && !engine->empty() ? probe_process::executable_evidence(*engine) : Value{});
+    result.object.emplace_back(U"engine_evidence_status", ascii_value("hash-only-not-build-certification"));
+    result.object.emplace_back(U"cwd", Value{});
+    result.object.emplace_back(U"executable", Value{});
+    lock.release();
+    return result;
+}
+Value plan_hunt(const Store& store, std::u32string_view association_id, const Value& selection,
+    const std::optional<fs::path>& probe, const PolicyEvaluator& test_policy) {
+    using namespace planning_internal;
+    // Python plan_hunt does not lock or persist. Select the schema adapter and
+    // resolve pins from one immutable read, avoiding a schema/head read race.
+    const auto manifest = store.read();
+    auto captured = snapshot_from(store, manifest, association_id, selection, probe, std::nullopt,
+        U"hunt", manifest.schema_version() == 2, std::nullopt);
+    // snapshot_pins already requires a canonical SAV and excludes other names.
+    if (captured.blobs.size() != 2)
+        throw StoreError("hunt contract requires an existing complete SAV/SAB pair");
+    const auto policy = evaluate_pins(captured.pins, test_policy ? test_policy : PolicyEvaluator(hunt_policy));
+    *member(captured.pins, U"adapter") = string_value(std::u32string(planning::HUNT_POLICY_ID));
+    captured.pins.object.emplace_back(U"hunt_policy", policy);
+    Value result = object_value();
+    result.object = {{U"kind", ascii_value("genesis-hunt-plan-v1")}, {U"pins", std::move(captured.pins)},
+        {U"policy", policy}, {U"process_launch_allowed", boolean_value(false)}, {U"result", ascii_value("validated-intent-only")}};
+    return result;
+}
+
 Value refresh_association(const Store& store, Value& data, std::u32string_view identity,
                           const std::optional<fs::path>& probe) {
     using namespace planning_internal;

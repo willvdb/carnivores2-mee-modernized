@@ -5,11 +5,43 @@
 #include <string>
 #include <iterator>
 #include "planning_internal.hpp"
+#include "catalog_internal.hpp"
+#include "content_internal.hpp"
+#include <cstdlib>
 using namespace c2::frontend;
 namespace fs = std::filesystem;
 int main(int argc, char** argv) {
     if (argc < 5) return 2;
     try {
+        if ((std::string(argv[1]) == "observer" || std::string(argv[1]) == "hunt") && argc == 6) {
+            const std::string content((std::istreambuf_iterator<char>(std::cin)), std::istreambuf_iterator<char>());
+            const auto args = compat::parse(content);
+            const std::string id = argv[3], probe = argv[4];
+            const auto path = probe == "-" ? std::nullopt : std::optional<fs::path>(fs::u8path(probe));
+            planning_store::PolicyEvaluator test_policy;
+            if (std::string(argv[5]) == "fixture-policy") test_policy = [](const compat::Value& revision,
+                const catalog::Projection& projection, const compat::Value& slot, const compat::Value& selection,
+                const compat::Value& score) {
+                auto result = planning_internal::object_value();
+                result.object = {{U"adapter", planning_internal::ascii_value("asset-free-planning-policy-double")},
+                    {U"revision", revision}, {U"catalog", *catalog::projection_value(projection)},
+                    {U"native_slot", slot}, {U"selection", selection}, {U"observed_score", score},
+                    {U"process_launch_allowed", planning_internal::boolean_value(false)}};
+                return result;
+            };
+            compat::Value result;
+            if (std::string(argv[1]) == "observer") {
+                const auto& selection = args.at(U"selection");
+                const auto& time = selection.at(U"time_of_day");
+                result = planning_store::plan_observer(Store(fs::u8path(argv[2])), selection.at(U"area").string,
+                    std::u32string(id.begin(), id.end()), planning::Integer{time.integer}, path,
+                    args.contains(U"engine") ? std::optional<fs::path>(content_internal::native_units(args.at(U"engine").string)) : std::nullopt,
+                    test_policy);
+            } else result = planning_store::plan_hunt(Store(fs::u8path(argv[2])), std::u32string(id.begin(), id.end()),
+                args.at(U"selection"), path, test_policy);
+            std::cout << "ok " << compat::compact(result) << '\n';
+            return 0;
+        }
         if (std::string(argv[1]) == "snapshot" && argc == 8) {
             const std::string content((std::istreambuf_iterator<char>(std::cin)), std::istreambuf_iterator<char>());
             const auto args = compat::parse(content);
@@ -44,8 +76,13 @@ int main(int argc, char** argv) {
             selection.area = text(argv[5]); selection.licenses = list(argv[6]); selection.weapons = list(argv[7]);
             selection.mode = text(argv[8]); selection.time_of_day = planning::Integer{argv[9]};
             const std::string probe = argv[4];
+            store_write::FailureHook failure;
+            if (std::getenv("C2_TEST_WRITE_FAILURE")) failure = [](store_write::WritePhase phase, const fs::path& target) {
+                if (phase == store_write::WritePhase::replace && target.filename() == "lodge.json")
+                    throw fs::filesystem_error("injected manifest replacement", std::make_error_code(std::errc::io_error));
+            };
             const auto request = planning_store::launch_dry_run(Store(fs::u8path(argv[2])), text(argv[3]), selection,
-                probe == "-" ? std::nullopt : std::optional<fs::path>(fs::u8path(probe)));
+                probe == "-" ? std::nullopt : std::optional<fs::path>(fs::u8path(probe)), failure);
             std::cout << "ok " << request.export_json();
             return 0;
         }

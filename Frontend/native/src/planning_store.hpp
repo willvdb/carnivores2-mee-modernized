@@ -17,6 +17,17 @@ PinSnapshot snapshot_pins(const Store&, std::u32string_view association_id,
     const std::optional<compat::Value>& expected_codec = std::nullopt,
     std::u32string_view mode = U"observer", bool managed = false,
     const std::optional<std::u32string>& generation = std::nullopt);
+// The optional policy seam is test-only, matching the existing Python
+// asset-free policy doubles. Production always uses the pinned pure policies.
+using PolicyEvaluator = std::function<compat::Value(const compat::Value&, const catalog::Projection&,
+    const compat::Value&, const compat::Value&, const compat::Value&)>;
+compat::Value plan_observer(const Store&, std::u32string area, std::u32string_view association_id,
+    const planning::Integer& time_of_day, const std::optional<std::filesystem::path>& probe,
+    const std::optional<std::filesystem::path>& engine = std::nullopt,
+    const PolicyEvaluator& test_policy = {});
+compat::Value plan_hunt(const Store&, std::u32string_view association_id,
+    const compat::Value& selection, const std::optional<std::filesystem::path>& probe,
+    const PolicyEvaluator& test_policy = {});
 // profiles.refresh_association: observes through the configured helper and
 // sets association['last_observation'] on the supplied manifest value.
 // Returns the observation. Read-only with respect to the filesystem.

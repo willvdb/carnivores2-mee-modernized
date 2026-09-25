@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 FRONTEND = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(FRONTEND), str(FRONTEND / 'tests')]
@@ -278,6 +279,138 @@ class RefreshState(unittest.TestCase):
         (self.root / 'trophy00.sav').write_bytes(b'opaque')
         identity = self.managed()
         self.assertEqual(self.pins(identity)[1], 'managed source is unreadable or has a registration mismatch')
+
+    @staticmethod
+    def fixture_policy(revision, catalog, slot, selection, score):
+        return {'adapter': 'asset-free-planning-policy-double', 'revision': revision, 'catalog': catalog,
+                'native_slot': slot, 'selection': selection, 'observed_score': score, 'process_launch_allowed': False}
+
+    def plan(self, identity, mode='hunt', fixture=False, engine=None):
+        from contextlib import ExitStack
+        from lodge.genesis import plan_observer
+        from lodge.native_hunt import plan_hunt
+        selection = {'area':'areas:0', 'mode':mode, 'time_of_day':1,
+                     'licenses':['licenses:0'] if mode == 'hunt' else [],
+                     'weapons':['weapons:0'] if mode == 'hunt' else [], 'equipment':[]}
+        before = {str(p): p.read_bytes() for p in self.base.rglob('*') if p.is_file()}
+        with ExitStack() as stack:
+            if fixture:
+                for target in ('lodge.genesis.observer_policy', 'lodge.native_hunt.hunt_policy', 'lodge.native_continuation.hunt_policy'):
+                    stack.enter_context(patch(target, side_effect=self.fixture_policy))
+            try:
+                result = (plan_observer(self.store, identity, 'areas:0', probe=PROBE, engine=engine) if mode == 'observer'
+                          else plan_hunt(self.store, identity, selection, PROBE))
+                expected = ('ok', result)
+            except FrontendError as error: expected = ('frontend', str(error))
+            except OSError: expected = ('oserror', None)
+        args = {'selection':selection}
+        if engine is not None: args['engine'] = engine
+        done = subprocess.run([DRIVER, mode, str(self.store.directory), identity, PROBE,
+                               'fixture-policy' if fixture else 'production-policy'], input=json.dumps(args).encode(),
+                              capture_output=True, check=True, timeout=60)
+        kind, _, rest = done.stdout.decode().rstrip('\n').partition(' ')
+        self.assertEqual(kind, expected[0], rest)
+        if kind == 'ok':
+            actual = json.loads(rest)
+            if mode == 'observer':
+                from lodge.store import valid_id
+                from datetime import datetime
+                self.assertTrue(valid_id(actual['id']))
+                datetime.fromisoformat(actual['created_at'])
+                for field in ('id', 'created_at'): actual.pop(field); expected[1].pop(field)
+            self.assertEqual(json.dumps(actual), json.dumps(expected[1]))
+        elif kind != 'oserror': self.assertEqual(rest, expected[1])
+        self.assertEqual({str(p): p.read_bytes() for p in self.base.rglob('*') if p.is_file()}, before)
+        self.assertFalse((self.store.directory / 'sessions').exists())
+        return expected
+
+    def test_complete_observer_and_hunt_wrappers_with_policy_double(self):
+        identity = self.managed()
+        observer = self.plan(identity, 'observer', fixture=True, engine=PROBE)[1]
+        self.assertIsNone(observer['cwd']); self.assertIsNone(observer['executable'])
+        self.assertEqual(observer['pins']['adapter'], 'genesis-current-mee-observer-v1')
+        hunt = self.plan(identity, fixture=True)[1]
+        self.assertEqual(hunt['result'], 'validated-intent-only')
+        self.assertEqual(hunt['pins']['adapter'], 'genesis-current-mee-hunt-v1')
+        self.assertFalse(hunt['process_launch_allowed'])
+        self.assertEqual(self.plan(identity, 'observer', fixture=True, engine=str(self.base / 'absent'))[0], 'oserror')
+
+    def test_production_policy_refusals_and_early_order(self):
+        identity = self.managed()
+        self.assertEqual(self.plan(identity)[1], 'Genesis hunt refuses an unpinned content revision')
+        self.assertEqual(self.plan(identity, 'observer', engine=str(self.base / 'absent'))[1],
+                         'Genesis policy refuses an unpinned content revision')
+        self.assertIn('managed personal state', self.plan(self.referenced)[1])
+        self.assertIn('managed personal state', self.plan(self.referenced, 'observer')[1])
+        with self.store.transaction() as d:
+            a = d['associations'][identity]
+            d['hunters'][a['hunter_id']]['archived_at'] = '2000-01-01T00:00:00Z'
+            d['active_hunter'] = None
+        self.assertEqual(self.plan(identity)[1], 'archived hunter cannot start a session')
+
+    def test_hunt_current_generation_wrapper(self):
+        identity, a = self.history()
+        plan = self.plan(identity, fixture=True)[1]
+        self.assertEqual(plan['pins']['generation_id'], a['managed_state']['current_generation'])
+        self.assertEqual(plan['policy']['observed_score'], 1002)
+        self.assertIn('legacy sessions cannot select', self.plan(identity, 'observer', fixture=True)[1])
+        current = self.store.directory / a['managed_state']['generations'][a['managed_state']['current_generation']]['snapshot']
+        (current / 'trophy00.sav').unlink()
+        self.assertIn('no fallback', self.plan(identity, fixture=True)[1])
+
+    def test_hunt_requires_pair_before_policy(self):
+        (self.root / 'trophy00.sab').unlink()
+        identity = self.managed()
+        self.assertEqual(self.plan(identity)[1], 'hunt contract requires an existing complete SAV/SAB pair')
+        self.assertEqual(self.plan(identity, 'observer', fixture=True)[0], 'ok')
+
+    def test_plan_lock_contracts(self):
+        identity = self.managed()
+        lock = self.store.directory / 'lodge.lock'; lock.write_bytes(b'foreign-lock')
+        self.assertIn('lock', self.plan(identity, 'observer', fixture=True)[1])
+        # Like Python, native-hunt plan is a read observation with no lock/write.
+        self.assertEqual(self.plan(identity, fixture=True)[0], 'ok')
+        self.assertEqual(lock.read_bytes(), b'foreign-lock')
+        lock.unlink()
+
+    def test_foreign_installation_and_early_launch_no_observation(self):
+        identity = self.managed()
+        with self.store.transaction() as d:
+            instance = d['instances'][d['associations'][identity]['instance_id']]
+            instance.update(path_flavor='nt' if os.name == 'posix' else 'posix',
+                            path='C:\\foreign\\game' if os.name == 'posix' else '/foreign/game')
+        self.assertEqual(self.plan(identity)[1], 'session requires exact unchanged content revision')
+        result = self.launch(identity, 'areas:0', ['licenses:0'], ['weapons:0'])
+        self.assertNotIn('state_observation', result)
+        self.assertNotIn('last_observation', self.store.read()['associations'][identity])
+
+    def test_capture_bound_refuses_plans(self):
+        identity = self.managed()
+        root = self.store.directory / 'snapshots' / identity
+        for i in range(129): (root / f'extra-{i:03}').write_bytes(b'')
+        self.assertIn('128 entries', self.pins(identity)[1])
+        self.assertIn('128 entries', self.plan(identity)[1])
+
+    def test_launch_write_failure_preserves_native_and_manifest(self):
+        identity = self.managed()
+        before = {str(p): p.read_bytes() for p in self.base.rglob('*') if p.is_file()}
+        twin = self.base / 'FailureTwin'; shutil.copytree(self.store.directory, twin)
+        from lodge.store import atomic_write
+        def fail(path, content):
+            if path.name == 'lodge.json': raise OSError('injected manifest replacement')
+            return atomic_write(path, content)
+        with patch('lodge.store.atomic_write', side_effect=fail), self.assertRaises(OSError):
+            with self.store.transaction() as data:
+                prepare(self.store, data, identity, 'areas:0', ['licenses:0'], ['weapons:0'], probe=PROBE)
+        done = subprocess.run([DRIVER, 'launch-dry-run', str(twin), identity, PROBE, 'areas:0', 'licenses:0',
+                               'weapons:0', 'hunt', '1'], capture_output=True, check=True, timeout=60,
+                              env={**os.environ, 'C2_TEST_WRITE_FAILURE':'1'})
+        self.assertTrue(done.stdout.startswith(b'oserror '), done)
+        self.assertEqual((twin / 'lodge.json').read_bytes(), self.store.path.read_bytes())
+        self.assertEqual((twin / 'lodge.json.bak').read_bytes(), (self.store.directory / 'lodge.json.bak').read_bytes())
+        self.assertFalse((twin / 'lodge.lock').exists())
+        for path, content in before.items():
+            if not path.endswith('lodge.json.bak'): self.assertEqual(Path(path).read_bytes(), content)
 
     def test_unknown_association_writes_nothing(self):
         before = (self.store.directory / 'lodge.json').read_bytes()
