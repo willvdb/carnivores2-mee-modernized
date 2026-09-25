@@ -7,6 +7,7 @@
 #include "capture.hpp"
 #include "content_internal.hpp"
 #include "discovery_internal.hpp"
+#include "manifest_access.hpp"
 #include "manifest_schema.hpp"
 #include "planning_internal.hpp"
 #include "probe_process.hpp"
@@ -280,6 +281,70 @@ Value associate(const Store& store, Value& data, std::u32string_view hunter_id, 
     if (version_two(data) && managed) initialize_history(association);
     associations.object.emplace_back(id, association);
     return association;
+}
+
+Value upgrade_store(const Store& store, const store_write::FailureHook& hook) {
+    store_paths::safe_path(store.directory());
+    store_paths::safe_path(store.directory() / "lodge.json");
+    store_write::WriterLock lock(store.directory(), hook);
+    const Manifest manifest = store.read();
+    const ReadPolicy& policy = ManifestAccess::policy(manifest);
+    Value data = ManifestAccess::data(manifest);
+    Value result = object_value();
+    if (version_two(data)) {
+        result.object = {{U"result", ascii_value("already-upgraded")}, {U"schema_version", planning_internal::integer_value("2")}};
+        lock.release();
+        return result;
+    }
+    // Reserved names in old unknown metadata cannot be silently reinterpreted.
+    if (data.contains(U"state_upgrade")) throw StoreError("reserved upgrade metadata already exists");
+    Value& associations = table(data, U"associations");
+    for (const auto& entry : associations.object) {
+        const Value& a = entry.second;
+        if (a.contains(U"managed_state")) throw StoreError("reserved managed_state metadata already exists");
+        if (a.at(U"ownership").string == U"managed") {
+            const fs::path snapshot = store.directory() / "snapshots" / narrow_ascii(a.at(U"id").string);
+            store_paths::safe_path(snapshot);
+            if (!schema::equal(capture(snapshot).entry_value(), members_from_import(a)))
+                throw StoreError("import snapshot differs from provenance; upgrade blocked");
+        }
+    }
+    const fs::path path = store.directory() / "lodge.json";
+    std::string before;
+    if (const auto current = store_paths::read(path, policy)) before = *current;
+    else before = session_journal::encode(data);
+    const fs::path backup = store.directory() / "lodge.schema-1.backup.json";
+    store_paths::safe_path(backup);
+    auto backup_matches = [&] {
+        const auto bytes = store_paths::read(backup, policy);
+        return bytes && *bytes == before && schema::equal(read_manifest(backup, policy), data);
+    };
+    if (fs::exists(backup)) {
+        if (!backup_matches()) throw StoreError("prior upgrade backup differs; retain for explicit review");
+    } else store_write::atomic_write(backup, before, hook);
+    if (!backup_matches()) throw StoreError("upgrade backup did not validate");
+    for (auto& entry : associations.object)
+        if (entry.second.at(U"ownership").string == U"managed") initialize_history(entry.second);
+    assign(data, U"schema_version", planning_internal::integer_value("2"));
+    Value provenance = object_value();
+    provenance.object = {{U"from_version", planning_internal::integer_value("1")}, {U"at", ascii_value(store_write::now())},
+        {U"backup", ascii_value("lodge.schema-1.backup.json")}, {U"backup_sha256", ascii_value(sha256(before))}};
+    // Appending a top-level member may reallocate: the table reference is stale.
+    assign(data, U"state_upgrade", std::move(provenance));
+    try { schema::validate_manifest(data); }
+    catch (const compat::ResourceError& e) { throw ResourceExhausted(e.what()); }
+    catch (const compat::Error& e) { throw StoreError(e.what()); }
+    // Sole authority commit: native snapshots are unchanged; old readers reject
+    // v2. This is the sorted JournalEvidenceV1 encoding, unlike a transaction.
+    store_write::atomic_write(path, session_journal::encode(data), hook);
+    Value upgraded = object_value();
+    for (const auto& entry : table(data, U"associations").object)
+        if (entry.second.at(U"ownership").string == U"managed")
+            upgraded.object.emplace_back(entry.first, entry.second.at(U"managed_state").at(U"current_generation"));
+    result.object = {{U"result", ascii_value("upgraded")}, {U"schema_version", planning_internal::integer_value("2")},
+        {U"backup", ascii_value("lodge.schema-1.backup.json")}, {U"associations", std::move(upgraded)}};
+    lock.release();
+    return result;
 }
 
 Value register_instance(Value& data, const fs::path& path, std::u32string_view mode, std::u32string_view dialect,

@@ -10,6 +10,7 @@ content with the reference encoder.
 """
 import copy
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -24,7 +25,8 @@ import uuid
 FRONTEND = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(FRONTEND), str(FRONTEND / 'tests')]
 from lodge.discovery import discover, get_instance, move_candidates, refresh_instance, register, relocate  # noqa: E402
-from lodge.managed_state import UPGRADE_BACKUP, upgrade_store  # noqa: E402
+from lodge.managed_state import UPGRADE_BACKUP, inspect_history, resolve_generation, upgrade_store  # noqa: E402
+from lodge.session_io import capture  # noqa: E402
 from lodge.profiles import associate  # noqa: E402
 from lodge.session_io import encode  # noqa: E402
 from lodge.store import FrontendError, Store, _unique_object, hunter, validate  # noqa: E402
@@ -813,6 +815,140 @@ class AssociateTests(StoreOpsCase):
         published = [p for p in (self.twin / 'snapshots').iterdir() if is_uuid(p.name)]
         self.assertEqual(len(published), 1)
         self.assertEqual((published[0] / 'trophy00.sav').read_bytes(), save_bytes())
+
+
+class UpgradeTests(StoreOpsCase):
+    def setUp(self):
+        super().setUp()
+        self.root = game(self.base)
+        (self.root / 'trophy00.sav').write_bytes(save_bytes())
+        (self.root / 'trophy00.sab').write_bytes(room_bytes())
+        (self.root / 'trophy01.sav').write_bytes(save_bytes(slot=1))
+        self.hunter_id = self.hunter('create', name='Hunter')[0]['id']
+        self.instance = self.register(self.root, dialect='c2-classic')[0]
+
+    def upgrade(self, env=None):
+        return self.both('upgrade', {}, lambda: upgrade_store(self.store), encoding=encode, env=env)
+
+    def test_explicit_upgrade_backs_up_and_initializes_history(self):
+        managed = self.associate(self.hunter_id, self.instance['id'], 'trophy00', ownership='managed')[0]
+        referenced = self.associate(self.hunter_id, self.instance['id'], 'trophy01')[0]
+        self.edit(lambda d: (d.update(future_extension={'opaque': [1, 2.5, None]}),
+                             d['associations'][managed['id']].update(future_extension='preserve')))
+        before = self.store.path.read_bytes()
+        result = self.upgrade()[0]
+        self.assertEqual((result['result'], result['schema_version'], result['backup']), ('upgraded', 2, UPGRADE_BACKUP))
+        self.assertEqual(list(result['associations']), [managed['id']])
+        data = self.store.read()
+        self.assertEqual((self.store.directory / UPGRADE_BACKUP).read_bytes(), before)
+        self.assertEqual(data['state_upgrade']['backup_sha256'], hashlib.sha256(before).hexdigest())
+        self.assertEqual(data['future_extension'], {'opaque': [1, 2.5, None]})
+        self.assertEqual(data['associations'][managed['id']]['future_extension'], 'preserve')
+        self.assertEqual(data['associations'][referenced['id']]['authority'], 'native-files')
+        self.assertEqual(data['associations'][managed['id']]['managed_state']['current_generation'], result['associations'][managed['id']])
+        self.assertEqual(self.upgrade()[0], {'result': 'already-upgraded', 'schema_version': 2})
+        self.assertEqual(self.both('recover-backup', {}, self.store.restore_backup)[0],
+                         'managed-state backup restore requires explicit future recovery; no history rollback')
+
+    def test_empty_store_upgrades_from_the_encoded_empty_manifest(self):
+        self.store = Store(self.base / 'Empty')
+        result = self.upgrade()[0]
+        self.assertEqual(result['associations'], {})
+        self.assertEqual((self.store.directory / UPGRADE_BACKUP).read_bytes(), encode({'schema_version': 1, 'hunters': {}, 'active_hunter': None, 'instances': {}, 'associations': {}, 'host_settings': {}}))
+        self.assertEqual(self.store.read()['schema_version'], 2)
+
+    def test_reserved_metadata_changed_snapshot_and_prior_backup_refuse(self):
+        managed = self.associate(self.hunter_id, self.instance['id'], 'trophy00', ownership='managed')[0]
+        clean = self.store.path.read_bytes()
+        self.edit(lambda d: d.update(state_upgrade={'from_version': 1}))
+        self.assertEqual(self.upgrade()[0], 'reserved upgrade metadata already exists')
+        self.store.path.write_bytes(clean)
+        self.edit(lambda d: d['associations'][managed['id']].update(managed_state={}))
+        self.assertEqual(self.upgrade()[0], 'reserved managed_state metadata already exists')
+        self.store.path.write_bytes(clean)
+        snapshot = self.store.directory / 'snapshots' / managed['id']
+        (snapshot / 'trophy00.sav').write_bytes(save_bytes(score=5))
+        self.assertEqual(self.upgrade()[0], 'import snapshot differs from provenance; upgrade blocked')
+        (snapshot / 'trophy00.sav').write_bytes(save_bytes())
+        (snapshot / 'extra.txt').write_bytes(b'')
+        self.assertEqual(self.upgrade()[0], 'import snapshot differs from provenance; upgrade blocked')
+        (snapshot / 'extra.txt').unlink()
+        (self.store.directory / UPGRADE_BACKUP).write_bytes(clean + b'\n')
+        self.assertEqual(self.upgrade()[0], 'prior upgrade backup differs; retain for explicit review')
+        (self.store.directory / UPGRADE_BACKUP).unlink()
+        self.assertEqual(self.store.path.read_bytes(), clean)
+        self.store.path.unlink()
+        self.assertEqual(self.upgrade()[0], 'manifest missing with backup present; use explicit recovery')
+        self.store.path.write_bytes(clean)
+        # A prior backup with identical bytes is accepted and reused.
+        (self.store.directory / UPGRADE_BACKUP).write_bytes(clean)
+        self.assertEqual(self.upgrade()[0]['result'], 'upgraded')
+
+    def test_lock_and_injected_failures_preserve_previous_authority(self):
+        self.associate(self.hunter_id, self.instance['id'], 'trophy00', ownership='managed')
+        self.make_twin()
+        before = (self.twin / 'lodge.json').read_bytes()
+        (self.twin / 'lodge.lock').write_bytes(b'')
+        kind, rest = native('upgrade', self.twin)
+        self.assertEqual((kind, rest), ('frontend', LOCK_MESSAGE.format(self.twin / 'lodge.lock')))
+        (self.twin / 'lodge.lock').unlink()
+        kind, rest = native('upgrade', self.twin, env={'C2_TEST_WRITE_FAILURE': f'replace:{UPGRADE_BACKUP}'})
+        self.assertEqual(kind, 'oserror', rest)
+        self.assertEqual((self.twin / 'lodge.json').read_bytes(), before)
+        self.assertFalse((self.twin / UPGRADE_BACKUP).exists())
+        kind, rest = native('upgrade', self.twin, env={'C2_TEST_WRITE_FAILURE': 'replace:lodge.json'})
+        self.assertEqual(kind, 'oserror', rest)
+        self.assertEqual((self.twin / 'lodge.json').read_bytes(), before)
+        self.assertEqual((self.twin / UPGRADE_BACKUP).read_bytes(), before)
+        self.assertFalse(list(self.twin.glob('.pending-*')))
+        self.assertFalse((self.twin / 'lodge.lock').exists())
+        # The retained backup is reused by the retry.
+        kind, rest = native('upgrade', self.twin)
+        self.assertEqual(kind, 'ok', rest)
+        self.assertEqual(Store(self.twin).read()['schema_version'], 2)
+
+
+class NativeOnlySetupTests(unittest.TestCase):
+    """A disposable empty store taken through create, register, import and upgrade
+    using only native operations. Python authors the game fixture and checks the
+    outcome against the reference reader; it never performs an operation."""
+
+    def test_native_stack_builds_an_upgraded_managed_store(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp).resolve()
+            root = game(base)
+            (root / 'trophy00.sav').write_bytes(save_bytes())
+            (root / 'trophy00.sab').write_bytes(room_bytes())
+            store = base / 'Lodge'
+            kind, rest = native('hunter', store, {'action': 'create', 'name': 'Native hunter'})
+            self.assertEqual(kind, 'ok', rest)
+            hunter_id = json.loads(rest)['id']
+            kind, rest = native('register', store, {'path': str(root), 'dialect': 'c2-classic'})
+            self.assertEqual(kind, 'ok', rest)
+            instance_id = json.loads(rest)['id']
+            kind, rest = native('associate', store, {'hunter': hunter_id, 'instance': instance_id, 'state_key': 'trophy00',
+                                                     'origin': 'personal', 'ownership': 'managed', 'probe': PROBE})
+            self.assertEqual(kind, 'ok', rest)
+            association = json.loads(rest)
+            self.assertEqual(association['authority'], 'independent-snapshot')
+            kind, rest = native('upgrade', store)
+            self.assertEqual(kind, 'ok', rest)
+            result = json.loads(rest)
+            self.assertEqual(result['result'], 'upgraded')
+            reference = Store(store)
+            data = reference.read()
+            self.assertEqual(data['schema_version'], 2)
+            self.assertEqual(data['active_hunter'], hunter_id)
+            record = data['associations'][association['id']]
+            self.assertEqual(record['authority'], 'managed-state-history')
+            self.assertEqual(result['associations'], {association['id']: record['managed_state']['current_generation']})
+            generation, snapshot_root, members, blobs = resolve_generation(reference, data, record)
+            self.assertEqual(snapshot_root, store / 'snapshots' / association['id'])
+            self.assertEqual(blobs, {'trophy00.sab': room_bytes(), 'trophy00.sav': save_bytes()})
+            self.assertEqual(inspect_history(reference, association['id'])['current_generation'], generation['id'])
+            self.assertEqual(reference.path.read_bytes(), encode(data))
+            self.assertEqual((store / UPGRADE_BACKUP).read_bytes(), transaction_bytes(loads((store / UPGRADE_BACKUP).read_bytes())))
+            self.assertEqual(capture(root / 'HUNTDAT')[0][0]['path'], 'AREAS')
 
 
 if __name__ == '__main__':
