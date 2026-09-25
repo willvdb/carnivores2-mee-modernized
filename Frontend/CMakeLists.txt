@@ -37,6 +37,12 @@ if(MSVC)
 else()
   target_compile_options(c2-profile-probe PRIVATE -Wall -Wextra -Wpedantic)
 endif()
+# Production artifact: the native frontend and the native helpers it runs.
+# `cmake --install <build> --prefix <stage>` stages them together in bin/;
+# sessions locate the compiled synthetic child next to c2-frontend-native.
+include(GNUInstallDirs)
+install(TARGETS c2-frontend-native c2-profile-probe c2-frontend-synthetic-child
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 include(CTest)
 # The production artifact (c2-frontend-native, c2-profile-probe,
 # c2-frontend-synthetic-child) never needs Python. The Python reference
