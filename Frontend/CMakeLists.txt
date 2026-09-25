@@ -5,7 +5,8 @@ find_package(Threads REQUIRED)
 # Deliberately standalone: configure with -S Frontend, no engine dependencies.
 set(c2_frontend_core_sources native/src/core.cpp native/src/json_compat.cpp native/src/schema_compat.cpp native/src/manifest_schema.cpp native/src/store_paths.cpp native/src/store.cpp native/src/capture.cpp native/src/profile.cpp native/src/profile_files.cpp native/src/content.cpp native/src/discovery.cpp native/src/catalog.cpp native/src/catalog_projection.cpp native/src/planning.cpp native/src/launch_planning.cpp native/src/store_write.cpp native/src/probe_process.cpp native/src/session_journal.cpp native/src/planning_store.cpp
   native/src/sessions.cpp native/src/session_process.cpp native/src/session_runner.cpp native/src/reconciliation.cpp
-  native/src/acceptance.cpp native/src/store_ops.cpp)
+  native/src/acceptance.cpp native/src/store_ops.cpp native/src/cli.cpp
+  native/src/runtime_pending.cpp)
 add_library(c2_frontend_core STATIC ${c2_frontend_core_sources})
 target_link_libraries(c2_frontend_core PRIVATE Threads::Threads)
 target_compile_features(c2_frontend_core PUBLIC cxx_std_17)
@@ -292,7 +293,7 @@ if(BUILD_TESTING)
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_native_stack.py"
       "$<TARGET_FILE:c2-frontend-native-tests>")
   add_test(NAME frontend-native-help COMMAND c2-frontend-native --help)
-  set_tests_properties(frontend-native-help PROPERTIES PASS_REGULAR_EXPRESSION "Read-only commands")
+  set_tests_properties(frontend-native-help PROPERTIES PASS_REGULAR_EXPRESSION "native-hunt prepare")
   add_test(NAME frontend-native-version COMMAND c2-frontend-native --version)
   set_tests_properties(frontend-native-version PROPERTIES PASS_REGULAR_EXPRESSION "0.1.0-foundation")
   add_test(NAME frontend-native-unsupported COMMAND c2-frontend-native discover)
@@ -322,6 +323,12 @@ if(BUILD_TESTING)
       "C2_LAUNCH_ARGUMENT_PROBE=$<TARGET_FILE:c2-launch-argument-probe>"
       "C2_NATIVE_TEST_ENGINE=$<TARGET_FILE:c2-native-session-fixture>"
       "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/run_tests.py")
+  # Test-only dispatcher with the labelled asset-free policy doubles.
+  c2_frontend_test_driver(c2-frontend-native-fixture native/tests/fixture_cli.cpp)
+  add_test(NAME frontend-native-cli COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_cli.py" "$<TARGET_FILE:c2-frontend-native>"
+    "$<TARGET_FILE:c2-frontend-native-fixture>" "$<TARGET_FILE:c2-profile-probe>"
+    "$<TARGET_FILE:c2-native-session-fixture>" "$<TARGET_FILE:c2-frontend-synthetic-child>")
   include(native/tests/workstream_sessions.cmake)
   include(native/tests/workstream_store_ops.cmake)
   include(native/tests/workstream_acceptance.cmake)
