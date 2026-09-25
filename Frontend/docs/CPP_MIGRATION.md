@@ -98,8 +98,11 @@ clustered-Windows hostname behaviour.
 The inherited **unreviewed implementation sprint** at
 `frontend/cpp-session-sprint` / `42eebc9` is preserved. Its bounded continuation,
 `frontend/cpp-planning-completion`, implements 2C.2 library wrappers and helper
-hardening; see `CPP_PLANNING_HANDOFF.md` for exact code SHAs, tests and pending
-CI/review gates. Nothing from either branch is approved or merged.
+hardening. A source/test-code/CI review requested the bounded closure recorded
+in `CPP_PLANNING_HANDOFF.md`: threading dependencies, deterministic deferred
+reaping and explicit private-milestone compatibility dispositions. See that
+handoff for exact tested SHAs and CI results. Neither branch is merged; this
+closure does not approve every inherited sprint commit.
 Implemented: `snapshot_pins`, authoritative managed-history refresh,
 `genesis-observer-plan`, `native-hunt plan`, and complete shared paths for
 `launch-dry-run`. The latter retains the reference observation write. No
@@ -115,12 +118,26 @@ primitives propagate reference `OSError` paths as
 from `allow_nan=False` encoding maps to `StoreError`. From 2B.2:
 `project`/`text_reference` also propagate `ContentError`, `StoreError` and
 `filesystem_error`; a future CLI must catch `std::exception`.
-Open completion gates: final-head Windows verification and independent review;
-bare-name/PATH behavior, native helper output bounds, Linux `close_range`
-availability and bounded deferred reaping remain explicit compatibility review
-items. See the planning handoff rather than treating local passes as approval.
-Independent review remains separate from implementation; none was performed
-for this continuation. This ledger does not approve the cumulative sprint.
+Private-milestone decisions: helper names follow explicit-path/current-directory
+resolution, without Python bare-name PATH equivalence; pinned operations always
+execute the resolved evidence path without fallback. Each output stream has an
+intentional 16 MiB defensive bound; overflow fails and cleans up, never parsing
+truncated output. Helper execution is supported on Windows and Linux only where
+required `close_range` is available and permitted; other POSIX, older Linux and
+blocked-syscall environments refuse execution, with no approximate fallback.
+POSIX kills only its direct owned child, allows a 250 ms synchronous reap grace,
+and may transfer ownership to its prestarted waiter. Bounded return does not
+promise kernel termination/reaping has completed at that instant; Windows keeps
+job-based cleanup. These are private-library restrictions, not proof of complete
+Python runtime equivalence; broader PATH/platform equivalence awaits public
+API/CLI cutover consideration. The deterministic deferred-reap regression is at
+`06673e0ab86716b7f2a6b4b099ea7c6385d5441d`; the handoff records actual execution.
+The original final-code run `36087372781` at `1f2dcee` is now verified green:
+Linux 32/32 and Windows 49/49. Closure-code run `36100210586` at `06673e0`
+also completed successfully: Linux 33/33 and Windows 49/49, with actual runner,
+planning-store, journal and pure-policy execution. Exact SHAs/logs are in the
+handoff. Reviewer acceptance of the closure is separate from its test results;
+this ledger does not approve the cumulative sprint.
 
 ### Operation coverage (Python CLI to native)
 
@@ -130,7 +147,7 @@ for this continuation. This ledger does not approve the cumulative sprint.
 | `profiles` | Library only (1B.2/1B.3); CLI pending 7 |
 | `expedition discover` (read-only), `expedition refresh` observation | Library only (2A); refresh write pending 5A |
 | `catalog` | Parser 2B.1; projection library 2B.2; CLI pending 7 |
-| `launch-dry-run`, `genesis-observer-plan`, `native-hunt plan` | 2C.2 library wrappers implemented on `frontend/cpp-planning-completion`; local verification complete, final-head Windows/review gates pending; no CLI |
+| `launch-dry-run`, `genesis-observer-plan`, `native-hunt plan` | 2C.2 library wrappers implemented on `frontend/cpp-planning-completion`; bounded review closure implemented; exact-revision tests/CI and restrictions in planning handoff; no CLI |
 | `session prepare-synthetic/inspect/run/reconcile/recover`, `simulate-return` | Pending 3B-4C (synthetic sessions remain developer tooling) |
 | `native-observer prepare/run`, `native-hunt prepare/run/inspect` | Pending 3B-4C |
 | `hunter create/select/rename/archive`, `host-settings --json`, `associate`, `refresh-state` | `refresh-state` library implemented, including managed history; other mutations and CLI pending 5A |
@@ -153,7 +170,7 @@ for this continuation. This ledger does not approve the cumulative sprint.
 | 2B.1 pure catalog parser/scalars | Reviewed and merged in PR #24 |
 | 2B.2 filesystem catalog projection | Reviewed and merged in PR #25 |
 | 2C.1 pure planning policies | Reviewed and merged in PR #26 |
-| 2C.2 planning wrappers (lock, pins, observation write) | Implemented, locally tested, unreviewed on `frontend/cpp-planning-completion`; final-head Windows verification pending |
+| 2C.2 planning wrappers (lock, pins, observation write) | Implemented on `frontend/cpp-planning-completion`; requested review closure at `06673e0`: Debug/Release 33/33, Linux CI 33/33, Windows CI 49/49; restrictions in planning handoff; unmerged |
 | 3A safe paths/capture/atomic I/O | Merged in PR #27 (final correction rounds not re-reviewed) |
 | 3B preparation/journal | Pending |
 | 4A trust/process/capabilities | Pending |
@@ -1791,3 +1808,31 @@ Exact revisions, configuration results, preserved logs, CI links, exceptions
 and the next bounded review task are in `CPP_PLANNING_HANDOFF.md`. This is
 implementation evidence, not independent approval, runtime game certification
 or a merge. Session preparation remains unimplemented.
+
+
+### Slice 2C.2 review closure
+
+The reviewed head `1e2a398` and all inherited commits are preserved. `e9253c4`
+declares CMake `Threads::Threads` for both independently compiled production
+source targets. `06673e0` adds an inert private POSIX seam and a real-child
+regression: FIFO readiness, forced expiry of the synchronous reap grace, gated
+waiter ownership, caller return before gate release, actual reap/completion,
+exactly-once ownership events, and a successful subsequent same-process helper.
+No runtime defect was demonstrated. The test has bounded process/CTest timeouts
+and failure cleanup; Windows compiled runner scenarios remain active.
+
+At exact SHA `06673e0ab86716b7f2a6b4b099ea7c6385d5441d`, local Debug and Release
+passed 33/33, the deferred case passed 20 consecutive repetitions, and focused
+runner/deferred/planning-store/journal ASan/UBSan passed 4/4 (LeakSanitizer off).
+Compatibility `--check` passed without fixture regeneration. GitHub run
+`36100210586` completed successfully at this exact code SHA: Linux 33/33 and
+Windows 49/49, including actual compiled runner, planning-store, journal and
+pure-policy execution. This is separate from the original green run
+`36087372781` (Linux 32/32, Windows 49/49 at `1f2dcee`). The new deferred case
+runs on supported Linux; all existing Windows compiled scenarios remain active.
+Complete logs, job IDs, compatibility dispositions and focused closure self-review
+are in `CPP_PLANNING_HANDOFF.md`. The final documentation commit follows this
+verified code checkpoint; no test results are attributed to its own SHA.
+Historical evidence above is retained; old pending statements describe their
+then-current state. No cumulative inherited-stack approval, merge, Python
+implementation change or new migration slice is implied.

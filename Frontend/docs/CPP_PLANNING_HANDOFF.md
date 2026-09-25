@@ -1,8 +1,10 @@
-# C++ planning completion — unreviewed implementation handoff
+# C++ planning completion — review-closure handoff
 
-2C.2 is implemented as private library operations. Local verification is complete;
-final-head Windows CI and independent review remain gates. Nothing was merged,
-auto-merged or self-approved. No production CLI, session preparation, runnable
+2C.2 is implemented as private library operations. The source/test-code/CI review
+requested this bounded closure: declare threading, prove deferred reaping, and
+record compatibility decisions and exact-revision verification. This is not a
+full independent audit or approval of every inherited sprint commit. Nothing was
+merged, auto-merged or self-approved. No production CLI, session preparation, runnable
 workspace, engine launch, schema change or native-format change was added.
 
 ## Identity and review order
@@ -13,9 +15,13 @@ workspace, engine launch, schema change or native-format change was added.
 - Branch: `frontend/cpp-planning-completion`.
 - Worktree: `/home/willvdb/code/games/carnivores2-planning-completion`.
   Original main worktree and its two untracked log files were untouched.
-- Final implementation/tested code SHA:
-  `1f2dceedcc4b99548adb28f142a3ca1d6dd22da3`.
-  This handoff follows it; its own SHA is intentionally not predicted here.
+- Review-closure implementation/tested code SHA:
+  `06673e0ab86716b7f2a6b4b099ea7c6385d5441d`.
+- Previously reviewed head: `1e2a398424f2c114ada7f8bfc3c34b0b9b720956`;
+  original implementation SHA: `1f2dceedcc4b99548adb28f142a3ca1d6dd22da3`.
+  This handoff follows the tested code; its own SHA is not predicted here.
+  Fetch confirmed both live branch refs at the reviewed head and a clean planning
+  worktree before editing; no inherited commits were reset, rebased or replaced.
 
 Review the inherited dependency stack first, in the order in
 [CPP_SPRINT_HANDOFF.md](CPP_SPRINT_HANDOFF.md). It remains unreviewed draft,
@@ -34,6 +40,39 @@ including the separate journal component. Then review these additions:
 6. `1f2dceedcc4b99548adb28f142a3ca1d6dd22da3` — **A follow-up**, refuse
    incomplete descriptor isolation; test an inherited fd above a lowered hard
    limit. Review alongside commit 1; its production delta is POSIX-only.
+
+## Review-closure diff
+
+After the preserved implementation stack and `1e2a398` handoff:
+
+1. `e9253c4` — CMake discovers `Threads` with `THREADS_PREFER_PTHREAD_FLAG`
+   and links `Threads::Threads` privately to `c2_frontend_core` and
+   `c2-frontend-store-write-no-elision-tests`. These are the only two targets
+   independently compiling `probe_process.cpp`; the latter remains test-guarded.
+   This corrects a source-identified portability dependency; no older-toolchain
+   failure was reproduced or attributed to the reviewer.
+2. `06673e0` — private POSIX observer/seam and deterministic regression, plus
+   a bounded Linux CTest and the test driver's own threading dependency.
+   A FIFO confirms the compiled `hold` helper executed. The seam reports
+   synchronous reap attempts as pending through the real 250 ms grace, without
+   replacing SIGKILL, the atomic PID handoff or the prestarted waiter's waitpid.
+   A condition-variable gate holds that waiter after acquisition. The test
+   observes failure return with the runner stack gone and the waiter blocked,
+   one signal/transfer/acquisition, and no later synchronous wait or signal.
+   `waitid(WNOWAIT)` verifies the actual child is still available to its owner;
+   releasing the gate allows real `waitpid` to reap it, with the expected SIGKILL
+   status and a completion notification. A following `waitpid` yields `ECHILD`.
+   Another compiled helper succeeds in the same caller process. Shared ownership
+   keeps test coordination alive independently of the runner stack; an RAII guard
+   releases the gate on assertion/exception paths. Python bounds the driver at
+   15 s and kills its owned process group on failure; the standalone CTest has a
+   20 s outer timeout. No sleeps establish the test assertions. Existing Windows
+   compiled scenarios remain active; this additional case requires Linux's
+   supported descriptor-isolation backend.
+   **No runtime defect was demonstrated**; production changes are limited to the
+   inert-by-default private seam. No public option or environment switch exists.
+3. Documentation-only closure evidence and compatibility dispositions follow
+   that tested code revision; this document does not predict its own commit SHA.
 
 ## Completed scope
 
@@ -68,7 +107,49 @@ the existing hunt policy. Like Python it does not take a writer lock or persist.
 `launch_dry_run` retains early completion, same-instance stage binding and the
 legitimate `last_observation` transaction write. No new native-byte mutation.
 
-## Tests and CI
+## Review-closure verification
+
+At exact code SHA `06673e0ab86716b7f2a6b4b099ea7c6385d5441d`:
+
+- Compatibility generator `python3 Frontend/tools/generate_compatibility.py --check`:
+  passed; expected fixtures were not regenerated.
+- Clean Debug reconfiguration (`cmake --fresh`) found `Threads: TRUE` and
+  `CMAKE_HAVE_LIBC_PTHREAD` on this host. Both independent production-source
+  targets built at the threading commit, then rebuilt at the tested closure SHA.
+  No extra pthread link flag is needed by this integrated-libc
+  environment; no flags were hard-coded.
+- Reused GCC Debug and Release builds: **33/33 CTests each**, complete parallel
+  suites including runner, planning-store, journal and pure-policy regressions.
+- New standalone deferred-reap CTest: **20/20 consecutive repetitions**, also
+  exercised by both full suites and by the full runner test (25 Linux cases).
+- Reused Clang Debug ASan/UBSan build: **4/4 actually executed and passed**:
+  `frontend-native-probe-process`, `frontend-native-probe-deferred-reap`,
+  `frontend-native-planning-store`, `frontend-native-session-journal`.
+  `ASAN_OPTIONS=detect_leaks=0`, `UBSAN_OPTIONS=halt_on_error=1`; no sanitizer
+  reports. LeakSanitizer was not run.
+- New GitHub Frontend run
+  [36100210586](https://github.com/willvdb/carnivores2-mee-modernized/actions/runs/36100210586)
+  at this exact code SHA: **both jobs completed successfully**, verified from
+  GitHub metadata and completed logs. Ubuntu job `107960895813`: **33/33 passed**,
+  including deferred-reap (0.31 s), runner (4.29 s), journal (0.67 s),
+  planning-store (1.99 s) and pure-policy (18.88 s). Windows job `107960896004`:
+  **49/49 passed**, including actual compiled runner (7.05 s), journal (4.82 s),
+  planning-store (24.26 s) and pure-policy (219.66 s). Both configurations found
+  `Threads: TRUE`. Windows retains all existing compiled scenarios; the new
+  Linux-only deferred case is explicitly skipped within its runner harness and
+  is not registered as a separate Windows CTest. No CTests were skipped.
+  Earlier green runs are not substituted for this exact-SHA verification.
+  The final documentation-only commit follows this tested code checkpoint;
+  these CI results are not attributed to that documentation commit's SHA.
+
+Logs for this closure are preserved as `closure-*` and
+`review-closure-prior-ci.log` under
+`/home/willvdb/.local/state/c2-planning-completion/`. Builds, C++17 selection and
+existing Python 3.12.14 interpreter were reused; no toolchains were installed.
+No local CTests or focused sanitizer cases were skipped. macOS/other POSIX execution, Windows Release and
+Windows sanitizers were not run.
+
+## Original implementation tests and CI (retained evidence)
 
 At exact code SHA `1f2dceedcc4b99548adb28f142a3ca1d6dd22da3`, Linux x86-64:
 
@@ -119,16 +200,19 @@ Actual CI evidence (not a claim of full Windows approval):
   The superseded run was then cancelled to retrieve its logs; the final-code
   run below is retained. The only later production change is POSIX isolation.
 - [Final-code run 36087372781](https://github.com/willvdb/carnivores2-mee-modernized/actions/runs/36087372781)
-  at `1f2dcee`: Ubuntu passed; Windows is still in progress at handoff.
-  Confirm the full Windows suite,
-  particularly `frontend-native-probe-process` and `frontend-native-planning-store`.
-  Compilation alone does not satisfy those runtime gates.
+  at exact SHA `1f2dceedcc4b99548adb28f142a3ca1d6dd22da3`: **both jobs completed
+  successfully**, verified from GitHub metadata and completed logs in this
+  closure. Ubuntu job `107922162665`: **32/32 passed**. Windows job
+  `107922162825`: **49/49 passed**, including actual compiled runner (5.74 s),
+  planning-store (18.34 s), journal (4.05 s) and pure-policy (209.89 s) execution.
+  This supersedes the original handoff's pending-Windows statement. It covers
+  `1f2dcee`, not the later closure code.
 
 The compiled runner scenarios are not skipped on Windows. POSIX shebang tests,
 closed-stdio fd tests and the Linux-specific lowered-limit test have explicit
 platform skips there. macOS/other POSIX, Windows Release and Windows sanitizers
-were not run. Windows planning runtime success is established at `b9965b5`; a **complete
-final-head Windows suite pass is not yet claimed**.
+were not run. The complete original implementation Windows suite is now verified
+at `1f2dcee`; the closure code has separate exact-SHA evidence above.
 
 Reproduce local gates from the worktree root:
 
@@ -140,7 +224,7 @@ ctest --test-dir /tmp/c2-planning-debug -C Debug --parallel 8 --output-on-failur
 gh run view 36087372781 --log-failed
 ```
 
-## Differential evidence and compatibility review gates
+## Differential evidence and private-milestone compatibility decisions
 
 Tests call unchanged `lodge.sessions.snapshot_pins`, profile refresh,
 `genesis.plan_observer`, `native_hunt.plan_hunt` and `launch.prepare`.
@@ -162,37 +246,63 @@ are unchanged; real-policy refusals and the full existing pure-policy suite run
 separately. No real Genesis assets were used or committed, so a successful
 production-policy plan against a real Genesis installation is not certified.
 
-Named gates still requiring independent disposition:
+The following are explicit accepted restrictions/decisions for this **private
+library milestone**, not a claim that the entire Python runtime is behaviorally
+identical. Broader equivalence remains a future public API/CLI-cutover decision:
 
 - **PATH:** Python profile inspection searches PATH for bare executable names,
   while Python executable evidence resolves a filesystem path. Native execution
   retains the explicit-path/CWD convention on both hosts. Pinned operations
   execute only the absolute path returned by evidence; no PATH/helper fallback
-  can bypass a codec pin. Bare-name equivalence is not claimed.
+  can bypass a codec pin. Bare-name equivalence is not claimed; no PATH-resolution
+  redesign is included in this closure.
 - **Output bound:** native stdout and stderr each retain at most 16 MiB; Python
-  is unbounded. Overflow throws and cleans up; truncated JSON is never parsed.
+  is unbounded. The 16 MiB per-stream bound is an intentional defensive
+  difference. Overflow throws explicitly and cleans up; truncated output is
+  never parsed as a valid result. Exact unbounded Python equivalence is not claimed.
 - **Descriptor isolation:** the Linux backend now requires successful
-  `close_range` (Linux 5.9+ with the syscall permitted). Other POSIX backends or
-  blocked/unavailable syscalls refuse before exec. A limit-based close loop is
+  `close_range` (Linux 5.9+ with the syscall permitted). Supported helper execution
+  is restricted to Windows and Linux environments where that required operation
+  is available and permitted. Other POSIX, older Linux and blocked/unavailable
+  syscalls currently refuse before helper exec; they are not supported.
+  A limit-based close loop is
   unsound when existing descriptors exceed a subsequently lowered hard limit.
-  Additional POSIX support requires a separately tested complete-close backend.
+  Fail-closed behavior remains; there is no approximate descriptor-closing
+  fallback. Additional POSIX support requires a separately tested complete-close
+  backend.
 - **Cleanup:** POSIX terminates the direct owned child, like Python; it does not
   supervise grandchildren. After 250 ms, a prestarted waiter may finish reaping
-  asynchronously. Windows terminates its job. These lifetime/deadline conventions
-  are explicit and need review; no journal PID is ever used for signalling.
+  asynchronously. Bounded return to the caller does **not** guarantee kernel-level
+  termination or reaping has already completed at that instant. Windows retains
+  job-based cleanup. The deterministic regression and exact tested revision are
+  recorded above; no journal PID is ever used for signalling.
+Other inherited caveats retained (not resolved or independently approved by this
+closure):
+
 - **Manifest consistency:** hunt adapter selection and pins use one read instead
   of Python's separate schema/pin reads. Transaction refresh uses the retained
   manifest consistently instead of `association_root` rereading it. Behavior
   matches quiescent/cooperatively locked stores; no adversarial-writer guarantee.
 - Inherited non-object helper/error-kind conventions, tuple/list/non-finite typed
   API limits and 3A follow-ups remain as documented in the sprint handoff. No
-  claim of full cumulative sprint review is made. Self-review covered the runner,
+  claim of full cumulative sprint review is made. Original implementation
+  self-review covered the runner,
   new adapters/wrappers and the inherited discovery, generation/capture,
   transaction and inspection paths they exercise.
 
-## Next bounded task
+## Stopping point
 
-Finish/inspect the final-code Windows CI results, then independently review the
-inherited dependencies and these six commits, resolving the named compatibility
-gates. **Do not begin 3B session/workspace preparation as part of this handoff.**
-The 2C.2 implementation exists; all verification/approval gates are not yet met.
+Focused self-review checked the threading target coverage/test guards, inert
+observer defaults, shared deferred lifetimes, ownership-event assertions, bounded
+failure cleanup, Windows scenario retention and the seven-file scope. It found
+no additional defect. Main remains `a86be96`; the Python implementation and all
+inherited commits remain unchanged.
+
+This closure is limited to the requested build dependency, deterministic cleanup
+regression and verification/compatibility documentation. All requested local and
+code-checkpoint CI checks passed; no technical verification blocker remains. Reviewer acceptance of
+these closure revisions and any separate inherited-stack review remain distinct
+from the test results; this pass does not approve the cumulative sprint or mark
+anything merged. No Python implementation changed. No public CLI, session
+preparation, workspace creation or engine launch was started. **Stop here; do not
+begin another migration slice as part of this handoff.**
