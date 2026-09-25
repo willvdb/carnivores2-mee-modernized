@@ -440,9 +440,10 @@ Value hunter(Value& data, std::u32string_view action, const std::optional<std::u
     } else if (action == U"select" || create) {
         if (record.contains(U"archived_at") && schema::truth(record.at(U"archived_at")))
             throw StoreError("archived hunters cannot be selected");
+        // Appending a top-level member may reallocate: look the record up again.
         assign(data, U"active_hunter", string_value(id));
     } else throw StoreError("unknown hunter action");
-    return record;
+    return *member(table(data, U"hunters"), id);
 }
 
 Value update_host_settings(Value& data, std::string_view json_text) {
