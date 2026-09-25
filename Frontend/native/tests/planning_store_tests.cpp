@@ -8,9 +8,18 @@
 #include "catalog_internal.hpp"
 #include "content_internal.hpp"
 #include <cstdlib>
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#endif
 using namespace c2::frontend;
 namespace fs = std::filesystem;
 int main(int argc, char** argv) {
+#ifdef _WIN32
+    // The oracle protocol is byte-exact LF JSON/errors on every platform.
+    _setmode(_fileno(stdin), _O_BINARY);
+    _setmode(_fileno(stdout), _O_BINARY);
+#endif
     if (argc < 5) return 2;
     try {
         if ((std::string(argv[1]) == "observer" || std::string(argv[1]) == "hunt") && argc == 6) {
