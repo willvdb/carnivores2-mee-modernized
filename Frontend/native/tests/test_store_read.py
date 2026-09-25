@@ -171,11 +171,10 @@ with tempfile.TemporaryDirectory(prefix='c2-native-store-') as temporary:
     write(directory, b'broken')
     output, errors = p.communicate(b'go\n', timeout=15)
     assert p.returncode == 0 and output == expected, errors
-    # Unsupported paths must never reach a write transaction or subprocess.
+    # Mutating commands are now native (the read-only CLI restriction ended with
+    # the runtime cutover); their parity is covered by test_cli.py. Option errors
+    # below must still never reach a transaction.
     write(directory, base()); before = snapshot(parent)
-    for command in [('hunter', 'create', 'X'), ('recover-backup',), ('host-settings', '--json', '{}'), ('profiles', I), ('managed-state', 'upgrade'), ('expedition', 'discover', str(parent))]:
-        p = run([cli, '--store', directory, *command]); assert p.returncode == 2
-    assert snapshot(parent) == before
     for args in [['--store', '--probe', 'status'], ['--store', '--unknown', 'status'], ['--store'], ['--probe', '--store', str(directory), 'status']]:
         p = run([cli, *args]); assert p.returncode == 2 and not p.stdout
         assert 'error' in json.loads(p.stderr)
