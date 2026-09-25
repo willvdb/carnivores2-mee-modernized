@@ -1,6 +1,10 @@
 // Workstream B: manifest mutations, registration and imports. See store_ops.hpp.
 #include "store_ops.hpp"
+#include "c2/frontend/content.hpp"
 #include "c2/frontend/core.hpp"
+#include "c2/frontend/discovery.hpp"
+#include "content_internal.hpp"
+#include "discovery_internal.hpp"
 #include "manifest_schema.hpp"
 #include "planning_internal.hpp"
 #include "schema_compat.hpp"
@@ -74,6 +78,210 @@ Value read_manifest(const fs::path& path, const ReadPolicy& policy) {
     return value;
 }
 bool version_two(const Value& manifest) { return manifest.at(U"schema_version").integer == "2"; }
+#ifdef _WIN32
+constexpr bool native_nt = true;
+#else
+constexpr bool native_nt = false;
+#endif
+const std::u32string_view flavor = session_journal::path_flavor();
+using planning_internal::array_value;
+namespace ci = content_internal;
+// Path(text): pathlib construction spelling for native locators.
+fs::path native_units(const std::u32string& points) { return ci::source_spelling(ci::native_units(points)); }
+Value optional_text(const std::optional<std::u32string>& s) { return s ? string_value(*s) : Value{}; }
+// pathlib equality: exact parts on POSIX, lower() on NT (as PurePath::below).
+bool same_path(const fs::path& a, const fs::path& b) {
+    auto x = schema::path(store_paths::native_points(a), native_nt), y = schema::path(store_paths::native_points(b), native_nt);
+    if (native_nt) {
+        x.drive = schema::lower(x.drive); y.drive = schema::lower(y.drive);
+        for (auto& s : x.parts) s = schema::lower(s);
+        for (auto& s : y.parts) s = schema::lower(s);
+    }
+    return x.drive == y.drive && x.root == y.root && x.parts == y.parts;
+}
+bool strictly_below(const fs::path& child, const fs::path& parent) {
+    return schema::path(store_paths::native_points(child), native_nt).below(schema::path(store_paths::native_points(parent), native_nt));
+}
+bool is_dir(const fs::path& p) { return fs::is_directory(ci::source_status(p)); }
+Value locator_value(const fs::path& path) {
+    Value v = object_value();
+    v.object = {{U"path", string_value(store_paths::native_points(path))}, {U"path_flavor", string_value(std::u32string(flavor))}};
+    return v;
+}
+// store.validate_locator over a retained value (relocate rechecks managed_root).
+void validate_locator(const Value& v) {
+    const bool object = v.kind == Kind::object;
+    const Value* flavor_value = object && v.contains(U"path_flavor") ? &v.at(U"path_flavor") : nullptr;
+    const bool nt = flavor_value && flavor_value->kind == Kind::string && flavor_value->string == U"nt";
+    if (!nt && !(flavor_value && flavor_value->kind == Kind::string && flavor_value->string == U"posix"))
+        throw StoreError("invalid path flavor or locator");
+    const Value* path = v.contains(U"path") ? &v.at(U"path") : nullptr;
+    if (!path || path->kind != Kind::string || path->string.empty() || path->string.find(U'\0') != std::u32string::npos)
+        throw StoreError("invalid installation locator");
+    const auto parsed = schema::path(path->string, nt);
+    if (!parsed.absolute() || parsed.parent()) throw StoreError("locator must be absolute without parent traversal");
+}
+Value revision_value(const fs::path& root) {
+    const auto f = fingerprint(root);
+    Value v = object_value();
+    v.object = {{U"algorithm", ascii_value(f.algorithm())}, {U"sha256", ascii_value(f.sha256())},
+        {U"file_count", planning_internal::integer_value(std::to_string(f.file_count()))},
+        {U"byte_count", planning_internal::integer_value(f.byte_count())}};
+    return v;
+}
+Value engines_value(const fs::path& root, const DiscoveryObservation& observation) {
+    Value out = array_value();
+    for (const auto& e : engine_evidence(root, observation)) {
+        Value item = object_value();
+        item.object = {{U"path", string_value(e.path)}, {U"sha256", ascii_value(e.sha256)}, {U"semantics", string_value(e.semantics)}};
+        out.array.push_back(std::move(item));
+    }
+    return out;
+}
+// dict.setdefault(key, []).append(...): retained unknown metadata of another
+// kind is the reference AttributeError.
+Value& list_default(Value& object, std::u32string_view key) {
+    if (!object.contains(key)) object.object.emplace_back(std::u32string(key), array_value());
+    Value& v = *member(object, key);
+    if (v.kind != Kind::array) throw std::invalid_argument("retained instance list is not a list");
+    return v;
+}
+bool registered_here(const Value& instance, const fs::path& root) {
+    return instance.at(U"path_flavor").string == flavor &&
+        same_path(store_paths::resolve_native(native_units(instance.at(U"path").string)), root);
+}
+}
+
+Value register_instance(Value& data, const fs::path& path, std::u32string_view mode, std::u32string_view dialect,
+                        const std::optional<std::u32string>& family, const std::optional<std::u32string>& release,
+                        const std::optional<fs::path>& managed_root) {
+    const fs::path root = native_path(path);
+    static constexpr std::u32string_view dialects[] = {U"unknown", U"c2-classic", U"iceage-triassic", U"mee-older", U"mee-newer"};
+    if ((mode != U"registered" && mode != U"managed") || std::find(std::begin(dialects), std::end(dialects), dialect) == std::end(dialects))
+        throw StoreError("invalid installation mode or dialect");
+    Value managed;
+    if (mode == U"managed") {
+        if (!managed_root) throw StoreError("managed installation requires an explicit Expeditions directory");
+        const fs::path directory = native_path(*managed_root);
+        if (!is_dir(directory) || same_path(root, directory) || !strictly_below(root, directory))
+            throw StoreError("managed installation must be below the existing explicit Expeditions directory");
+        managed = locator_value(directory);
+    }
+    Value& instances = table(data, U"instances");
+    for (const auto& entry : instances.object) if (registered_here(entry.second, root)) return entry.second;
+    const auto observation = recognize(root);
+    const Value& evidence = discovery_internal::observation_value(observation);
+    if (!observation.recognized())
+        throw StoreError("not a coherent installation: " + compat::dumps(evidence.at(U"diagnostics"), false));
+    const Value revision = revision_value(root);
+    Value engines = engines_value(root, observation);
+    const std::u32string id = ascii(store_write::new_id());
+    const bool asserted = (family && !family->empty()) || (release && !release->empty()) || dialect != U"unknown";
+    Value revisions = array_value();
+    revisions.array.push_back(revision);
+    Value instance = object_value();
+    instance.object = {{U"id", string_value(id)}, {U"path", string_value(store_paths::native_points(root))},
+        {U"path_flavor", string_value(std::u32string(flavor))}, {U"mode", string_value(std::u32string(mode))},
+        {U"managed_root", std::move(managed)}, {U"family", optional_text(family)}, {U"release", optional_text(release)},
+        {U"dialect_hint", string_value(std::u32string(dialect))},
+        {U"identity_evidence", ascii_value(asserted ? "user assertion" : "unresolved")},
+        {U"created_at", ascii_value(store_write::now())}, {U"revision", revision}, {U"revisions", std::move(revisions)},
+        {U"evidence", evidence}, {U"engine_evidence", std::move(engines)}};
+    instances.object.emplace_back(id, instance);
+    return instance;
+}
+
+Value relocate(Value& data, std::u32string_view identity, const fs::path& path) {
+    Value& instances = table(data, U"instances");
+    Value* instance = member(instances, identity);
+    if (!instance) throw StoreError("unknown instance ID");
+    const fs::path root = native_path(path);
+    const bool native = instance->at(U"path_flavor").string == flavor;
+    if (native) {
+        const fs::path old = native_units(instance->at(U"path").string);
+        if (fs::exists(ci::source_status(old)) || ci::source_is_link(old))
+            throw StoreError("old installation still exists; this could be a clone, not a move");
+    }
+    for (const auto& entry : instances.object)
+        if (registered_here(entry.second, root)) throw StoreError("destination already registered");
+    std::u32string mode = instance->at(U"mode").string;
+    if (mode == U"managed") {
+        const Value* managed = instance->contains(U"managed_root") ? &instance->at(U"managed_root") : nullptr;
+        if (!managed || managed->kind == Kind::null)
+            throw StoreError("managed root context missing; explicit ownership reconciliation required");
+        validate_locator(*managed);
+        if (managed->at(U"path_flavor").string != flavor || !native)
+            throw StoreError("foreign managed root requires explicit ownership reconciliation");
+        const fs::path directory = native_units(managed->at(U"path").string), previous = native_units(instance->at(U"path").string);
+        if (!is_dir(directory) || !same_path(store_paths::resolve_native(directory), directory) ||
+            !same_path(store_paths::resolve_native(previous), previous) || same_path(previous, directory) ||
+            !strictly_below(previous, directory) || same_path(root, directory))
+            throw StoreError("managed root missing or ambiguous; explicit ownership reconciliation required");
+        mode = strictly_below(root, directory) ? U"managed" : U"registered";
+    }
+    const auto observation = recognize(root);
+    if (!observation.recognized() || !schema::equal(revision_value(root), instance->at(U"revision")))
+        throw StoreError("relocation requires a coherent root with matching content revision");
+    Value engines = engines_value(root, observation);
+    Value previous = object_value();
+    previous.object = {{U"path", instance->at(U"path")}, {U"path_flavor", instance->at(U"path_flavor")}};
+    if (!schema::equal(engines, instance->at(U"engine_evidence"))) {
+        // The registration baseline remains immutable. Even returning to its
+        // bytes later cannot erase a pending review of an explicit relocation.
+        Value review = object_value();
+        review.object = {{U"status", ascii_value("required")}, {U"observed_at", ascii_value(store_write::now())},
+            {U"from", previous}, {U"to", locator_value(root)}, {U"baseline_engine_evidence", instance->at(U"engine_evidence")},
+            {U"destination_engine_evidence", std::move(engines)}};
+        list_default(*instance, U"engine_relocation_reviews").array.push_back(std::move(review));
+    }
+    list_default(*instance, U"previous_locations").array.push_back(std::move(previous));
+    // Keep the root locator as provenance even after relinquishing ownership.
+    // A registered instance never regains management merely by its destination.
+    assign(*instance, U"path", string_value(store_paths::native_points(root)));
+    assign(*instance, U"path_flavor", string_value(std::u32string(flavor)));
+    assign(*instance, U"mode", string_value(std::move(mode)));
+    return *instance;
+}
+
+Value refresh_instance(Value& data, std::u32string_view identity) {
+    Value* instance = member(table(data, U"instances"), identity);
+    if (!instance) throw StoreError("unknown instance ID");
+    Value result = discovery_internal::inspect(*instance);
+    if (result.contains(U"revision_changed") && schema::truth(result.at(U"revision_changed"))) {
+        const Value revision = result.at(U"revision");
+        assign(*instance, U"revision", revision);
+        Value& revisions = list_default(*instance, U"revisions");
+        const bool known = std::any_of(revisions.array.begin(), revisions.array.end(),
+            [&](const Value& v) { return schema::equal(v, revision); });
+        if (!known) revisions.array.push_back(revision);
+    }
+    assign(*instance, U"last_observation", result);
+    return result;
+}
+
+Value discover_view(const Manifest& manifest, const fs::path& directory) {
+    Value out = array_value();
+    for (const auto& observation : discover(directory)) {
+        Value result = discovery_internal::observation_value(observation);
+        if (observation.recognized()) {
+            Value moves = array_value();
+            for (auto& id : move_candidates(manifest, native_units(result.at(U"path").string))) moves.array.push_back(string_value(std::move(id)));
+            result.object.emplace_back(U"possible_moves", std::move(moves));
+        }
+        out.array.push_back(std::move(result));
+    }
+    return out;
+}
+
+Value discover_register(Value& data, const fs::path& directory) {
+    // The reference completes discovery before registering the first root.
+    std::vector<fs::path> roots;
+    for (const auto& observation : discover(directory))
+        if (observation.recognized()) roots.push_back(native_units(*observation.path()));
+    Value out = array_value();
+    for (const auto& root : roots)
+        out.array.push_back(register_instance(data, root, U"managed", U"unknown", std::nullopt, std::nullopt, directory));
+    return out;
 }
 
 Value hunter(Value& data, std::u32string_view action, const std::optional<std::u32string>& identity,

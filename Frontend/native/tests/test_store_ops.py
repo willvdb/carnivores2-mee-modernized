@@ -23,7 +23,7 @@ import uuid
 
 FRONTEND = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(FRONTEND), str(FRONTEND / 'tests')]
-from lodge.discovery import register  # noqa: E402
+from lodge.discovery import discover, get_instance, move_candidates, refresh_instance, register, relocate  # noqa: E402
 from lodge.managed_state import UPGRADE_BACKUP  # noqa: E402
 from lodge.profiles import associate  # noqa: E402
 from lodge.session_io import encode  # noqa: E402
@@ -206,6 +206,48 @@ class StoreOpsCase(unittest.TestCase):
             with self.store.transaction() as data:
                 return hunter(data, action, identity, name)
         return self.both('hunter', {'action': action, 'id': identity, 'name': name}, reference)
+
+    def register(self, path, mode='registered', dialect='unknown', family=None, release=None, managed_root=None):
+        def reference():
+            with self.store.transaction() as data:
+                return register(data, path, mode, dialect, family, release, managed_root)
+        args = {'path': str(path), 'mode': mode, 'dialect': dialect, 'family': family, 'release': release,
+                'managed_root': None if managed_root is None else str(managed_root)}
+        return self.both('register', args, reference)
+
+    def relocate(self, identity, path):
+        def reference():
+            with self.store.transaction() as data:
+                return relocate(data, identity, path)
+        return self.both('relocate', {'id': identity, 'path': str(path)}, reference)
+
+    def refresh(self, identity):
+        def reference():
+            with self.store.transaction() as data:
+                return refresh_instance(get_instance(data, identity))
+        return self.both('refresh', {'id': identity}, reference)
+
+    def discover(self, path):
+        def reference():
+            data = self.store.read()
+            results = discover(path)
+            for result in results:
+                if result['recognized']:
+                    result['possible_moves'] = move_candidates(data, result['path'])
+            return results
+        return self.both('discover', {'path': str(path)}, reference)
+
+    def discover_register(self, path):
+        def reference():
+            with self.store.transaction() as data:
+                return [register(data, result['path'], 'managed', managed_root=path)
+                        for result in discover(path) if result['recognized']]
+        return self.both('discover-register', {'path': str(path)}, reference)
+
+    def edit(self, mutate):
+        """Author manifest state through the reference (twins are copied afterwards)."""
+        with self.store.transaction() as data:
+            return mutate(data)
 
 
 class HunterTests(StoreOpsCase):
@@ -391,6 +433,257 @@ class RecoverBackupTests(StoreOpsCase):
                 self.assertEqual((self.twin / 'lodge.json').read_bytes(), manifest)
                 self.assertFalse((self.twin / 'lodge.lock').exists())
                 self.assertFalse(list(self.twin.glob('.pending-*')))
+
+
+FOREIGN = 'foreign or ambiguous path; supply an explicit native location'
+
+
+class RegisterTests(StoreOpsCase):
+    def setUp(self):
+        super().setUp()
+        self.expeditions = self.base / 'Expeditions'
+        self.root = game(self.expeditions, 'Triassic')
+
+    def test_registered_managed_and_idempotent_registration(self):
+        instance = self.register(self.root, dialect='c2-classic', family='Carnivores 2', release='1.04')[0]
+        self.assertEqual((instance['identity_evidence'], instance['managed_root']), ('user assertion', None))
+        self.assertEqual(self.register(self.root)[0]['id'], instance['id'])
+        # Same root spelled through a symlinked parent still resolves to the instance.
+        alias = self.base / 'alias'
+        alias.symlink_to(self.expeditions, target_is_directory=True)
+        self.assertEqual(self.register(alias / 'Triassic', 'managed', managed_root=self.expeditions)[0]['id'], instance['id'])
+        second = game(self.expeditions, 'Managed')
+        managed = self.register(second, 'managed', 'mee-newer', managed_root=self.expeditions)[0]
+        self.assertEqual(managed['managed_root'], {'path': str(self.expeditions), 'path_flavor': os.name})
+        self.assertEqual(managed['identity_evidence'], 'user assertion')
+        third = game(self.base, 'Plain')
+        self.assertEqual(self.register(third, family='')[0]['identity_evidence'], 'unresolved')
+        self.assertEqual(len(self.store.read()['instances']), 3)
+
+    def test_refusals_write_nothing(self):
+        self.register(self.root)
+        before = self.store.path.read_bytes()
+        incoherent = self.base / 'Incoherent'
+        (incoherent / 'HUNTDAT').mkdir(parents=True)
+        cases = [(dict(path=self.root, mode='owned'), 'invalid installation mode or dialect'),
+                 (dict(path=self.root, dialect='mee'), 'invalid installation mode or dialect'),
+                 (dict(path=self.root, mode='managed'), 'managed installation requires an explicit Expeditions directory'),
+                 (dict(path=self.root, mode='managed', managed_root=self.root), 'managed installation must be below the existing explicit Expeditions directory'),
+                 (dict(path=self.root, mode='managed', managed_root=self.base / 'absent'), 'managed installation must be below the existing explicit Expeditions directory'),
+                 (dict(path=self.root, mode='managed', managed_root=self.base / 'Expeditions-other'), 'managed installation must be below the existing explicit Expeditions directory'),
+                 (dict(path=self.base / 'missing'), None), (dict(path=incoherent), None),
+                 (dict(path=Path('C:\\Games\\Foreign')), FOREIGN), (dict(path=Path('Games\\Foreign')), FOREIGN),
+                 (dict(path=self.root, mode='managed', managed_root=Path('C:\\Games')), FOREIGN)]
+        (self.base / 'Expeditions-other').mkdir()
+        for kwargs, message in cases:
+            with self.subTest(**{k: str(v) for k, v in kwargs.items()}):
+                expected = self.register(**kwargs)[0]
+                self.assertIsInstance(expected, str)
+                if message:
+                    self.assertEqual(expected, message)
+                else:
+                    self.assertTrue(expected.startswith('not a coherent installation: [{'), expected)
+        self.assertEqual(self.store.path.read_bytes(), before)
+
+    def test_lock_and_injected_failure(self):
+        self.register(self.root)
+        second = game(self.base, 'Second')
+        self.make_twin()
+        before = (self.twin / 'lodge.json').read_bytes()
+        (self.twin / 'lodge.lock').write_bytes(b'')
+        kind, rest = native('register', self.twin, {'path': str(second)})
+        self.assertEqual((kind, rest), ('frontend', LOCK_MESSAGE.format(self.twin / 'lodge.lock')))
+        (self.twin / 'lodge.lock').unlink()
+        kind, rest = native('register', self.twin, {'path': str(second)}, {'C2_TEST_WRITE_FAILURE': 'replace:lodge.json'})
+        self.assertEqual(kind, 'oserror', rest)
+        self.assertEqual((self.twin / 'lodge.json').read_bytes(), before)
+        self.assertFalse((self.twin / 'lodge.lock').exists())
+
+
+class RelocateTests(StoreOpsCase):
+    def setUp(self):
+        super().setUp()
+        self.expeditions = self.base / 'Expeditions'
+        self.root = game(self.expeditions, 'Triassic')
+
+    def test_managed_rename_outside_and_back(self):
+        instance = self.register(self.root, 'managed', managed_root=self.expeditions)[0]
+        moved = self.expeditions / 'Triassic MEE'
+        self.root.rename(moved)
+        result = self.relocate(instance['id'], moved)[0]
+        self.assertEqual((result['mode'], result['path']), ('managed', str(moved)))
+        self.assertEqual(result['previous_locations'], [{'path': str(self.root), 'path_flavor': os.name}])
+        self.assertNotIn('engine_relocation_reviews', result)
+        outside = self.base / 'Expeditions-external'
+        moved.rename(outside)
+        self.assertEqual(self.relocate(instance['id'], outside)[0]['mode'], 'registered')
+        outside.rename(self.root)
+        result = self.relocate(instance['id'], self.root)[0]
+        self.assertEqual((result['mode'], len(result['previous_locations'])), ('registered', 3))
+        self.assertEqual(result['managed_root']['path'], str(self.expeditions))
+
+    def test_registered_rename_and_engine_review_history(self):
+        instance = self.register(self.root)[0]
+        moved = self.expeditions / 'Renamed'
+        self.root.rename(moved)
+        (moved / 'CARN2.EXE').write_bytes(b'patched launcher bytes')
+        result = self.relocate(instance['id'], moved)[0]
+        self.assertEqual((result['mode'], result['managed_root']), ('registered', None))
+        review = result['engine_relocation_reviews'][0]
+        self.assertEqual((review['status'], review['from']['path'], review['to']['path']), ('required', str(self.root), str(moved)))
+        self.assertEqual(review['baseline_engine_evidence'], instance['engine_evidence'])
+        self.assertNotEqual(review['destination_engine_evidence'], instance['engine_evidence'])
+        observed = self.refresh(instance['id'])[0]
+        self.assertTrue(observed['engine_review_required'])
+        self.assertEqual(observed['diagnostics'][-1]['code'], 'engine-review-required')
+        # Returning to the baseline bytes does not erase the pending review.
+        moved.rename(self.root)
+        (self.root / 'CARN2.EXE').write_bytes(b'synthetic executable evidence - never run')
+        result = self.relocate(instance['id'], self.root)[0]
+        self.assertEqual(len(result['engine_relocation_reviews']), 1)
+        self.assertEqual(len(result['previous_locations']), 2)
+        self.assertTrue(self.refresh(instance['id'])[0]['engine_review_required'])
+
+    def test_refusals_write_nothing(self):
+        managed = self.register(self.root, 'managed', managed_root=self.expeditions)[0]
+        other = game(self.base, 'Other')
+        registered = self.register(other)[0]
+        legacy = self.edit(lambda d: register(d, game(self.expeditions, 'Legacy'), 'managed', managed_root=self.expeditions))
+        self.edit(lambda d: d['instances'][legacy['id']].pop('managed_root'))
+        foreign = copy.deepcopy(registered)
+        foreign.update(id=str(uuid.uuid4()), path='C:\\Games\\Foreign', path_flavor='nt')
+        foreign_managed = copy.deepcopy(foreign)
+        foreign_managed.update(id=str(uuid.uuid4()), path='C:\\Games\\Managed\\Foreign', mode='managed',
+                               managed_root={'path': 'C:\\Games\\Managed', 'path_flavor': 'nt'})
+        self.edit(lambda d: d['instances'].update({foreign['id']: foreign, foreign_managed['id']: foreign_managed}))
+        (self.expeditions / 'Legacy').rename(self.base / 'Legacy moved')
+        before = self.store.path.read_bytes()
+        moved = self.expeditions / 'Moved'
+        cases = [(str(uuid.uuid4()), moved, 'unknown instance ID'),
+                 (managed['id'], moved, 'old installation still exists; this could be a clone, not a move'),
+                 (managed['id'], Path('D:\\Games'), FOREIGN),
+                 (foreign['id'], other, 'destination already registered'),
+                 (foreign_managed['id'], moved, 'foreign managed root requires explicit ownership reconciliation'),
+                 (legacy['id'], self.base / 'Legacy moved', 'managed root context missing; explicit ownership reconciliation required')]
+        for identity, destination, message in cases:
+            with self.subTest(message=message):
+                self.assertEqual(self.relocate(identity, destination)[0], message)
+        self.root.rename(moved)
+        (moved / 'HUNTDAT/_RES.TXT').write_text('changed content')
+        self.assertEqual(self.relocate(managed['id'], moved)[0], 'relocation requires a coherent root with matching content revision')
+        shutil.rmtree(moved / 'HUNTDAT/MENU')
+        self.assertEqual(self.relocate(managed['id'], moved)[0], 'relocation requires a coherent root with matching content revision')
+        self.assertEqual(self.relocate(managed['id'], self.base / 'absent')[0], 'relocation requires a coherent root with matching content revision')
+        self.assertEqual(self.store.path.read_bytes(), before)
+        # Foreign instances can be relocated onto a native root.
+        other.rename(self.base / 'Other moved')
+        result = self.relocate(foreign['id'], self.base / 'Other moved')[0]
+        self.assertEqual((result['path_flavor'], result['previous_locations']), (os.name, [{'path': 'C:\\Games\\Foreign', 'path_flavor': 'nt'}]))
+
+    def test_managed_root_missing_or_retargeted_is_ambiguous(self):
+        instance = self.register(self.root, 'managed', managed_root=self.expeditions)[0]
+        moved = self.base / 'Moved'
+        self.root.rename(moved)
+        message = 'managed root missing or ambiguous; explicit ownership reconciliation required'
+        real = self.base / 'Real'
+        self.expeditions.rename(real)
+        self.assertEqual(self.relocate(instance['id'], moved)[0], message)
+        self.expeditions.symlink_to(real, target_is_directory=True)
+        self.assertEqual(self.relocate(instance['id'], moved)[0], message)
+        self.assertEqual(self.relocate(instance['id'], self.expeditions)[0], message)
+        self.expeditions.unlink()
+        real.rename(self.expeditions)
+        self.assertEqual(self.relocate(instance['id'], moved)[0]['mode'], 'registered')
+
+
+class RefreshTests(StoreOpsCase):
+    def test_unchanged_changed_engine_and_missing(self):
+        root = game(self.base)
+        instance = self.register(root, 'registered', 'c2-classic')[0]
+        observed = self.refresh(instance['id'])[0]
+        self.assertEqual((observed['recognized'], observed['revision_changed'], observed['engine_changed']), (True, False, False))
+        self.assertIn('last_observation', self.store.read()['instances'][instance['id']])
+        (root / 'HUNTDAT/AREAS/AREA2.MAP').write_bytes(b'new area')
+        (root / 'HUNTDAT/AREAS/AREA2.RSC').write_bytes(b'new resources')
+        observed = self.refresh(instance['id'])[0]
+        self.assertTrue(observed['revision_changed'])
+        current = self.store.read()['instances'][instance['id']]
+        self.assertEqual((current['revision'], len(current['revisions'])), (observed['revision'], 2))
+        # Returning to an earlier revision selects it without duplicating history.
+        (root / 'HUNTDAT/AREAS/AREA2.MAP').unlink()
+        (root / 'HUNTDAT/AREAS/AREA2.RSC').unlink()
+        self.assertTrue(self.refresh(instance['id'])[0]['revision_changed'])
+        self.assertEqual(len(self.store.read()['instances'][instance['id']]['revisions']), 2)
+        (root / 'CARN2.EXE').write_bytes(b'different engine bytes')
+        observed = self.refresh(instance['id'])[0]
+        self.assertEqual((observed['engine_changed'], observed['engine_review_required']), (True, True))
+        shutil.rmtree(root)
+        observed = self.refresh(instance['id'])[0]
+        self.assertEqual((observed['recognized'], observed['diagnostics'][0]['code']), (False, 'missing-installation'))
+        self.assertEqual(self.refresh(str(uuid.uuid4()))[0], 'unknown instance ID')
+
+    def test_foreign_instance_and_unchanged_observation(self):
+        root = game(self.base)
+        instance = self.register(root)[0]
+        foreign = copy.deepcopy(instance)
+        foreign.update(id=str(uuid.uuid4()), path='C:\\Games\\Foreign', path_flavor='nt')
+        self.edit(lambda d: d['instances'].update({foreign['id']: foreign}))
+        observed = self.refresh(foreign['id'])[0]
+        self.assertEqual(observed['diagnostics'][0]['code'], 'foreign-path')
+        self.refresh(instance['id'])
+        stat = self.store.path.stat()
+        self.refresh(instance['id'])
+        self.assertEqual(self.store.path.stat().st_mtime_ns, stat.st_mtime_ns)
+
+
+class DiscoverTests(StoreOpsCase):
+    def setUp(self):
+        super().setUp()
+        self.expeditions = self.base / 'Expeditions'
+        self.first = game(self.expeditions, 'First')
+        self.second = game(self.expeditions / 'Nested', 'Second')
+        (self.second / 'HUNTDAT/AREAS/AREA2.MAP').write_bytes(b'distinct content revision')
+        (self.expeditions / 'Partial/HUNTDAT').mkdir(parents=True)
+
+    def test_view_reports_possible_moves_only_for_recognized_roots(self):
+        instance = self.register(self.first)[0]
+        results = self.discover(self.expeditions)[0]
+        self.assertEqual([r['path'] for r in results], [str(self.first), str(self.second), str(self.expeditions / 'Partial')])
+        self.assertEqual([r.get('possible_moves') for r in results], [[], [], None])
+        moved = self.expeditions / 'Moved'
+        self.first.rename(moved)
+        results = self.discover(self.expeditions)[0]
+        self.assertEqual([r.get('possible_moves') for r in results], [[instance['id']], [], None])
+        self.assertEqual(self.discover(self.base / 'absent')[0], [])
+
+    def test_register_managed_registers_every_recognized_root_once(self):
+        results = self.discover_register(self.expeditions)[0]
+        self.assertEqual([r['path'] for r in results], [str(self.first), str(self.second)])
+        self.assertEqual({r['mode'] for r in results}, {'managed'})
+        self.assertEqual({r['managed_root']['path'] for r in results}, {str(self.expeditions)})
+        stat = self.store.path.stat()
+        again = self.discover_register(self.expeditions)[0]
+        self.assertEqual([r['id'] for r in again], [r['id'] for r in results])
+        self.assertEqual(self.store.path.stat().st_mtime_ns, stat.st_mtime_ns)
+        self.assertEqual(self.discover_register(self.base / 'Empty')[0], [])
+
+    def test_failure_in_the_middle_registers_nothing(self):
+        self.register(self.first)
+        before = self.store.path.read_bytes()
+        (self.second / 'HUNTDAT/link.txt').symlink_to(self.second / 'HUNTDAT/_RES.TXT')
+        self.make_twin()
+        with self.assertRaises(FrontendError):
+            with self.store.transaction() as data:
+                [register(data, r['path'], 'managed', managed_root=self.expeditions) for r in discover(self.expeditions) if r['recognized']]
+        kind, rest = native('discover-register', self.twin, {'path': str(self.expeditions)})
+        self.assertEqual(kind, 'frontend', rest)
+        self.assertTrue(rest.startswith('content symlink requires explicit policy: '), rest)
+        self.assertEqual((self.twin / 'lodge.json').read_bytes(), before)
+        self.assertEqual(self.store.path.read_bytes(), before)
+        (self.second / 'HUNTDAT/link.txt').unlink()
+        kind, rest = native('discover-register', self.twin, {'path': str(self.expeditions)}, {'C2_TEST_WRITE_FAILURE': 'replace:lodge.json'})
+        self.assertEqual(kind, 'oserror', rest)
+        self.assertEqual((self.twin / 'lodge.json').read_bytes(), before)
 
 
 if __name__ == '__main__':

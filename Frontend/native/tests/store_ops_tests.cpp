@@ -53,7 +53,7 @@ std::optional<std::u32string> text(const compat::Value& args, std::u32string_vie
     if (!args.contains(key) || args.at(key).kind == compat::Kind::null) return std::nullopt;
     return args.at(key).string;
 }
-[[maybe_unused]] std::optional<fs::path> path(const compat::Value& args, std::u32string_view key) {
+std::optional<fs::path> path(const compat::Value& args, std::u32string_view key) {
     auto s = text(args, key);
     if (!s) return std::nullopt;
     return content_internal::native_units(*s);
@@ -92,6 +92,19 @@ int main(int argc, char** argv) {
             store_ops::restore_backup(store, failure_hook());
             result = planning_internal::object_value();
             result.object.emplace_back(U"result", planning_internal::ascii_value("backup-restored"));
+        } else if (op == "register") {
+            result = transaction(store, [&](compat::Value& data) {
+                return store_ops::register_instance(data, *path(args, U"path"), text(args, U"mode").value_or(U"registered"),
+                    text(args, U"dialect").value_or(U"unknown"), text(args, U"family"), text(args, U"release"), path(args, U"managed_root"));
+            });
+        } else if (op == "relocate") {
+            result = transaction(store, [&](compat::Value& data) { return store_ops::relocate(data, required(args, U"id"), *path(args, U"path")); });
+        } else if (op == "refresh") {
+            result = transaction(store, [&](compat::Value& data) { return store_ops::refresh_instance(data, required(args, U"id")); });
+        } else if (op == "discover") {
+            result = store_ops::discover_view(store.read(), *path(args, U"path"));
+        } else if (op == "discover-register") {
+            result = transaction(store, [&](compat::Value& data) { return store_ops::discover_register(data, *path(args, U"path")); });
         } else return 2;
         std::cout << "ok " << compat::compact(result) << '\n';
     } catch (const ResourceExhausted& e) { std::cout << "resource " << e.what() << '\n';
