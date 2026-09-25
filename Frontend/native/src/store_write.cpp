@@ -395,6 +395,12 @@ bool strictly_beneath(const fs::path& path, const fs::path& directory) {
         if (p == path.end() || *p != *d) return false;
     return p != path.end();
 }
+void sync_directory(const fs::path& directory) {
+    store_paths::safe_path(directory);
+#ifndef _WIN32
+    fsync_directory(directory);
+#endif
+}
 void write_blobs(const fs::path& directory, const std::vector<CapturedBlob>& blobs, const FailureHook& hook) {
     store_paths::safe_path(directory);
 #ifdef _WIN32
