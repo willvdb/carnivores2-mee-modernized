@@ -3,10 +3,13 @@
 #include "c2/frontend/content.hpp"
 #include "c2/frontend/core.hpp"
 #include "c2/frontend/discovery.hpp"
+#include "c2/frontend/profile_files.hpp"
+#include "capture.hpp"
 #include "content_internal.hpp"
 #include "discovery_internal.hpp"
 #include "manifest_schema.hpp"
 #include "planning_internal.hpp"
+#include "probe_process.hpp"
 #include "schema_compat.hpp"
 #include "session_journal.hpp"
 #include "store_paths.hpp"
@@ -150,6 +153,133 @@ bool registered_here(const Value& instance, const fs::path& root) {
     return instance.at(U"path_flavor").string == flavor &&
         same_path(store_paths::resolve_native(native_units(instance.at(U"path").string)), root);
 }
+std::string narrow_ascii(const std::u32string& s) {
+    std::string out;
+    for (const char32_t c : s) out.push_back(c < 0x80 ? static_cast<char>(c) : '?');
+    return out;
+}
+bool has_diagnostic(const Value& diagnostics, std::u32string_view code) {
+    for (const auto& d : diagnostics.array)
+        if (d.kind == Kind::object && d.contains(U"code") && planning_internal::is_text(d.at(U"code"), code)) return true;
+    return false;
+}
+// managed_state.members_from_import: sorted [{path, size, sha256, type: file}].
+Value members_from_import(const Value& association) {
+    Value out = array_value();
+    for (const auto& f : association.at(U"files").array) {
+        Value m = object_value();
+        m.object = {{U"path", f.at(U"path")}, {U"size", f.at(U"size")}, {U"sha256", f.at(U"sha256")}, {U"type", ascii_value("file")}};
+        out.array.push_back(std::move(m));
+    }
+    std::stable_sort(out.array.begin(), out.array.end(), [](const Value& a, const Value& b) {
+        return a.at(U"path").string < b.at(U"path").string;
+    });
+    return out;
+}
+Value provenance(const Value& association) {
+    Value out = object_value();
+    for (auto key : {U"id", U"hunter_id", U"instance_id", U"filename_slot", U"state_key", U"origin", U"revision"})
+        out.object.emplace_back(key, association.at(key));
+    return out;
+}
+// managed_state.initialize_history on a fresh import or an upgraded association.
+void initialize_history(Value& association) {
+    if (association.contains(U"managed_state"))
+        throw StoreError("reserved managed_state metadata already exists; explicit review required");
+    const std::u32string id = ascii(store_write::new_id());
+    assign(association, U"authority", ascii_value("managed-state-history"));
+    Value generation = object_value();
+    generation.object = {{U"id", string_value(id)}, {U"sequence", planning_internal::integer_value("0")},
+        {U"predecessor", Value{}}, {U"source_session", Value{}}, {U"kind", ascii_value("original-import")},
+        {U"created_at", ascii_value(store_write::now())}, {U"members", members_from_import(association)},
+        {U"provenance", provenance(association)}, {U"snapshot", string_value(U"snapshots/" + association.at(U"id").string)}};
+    Value generations = object_value();
+    generations.object.emplace_back(id, std::move(generation));
+    Value history = object_value();
+    history.object = {{U"schema_version", planning_internal::integer_value("1")}, {U"current_generation", string_value(id)},
+        {U"generations", std::move(generations)}, {U"receipts", object_value()}};
+    association.object.emplace_back(U"managed_state", std::move(history));
+}
+}
+
+Value associate(const Store& store, Value& data, std::u32string_view hunter_id, std::u32string_view instance_id,
+                std::u32string_view state_key, std::u32string_view origin, const std::optional<std::u32string>& ownership_option,
+                const std::optional<fs::path>& probe, const store_write::FailureHook& hook) {
+    const Value& hunters = table(data, U"hunters");
+    if (!hunters.contains(hunter_id) || (hunters.at(hunter_id).contains(U"archived_at") && schema::truth(hunters.at(hunter_id).at(U"archived_at"))))
+        throw StoreError("association requires an active hunter identity");
+    if (origin != U"personal" && origin != U"bundled-example" && origin != U"unknown")
+        throw StoreError("explicit source declaration required: personal, bundled-example, or unknown");
+    const Value* instance = member(table(data, U"instances"), instance_id);
+    if (!instance) throw StoreError("unknown instance ID");
+    const Value observation = discovery_internal::inspect(*instance);
+    if (!observation.at(U"recognized").boolean || (observation.contains(U"revision_changed") && schema::truth(observation.at(U"revision_changed"))))
+        throw StoreError("installation unavailable or revision changed; refresh and review before association");
+    const std::u32string ownership = ownership_option && !ownership_option->empty() ? *ownership_option
+        : (instance->at(U"mode").string == U"managed" ? U"managed" : U"referenced");
+    const bool managed = ownership == U"managed";
+    if (!managed && ownership != U"referenced") throw StoreError("invalid ownership mode");
+    Value& associations = table(data, U"associations");
+    if (!managed)
+        for (const auto& entry : associations.object) {
+            const Value& a = entry.second;
+            if (a.at(U"instance_id").string == instance_id && a.at(U"state_key").string == state_key && a.at(U"ownership").string == U"referenced")
+                throw StoreError("source already referenced; choose an explicit independent managed copy");
+        }
+    const fs::path root = native_units(instance->at(U"path").string);
+    const auto inventory = inventory_profiles(root);
+    const ProfileState* state = nullptr;
+    for (const auto& s : inventory.states()) if (s.key() == state_key) { state = &s; break; }
+    bool has_save = false;
+    if (state) for (const auto& f : state->files()) has_save = has_save || f.kind == U"sav";
+    if (!state || !has_save) throw StoreError("selected state has no save; orphan rooms are never adopted as profiles");
+    if (managed && !state->companions().empty())
+        throw StoreError("unclassified companion files require review before managed import; reference-only inspection remains available");
+    const Value inspection = probe_process::inspect_set(*state, probe, narrow_ascii(instance->at(U"dialect_hint").string));
+    if (has_diagnostic(inspection.at(U"diagnostics"), U"registration-mismatch"))
+        throw StoreError("registration mismatch requires explicit future reconciliation; source unchanged");
+    const std::u32string id = ascii(store_write::new_id());
+    Value files = array_value();
+    for (const auto& f : inspection.at(U"files").array) {
+        Value entry = object_value();
+        for (const auto& field : f.object) if (field.first != U"decoded") entry.object.push_back(field);
+        files.array.push_back(std::move(entry));
+    }
+    Value association = object_value();
+    association.object = {{U"id", string_value(id)}, {U"hunter_id", string_value(std::u32string(hunter_id))},
+        {U"instance_id", string_value(std::u32string(instance_id))}, {U"state_key", string_value(std::u32string(state_key))},
+        {U"filename_slot", inspection.at(U"filename_slot")}, {U"origin", string_value(std::u32string(origin))},
+        {U"ownership", string_value(ownership)}, {U"authority", ascii_value(managed ? "independent-snapshot" : "native-files")},
+        {U"writable", planning_internal::boolean_value(false)}, {U"revision", instance->at(U"revision")},
+        {U"created_at", ascii_value(store_write::now())}, {U"files", std::move(files)},
+        {U"unclassified_companions", inspection.at(U"unclassified_companions")}, {U"diagnostics", inspection.at(U"diagnostics")}};
+    if (managed) {
+        // Independent lossless copy: the exact stable bytes, staged under a
+        // pending name and published by one directory replacement.
+        const auto blobs = state->stable_read();
+        std::vector<CapturedBlob> captured;
+        for (const auto& f : association.at(U"files").array) {
+            const ProfileBlob* blob = nullptr;
+            for (const auto& b : blobs) if (b.path == f.at(U"path").string) blob = &b;
+            if (!blob) throw std::logic_error("stable read omitted an inventoried member");
+            if (sha256(blob->bytes) != narrow_ascii(f.at(U"sha256").string)) throw StoreError("state changed after inspection");
+        }
+        for (const auto& b : blobs) captured.push_back({b.path, b.bytes});
+        const fs::path snapshots = store.directory() / "snapshots";
+        const fs::path staging = snapshots / (".pending-" + narrow_ascii(id)), final = snapshots / narrow_ascii(id);
+        // staging.mkdir(parents=True, exist_ok=False)
+        if (fs::exists(fs::symlink_status(staging)))
+            throw fs::filesystem_error("snapshot staging exists", staging, std::make_error_code(std::errc::file_exists));
+        store_write::write_blobs(staging, captured, hook);
+        std::error_code ec;
+        fs::rename(staging, final, ec);
+        if (ec) throw fs::filesystem_error("cannot publish snapshot", staging, final, ec);
+        store_write::sync_directory(snapshots);
+        association.object.emplace_back(U"snapshot", string_value(U"snapshots/" + id));
+    }
+    if (version_two(data) && managed) initialize_history(association);
+    associations.object.emplace_back(id, association);
+    return association;
 }
 
 Value register_instance(Value& data, const fs::path& path, std::u32string_view mode, std::u32string_view dialect,

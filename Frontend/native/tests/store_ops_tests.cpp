@@ -103,6 +103,11 @@ int main(int argc, char** argv) {
             result = transaction(store, [&](compat::Value& data) { return store_ops::refresh_instance(data, required(args, U"id")); });
         } else if (op == "discover") {
             result = store_ops::discover_view(store.read(), *path(args, U"path"));
+        } else if (op == "associate") {
+            result = transaction(store, [&](compat::Value& data) {
+                return store_ops::associate(store, data, required(args, U"hunter"), required(args, U"instance"),
+                    required(args, U"state_key"), required(args, U"origin"), text(args, U"ownership"), path(args, U"probe"), failure_hook());
+            });
         } else if (op == "discover-register") {
             result = transaction(store, [&](compat::Value& data) { return store_ops::discover_register(data, *path(args, U"path")); });
         } else return 2;

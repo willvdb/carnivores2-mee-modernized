@@ -24,7 +24,7 @@ import uuid
 FRONTEND = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(FRONTEND), str(FRONTEND / 'tests')]
 from lodge.discovery import discover, get_instance, move_candidates, refresh_instance, register, relocate  # noqa: E402
-from lodge.managed_state import UPGRADE_BACKUP  # noqa: E402
+from lodge.managed_state import UPGRADE_BACKUP, upgrade_store  # noqa: E402
 from lodge.profiles import associate  # noqa: E402
 from lodge.session_io import encode  # noqa: E402
 from lodge.store import FrontendError, Store, _unique_object, hunter, validate  # noqa: E402
@@ -33,6 +33,7 @@ from test_profiles import room_bytes, save_bytes  # noqa: E402
 
 DRIVER, PROBE = sys.argv[1:3]
 TIMESTAMP = re.compile(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{6})?\+00:00')
+UUID = re.compile('[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
 LOCK_MESSAGE = 'frontend writer lock exists: {}; verify its owner before manual recovery'
 
 
@@ -72,6 +73,13 @@ class Volatile:
             self.case.assertEqual(stamp.isoformat(), actual)
             before, after = self.window
             self.case.assertTrue(before <= stamp <= after, (actual, before, after))
+        elif UUID.search(expected):
+            # Embedded identities (snapshots/<uuid>, lodge.recovery-<uuid>.json).
+            a, e = UUID.findall(actual), UUID.findall(expected)
+            self.case.assertEqual((UUID.sub('*', actual), len(a)), (UUID.sub('*', expected), len(e)), (actual, expected))
+            for pair in zip(a, e):
+                self.bind(*pair)
+            return
         else:
             self.case.fail(f'native {actual!r} differs from reference {expected!r}')
         previous = self.mapping.setdefault(actual, expected)
@@ -97,11 +105,11 @@ class Volatile:
 
     def substitute(self, value):
         if isinstance(value, dict):
-            return {self.mapping.get(k, k): self.substitute(v) for k, v in value.items()}
+            return {self.name(k): self.substitute(v) for k, v in value.items()}
         if isinstance(value, list):
             return [self.substitute(v) for v in value]
         if isinstance(value, str):
-            return self.mapping.get(value, value)
+            return self.name(value)
         return value
 
     def name(self, text):
@@ -113,13 +121,9 @@ class Volatile:
         """Pair file names differing only by a fresh UUID (lodge.recovery-*, snapshots/*)."""
         unmatched_actual = [n for n in actual_names if n not in expected_names]
         unmatched_expected = [n for n in expected_names if n not in actual_names]
-        pattern = re.compile('[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
-        for actual, expected in zip(unmatched_actual, unmatched_expected):
-            a, e = pattern.findall(actual), pattern.findall(expected)
-            self.case.assertEqual((pattern.sub('*', actual), len(a)), (pattern.sub('*', expected), len(e)), (actual, expected))
-            for pair in zip(a, e):
-                self.bind(*pair)
         self.case.assertEqual(len(unmatched_actual), len(unmatched_expected), (unmatched_actual, unmatched_expected))
+        for actual, expected in zip(unmatched_actual, unmatched_expected):
+            self.bind(actual, expected)
 
 
 def native(op, directory, args=None, env=None):
@@ -248,6 +252,14 @@ class StoreOpsCase(unittest.TestCase):
         """Author manifest state through the reference (twins are copied afterwards)."""
         with self.store.transaction() as data:
             return mutate(data)
+
+    def associate(self, hunter_id, instance_id, state_key, origin='personal', ownership=None, probe=PROBE):
+        def reference():
+            with self.store.transaction() as data:
+                return associate(self.store, data, hunter_id, instance_id, state_key, origin, ownership, probe)
+        args = {'hunter': hunter_id, 'instance': instance_id, 'state_key': state_key, 'origin': origin,
+                'ownership': ownership, 'probe': probe}
+        return self.both('associate', args, reference)
 
 
 class HunterTests(StoreOpsCase):
@@ -684,6 +696,123 @@ class DiscoverTests(StoreOpsCase):
         kind, rest = native('discover-register', self.twin, {'path': str(self.expeditions)}, {'C2_TEST_WRITE_FAILURE': 'replace:lodge.json'})
         self.assertEqual(kind, 'oserror', rest)
         self.assertEqual((self.twin / 'lodge.json').read_bytes(), before)
+
+
+class AssociateTests(StoreOpsCase):
+    def setUp(self):
+        super().setUp()
+        self.expeditions = self.base / 'Expeditions'
+        self.root = game(self.expeditions, 'Triassic')
+        (self.root / 'trophy00.sav').write_bytes(save_bytes())
+        (self.root / 'trophy00.sab').write_bytes(room_bytes())
+        (self.root / 'trophy03.sav').write_bytes(save_bytes(slot=3, score=7))
+        self.hunter_id = self.hunter('create', name='Hunter')[0]['id']
+        self.instance = self.register(self.root, dialect='c2-classic')[0]
+
+    def test_referenced_managed_copies_and_bytes(self):
+        referenced = self.associate(self.hunter_id, self.instance['id'], 'trophy00')[0]
+        self.assertEqual((referenced['ownership'], referenced['authority'], referenced['writable']), ('referenced', 'native-files', False))
+        self.assertEqual([f['path'] for f in referenced['files']], ['trophy00.sab', 'trophy00.sav'])
+        self.assertNotIn('decoded', referenced['files'][0])
+        self.assertEqual(referenced['diagnostics'][-1]['code'], 'pair-coherence-unverified')
+        self.assertEqual(self.associate(self.hunter_id, self.instance['id'], 'trophy00')[0],
+                         'source already referenced; choose an explicit independent managed copy')
+        managed = self.associate(self.hunter_id, self.instance['id'], 'trophy00', ownership='managed')[0]
+        self.assertEqual((managed['authority'], managed['snapshot']), ('independent-snapshot', f"snapshots/{managed['id']}"))
+        snapshot = self.store.directory / 'snapshots' / managed['id']
+        self.assertEqual((snapshot / 'trophy00.sav').read_bytes(), save_bytes())
+        self.assertEqual((snapshot / 'trophy00.sab').read_bytes(), room_bytes())
+        self.assertEqual(sorted(p.name for p in snapshot.iterdir()), ['trophy00.sab', 'trophy00.sav'])
+        # A second independent copy of the same source is permitted.
+        self.associate(self.hunter_id, self.instance['id'], 'trophy00', 'bundled-example', 'managed')
+        self.assertEqual(len(list((self.store.directory / 'snapshots').iterdir())), 2)
+        single = self.associate(self.hunter_id, self.instance['id'], 'trophy03', 'unknown', 'managed')[0]
+        self.assertEqual([f['path'] for f in single['files']], ['trophy03.sav'])
+        self.assertEqual(len(self.store.read()['associations']), 4)
+
+    def test_default_ownership_helperless_and_iceage(self):
+        managed_root = game(self.expeditions, 'Managed')
+        (managed_root / 'trophy01.sav').write_bytes(save_bytes(slot=1))
+        instance = self.register(managed_root, 'managed', 'iceage-triassic', managed_root=self.expeditions)[0]
+        result = self.associate(self.hunter_id, instance['id'], 'trophy01')[0]
+        self.assertEqual((result['ownership'], result['snapshot']), ('managed', f"snapshots/{result['id']}"))
+        self.assertEqual([d['code'] for d in result['diagnostics']][-3:], ['ownership-unproven', 'unreadable-layout', 'pair-coherence-unverified'])
+        result = self.associate(self.hunter_id, self.instance['id'], 'trophy00', probe=None)[0]
+        self.assertEqual([d['code'] for d in result['diagnostics']].count('unreadable-layout'), 2)
+        self.assertEqual(self.associate(self.hunter_id, self.instance['id'], 'trophy03', ownership='referenced', probe=None)[0]['filename_slot'], 3)
+
+    def test_refusals_in_reference_order_write_nothing(self):
+        archived = self.hunter('create', name='Archived')[0]['id']
+        self.hunter('archive', archived)
+        foreign = copy.deepcopy(self.instance)
+        foreign.update(id=str(uuid.uuid4()), path='C:\\Games\\Foreign', path_flavor='nt')
+        self.edit(lambda d: d['instances'].update({foreign['id']: foreign}))
+        (self.root / 'trophy02.sab').write_bytes(room_bytes())
+        (self.root / 'trophy04.sav').write_bytes(save_bytes(slot=4))
+        (self.root / 'trophy04.txt').write_bytes(b'companion notes')
+        (self.root / 'trophy05.sav').write_bytes(save_bytes(slot=6))
+        before = self.store.path.read_bytes()
+        cases = [((str(uuid.uuid4()), self.instance['id'], 'trophy00'), {}, 'association requires an active hunter identity'),
+                 ((archived, self.instance['id'], 'trophy00'), {}, 'association requires an active hunter identity'),
+                 ((self.hunter_id, self.instance['id'], 'trophy00'), {'origin': 'mine'}, 'explicit source declaration required: personal, bundled-example, or unknown'),
+                 ((self.hunter_id, str(uuid.uuid4()), 'trophy00'), {}, 'unknown instance ID'),
+                 ((self.hunter_id, foreign['id'], 'trophy00'), {}, 'installation unavailable or revision changed; refresh and review before association'),
+                 ((self.hunter_id, self.instance['id'], 'trophy00'), {'ownership': 'owned'}, 'invalid ownership mode'),
+                 ((self.hunter_id, self.instance['id'], 'trophy09'), {}, 'selected state has no save; orphan rooms are never adopted as profiles'),
+                 ((self.hunter_id, self.instance['id'], 'trophy02'), {}, 'selected state has no save; orphan rooms are never adopted as profiles'),
+                 ((self.hunter_id, self.instance['id'], 'trophy04'), {'ownership': 'managed'}, 'unclassified companion files require review before managed import; reference-only inspection remains available'),
+                 ((self.hunter_id, self.instance['id'], 'trophy05'), {}, 'registration mismatch requires explicit future reconciliation; source unchanged')]
+        for args, kwargs, message in cases:
+            with self.subTest(message=message):
+                self.assertEqual(self.associate(*args, **kwargs)[0], message)
+        self.assertEqual(self.store.path.read_bytes(), before)
+        self.assertFalse((self.store.directory / 'snapshots').exists())
+        # The companion only blocks the managed import; a reference remains available.
+        self.assertEqual(self.associate(self.hunter_id, self.instance['id'], 'trophy04')[0]['unclassified_companions'], [{'path': 'trophy04.txt', 'size': 15}])
+        (self.root / 'HUNTDAT/AREAS/AREA1.MAP').write_bytes(b'changed map')
+        self.assertEqual(self.associate(self.hunter_id, self.instance['id'], 'trophy00')[0],
+                         'installation unavailable or revision changed; refresh and review before association')
+
+    def test_schema_two_import_initializes_history(self):
+        upgrade_store(self.store)
+        self.assertEqual(self.store.read()['schema_version'], 2)
+        referenced = self.associate(self.hunter_id, self.instance['id'], 'trophy03')[0]
+        self.assertNotIn('managed_state', referenced)
+        managed = self.associate(self.hunter_id, self.instance['id'], 'trophy00', ownership='managed')[0]
+        history = managed['managed_state']
+        generation = history['generations'][history['current_generation']]
+        self.assertEqual((managed['authority'], history['schema_version'], generation['sequence'], generation['kind']),
+                         ('managed-state-history', 1, 0, 'original-import'))
+        self.assertEqual(generation['snapshot'], f"snapshots/{managed['id']}")
+        self.assertEqual([m['path'] for m in generation['members']], ['trophy00.sab', 'trophy00.sav'])
+        self.assertEqual(generation['provenance']['revision'], self.instance['revision'])
+        self.assertEqual(self.store.read()['associations'][managed['id']]['managed_state'], history)
+
+    def test_lock_and_injected_failures(self):
+        self.make_twin()
+        before = (self.twin / 'lodge.json').read_bytes()
+        args = {'hunter': self.hunter_id, 'instance': self.instance['id'], 'state_key': 'trophy00', 'origin': 'personal',
+                'ownership': 'managed', 'probe': PROBE}
+        (self.twin / 'lodge.lock').write_bytes(b'')
+        kind, rest = native('associate', self.twin, args)
+        self.assertEqual((kind, rest), ('frontend', LOCK_MESSAGE.format(self.twin / 'lodge.lock')))
+        (self.twin / 'lodge.lock').unlink()
+        self.assertFalse((self.twin / 'snapshots').exists())
+        # A blob write failure leaves only the pending staging directory, never a published snapshot.
+        kind, rest = native('associate', self.twin, args, {'C2_TEST_WRITE_FAILURE': 'replace:trophy00.sav'})
+        self.assertEqual(kind, 'oserror', rest)
+        self.assertEqual((self.twin / 'lodge.json').read_bytes(), before)
+        names = [p.name for p in (self.twin / 'snapshots').iterdir()]
+        self.assertTrue(all(n.startswith('.pending-') for n in names), names)
+        self.assertFalse((self.twin / 'lodge.lock').exists())
+        # A manifest replacement failure retains the manifest; the published copy
+        # remains as in the reference (no association references it).
+        kind, rest = native('associate', self.twin, args, {'C2_TEST_WRITE_FAILURE': 'replace:lodge.json'})
+        self.assertEqual(kind, 'oserror', rest)
+        self.assertEqual((self.twin / 'lodge.json').read_bytes(), before)
+        published = [p for p in (self.twin / 'snapshots').iterdir() if is_uuid(p.name)]
+        self.assertEqual(len(published), 1)
+        self.assertEqual((published[0] / 'trophy00.sav').read_bytes(), save_bytes())
 
 
 if __name__ == '__main__':
