@@ -12,6 +12,7 @@
 #else
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/resource.h>
 #endif
 using namespace c2::frontend;
 namespace fs = std::filesystem;
@@ -44,15 +45,22 @@ int main(int argc, char** argv) {
             // Cleanup must leave this process usable for another real spawn.
             const auto result = probe_process::run(fs::u8path(argv[2]), {"args", "after"}, "", std::chrono::seconds(5));
             std::cout << "ok " << hex(result.out) << '\n';
-        } else if (command == "inheritance" && argc == 3) {
+        } else if ((command == "inheritance" || command == "inheritance-high") && argc == 3) {
 #ifdef _WIN32
             SECURITY_ATTRIBUTES attributes{sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
             HANDLE handle = ::CreateEventW(&attributes, TRUE, FALSE, nullptr);
             if (!handle) return 3;
             const auto number = std::to_string(reinterpret_cast<std::uintptr_t>(handle));
 #else
-            const int handle = ::open("/dev/null", O_RDONLY);
+            int handle = ::open("/dev/null", O_RDONLY);
             if (handle < 0) return 3;
+            if (command == "inheritance-high") {
+                const int high = ::fcntl(handle, F_DUPFD, 256);
+                if (high < 0) return 3;
+                ::close(handle); handle = high;
+                const rlimit lower{64, 64};
+                if (::setrlimit(RLIMIT_NOFILE, &lower) != 0) return 3;
+            }
             const auto number = std::to_string(handle);
 #endif
             const auto result = probe_process::run(fs::u8path(argv[2]), {"inherited", number}, "", std::chrono::seconds(5));

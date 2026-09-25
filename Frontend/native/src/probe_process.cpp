@@ -21,7 +21,6 @@
 #include <poll.h>
 #include <signal.h>
 #include <sys/wait.h>
-#include <sys/resource.h>
 #include <atomic>
 #include <memory>
 #include <thread>
@@ -175,15 +174,12 @@ Result run(const fs::path& executable, const std::vector<std::string>& arguments
     argv.push_back(const_cast<char*>(program.c_str()));
     for (const auto& a : arguments) argv.push_back(const_cast<char*>(a.c_str()));
     argv.push_back(nullptr);
-    // The Linux close_range syscall closes *all* unrelated inherited fds.
-    // A precomputed hard limit is the portable fallback; no directory walking
-    // or allocation is allowed in the forked child.
-    rlimit descriptor_limit{};
-    if (::getrlimit(RLIMIT_NOFILE, &descriptor_limit) != 0)
-        os_failure("probe descriptor limit", executable, errno);
-    if (descriptor_limit.rlim_max == RLIM_INFINITY || descriptor_limit.rlim_max > 0x7fffffff)
-        os_failure("probe descriptor limit", executable, EOVERFLOW);
-    const int max_fd = static_cast<int>(descriptor_limit.rlim_max);
+    // Never approximate the descriptor range with RLIMIT_NOFILE: the caller
+    // can lower even its hard limit while higher inherited descriptors stay
+    // open. Unsupported backends must fail closed instead of leaking them.
+#if !defined(__linux__) || !defined(SYS_close_range)
+    os_failure("probe requires close_range descriptor isolation", executable, ENOTSUP);
+#endif
     SigpipeGuard sigpipe;
     Child child;
     child.pid = ::fork();
@@ -197,13 +193,16 @@ Result run(const fs::path& executable, const std::vector<std::string>& arguments
         }
         // Keep only the exec-error pipe above stdio. All pipe descriptors were
         // moved above 2, so none of the dup2 sources can alias a destination.
-        bool closed = false;
 #if defined(__linux__) && defined(SYS_close_range)
         const long low = fail_w.fd == 3 ? 0 : ::syscall(SYS_close_range, 3u, static_cast<unsigned>(fail_w.fd - 1), 0u);
+        const int low_error = errno;
         const long high = ::syscall(SYS_close_range, static_cast<unsigned>(fail_w.fd + 1), ~0u, 0u);
-        closed = low == 0 && high == 0;
+        if (low != 0 || high != 0) {
+            const int code = low != 0 ? low_error : errno;
+            (void)!::write(fail_w.fd, &code, sizeof code);
+            ::_exit(127);
+        }
 #endif
-        if (!closed) for (int fd = 3; fd < max_fd; ++fd) if (fd != fail_w.fd) ::close(fd);
         sigset_t none;
         ::sigemptyset(&none);
         ::sigprocmask(SIG_SETMASK, &none, nullptr);

@@ -91,6 +91,10 @@ class ProbeProcess(unittest.TestCase):
     def test_inheritance_isolation(self):
         self.assertEqual(native('inheritance', HELPER), ('ok', '0'))
 
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux close_range backend')
+    def test_inheritance_above_lowered_hard_limit(self):
+        self.assertEqual(native('inheritance-high', HELPER), ('ok', '0'))
+
     @unittest.skipUnless(POSIX, 'POSIX descriptor allocation regression')
     def test_initially_closed_standard_descriptors(self):
         self.assertEqual(native('closed-stdio', HELPER), ('ok', b'stdio\0'.hex()))
