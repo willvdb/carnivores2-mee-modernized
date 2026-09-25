@@ -1,4 +1,5 @@
 #include "probe_process.hpp"
+#include "probe_process_test.hpp"
 #include "c2/frontend/core.hpp"
 #include "content_internal.hpp"
 #include "schema_compat.hpp"
@@ -31,6 +32,9 @@
 #endif
 namespace fs = std::filesystem;
 namespace c2::frontend::probe_process {
+#ifndef _WIN32
+thread_local std::shared_ptr<testing::ReapObserver> testing::reap_observer;
+#endif
 namespace {
 using Clock = std::chrono::steady_clock;
 [[noreturn]] void os_failure(const char* what, const fs::path& path, int code) {
@@ -82,32 +86,43 @@ void nonblocking(int fd, const fs::path& executable) {
 // a kernel-delayed exit cannot make the caller's deadline an unbounded reap.
 // No reference to the runner's stack escapes and no thread is ever joined.
 struct Child {
+    std::shared_ptr<testing::ReapObserver> observer = testing::reap_observer;
+    void observe(testing::ReapEvent event) const noexcept {
+        if (observer) observer->observe(event, pid);
+    }
     std::shared_ptr<std::atomic<pid_t>> cleanup = std::make_shared<std::atomic<pid_t>>(-2);
     pid_t pid = -1;
     bool reaped = false;
     int status = 0;
     Child() {
-        std::thread([state = cleanup] {
+        std::thread([state = cleanup, observer = observer] {
             pid_t owned;
             while ((owned = state->load()) == -2) ::usleep(1000);
             if (owned > 0) {
-                int ignored;
-                while (::waitpid(owned, &ignored, 0) < 0 && errno == EINTR) {}
+                if (observer) observer->observe(testing::ReapEvent::waiter_acquired, owned);
+                int status = 0;
+                pid_t got;
+                do { got = ::waitpid(owned, &status, 0); } while (got < 0 && errno == EINTR);
+                if (observer) observer->observe(testing::ReapEvent::waiter_reaped, got, status);
             }
         }).detach();
     }
     ~Child() {
         if (pid > 0 && !reaped) {
+            observe(testing::ReapEvent::signal);
             ::kill(pid, SIGKILL);
             // Usually reap immediately; otherwise the already-running waiter
             // retains exclusive ownership until the child actually exits.
             const auto reap_deadline = Clock::now() + std::chrono::milliseconds(250);
             do {
-                const pid_t got = ::waitpid(pid, &status, WNOHANG);
+                observe(testing::ReapEvent::synchronous_wait);
+                const pid_t got = observer && observer->defer_synchronous_reap
+                    ? 0 : ::waitpid(pid, &status, WNOHANG);
                 if (got == pid || (got < 0 && errno == ECHILD)) { reaped = true; break; }
                 ::usleep(1000);
             } while (Clock::now() < reap_deadline);
         }
+        if (pid > 0 && !reaped) observe(testing::ReapEvent::transfer);
         cleanup->store(pid > 0 && !reaped ? pid : -1);
     }
     bool try_wait() {

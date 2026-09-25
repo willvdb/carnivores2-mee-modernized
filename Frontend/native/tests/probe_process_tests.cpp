@@ -10,6 +10,13 @@
 #include <io.h>
 #include <windows.h>
 #else
+#include "probe_process_test.hpp"
+#include <cerrno>
+#include <condition_variable>
+#include <fstream>
+#include <mutex>
+#include <signal.h>
+#include <sys/wait.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/resource.h>
@@ -27,6 +34,111 @@ std::optional<fs::path> optional_path(const std::string& text) {
     if (text == "-") return std::nullopt;
     return fs::u8path(text);
 }
+
+#ifndef _WIN32
+struct DeferredReap : probe_process::testing::ReapObserver {
+    std::mutex mutex;
+    std::condition_variable changed;
+    pid_t child = -1;
+    int signals = 0, synchronous_waits = 0, transfers = 0, acquired = 0, completed = 0;
+    bool release = false, invalid = false;
+    DeferredReap() { defer_synchronous_reap = true; }
+    void observe(probe_process::testing::ReapEvent event, pid_t pid, int status) noexcept override {
+        using Event = probe_process::testing::ReapEvent;
+        std::unique_lock<std::mutex> lock(mutex);
+        invalid |= pid <= 0 || pid != child;
+        switch (event) {
+        case Event::signal:
+            invalid |= transfers != 0 || signals++ != 0;
+            break;
+        case Event::synchronous_wait:
+            invalid |= transfers != 0 || signals != 1;
+            ++synchronous_waits;
+            break;
+        case Event::transfer:
+            invalid |= transfers++ != 0 || synchronous_waits == 0;
+            break;
+        case Event::waiter_acquired:
+            invalid |= transfers != 1 || acquired++ != 0;
+            changed.notify_all();
+            changed.wait(lock, [&] { return release; });
+            break;
+        case Event::waiter_reaped:
+            invalid |= !release || acquired != 1 || completed++ != 0 ||
+                !WIFSIGNALED(status) || WTERMSIG(status) != SIGKILL;
+            changed.notify_all();
+            break;
+        }
+    }
+};
+// Always release the waiter, including assertion/exception paths. The waiter
+// keeps its own shared ownership; all waits here have an outer process timeout.
+struct ReapScope {
+    std::shared_ptr<DeferredReap> state = std::make_shared<DeferredReap>();
+    ReapScope() { probe_process::testing::reap_observer = state; }
+    ~ReapScope() {
+        probe_process::testing::reap_observer.reset();
+        std::unique_lock<std::mutex> lock(state->mutex);
+        state->release = true;
+        state->changed.notify_all();
+        if (state->transfers)
+            state->changed.wait_for(lock, std::chrono::seconds(5), [&] { return state->completed != 0; });
+    }
+};
+void require(bool value, const char* message) {
+    if (!value) throw std::runtime_error(message);
+}
+void deferred_reap(const fs::path& helper, const fs::path& ready_fifo) {
+    ReapScope scope;
+    const auto state = scope.state;
+    struct InjectedFailure {};
+    bool failed = false;
+    const auto start = std::chrono::steady_clock::now();
+    try {
+        probe_process::run(helper, {"hold", ready_fifo.string()}, "", std::chrono::seconds(5), 65536, [&] {
+            // The compiled helper writes its PID to this FIFO before holding.
+            // This blocks until real exec/initialization, without polling sleeps.
+            std::ifstream ready(ready_fifo);
+            pid_t child = -1;
+            ready >> child;
+            require(ready.good() || ready.eof(), "helper readiness read failed");
+            require(child > 0, "helper did not report its PID");
+            { std::lock_guard<std::mutex> lock(state->mutex); state->child = child; }
+            throw InjectedFailure{};
+        });
+    } catch (const InjectedFailure&) { failed = true; }
+    // run() and its Child stack are gone while the waiter is still gated.
+    probe_process::testing::reap_observer.reset();
+    require(failed, "injected failure did not return");
+    require(std::chrono::steady_clock::now() - start < std::chrono::seconds(5), "handoff return exceeded bound");
+    {
+        std::unique_lock<std::mutex> lock(state->mutex);
+        require(state->changed.wait_for(lock, std::chrono::seconds(5), [&] { return state->acquired != 0; }),
+                "waiter did not acquire child");
+        require(!state->invalid && state->signals == 1 && state->transfers == 1 && state->completed == 0,
+                "ownership sequence invalid before release");
+        // Observe the actual child without consuming its wait status. The
+        // exclusive waiter must still own it; a synchronous reap would fail.
+        siginfo_t info{};
+        require(::waitid(P_PID, static_cast<id_t>(state->child), &info, WEXITED | WNOWAIT) == 0 &&
+                info.si_pid == state->child && info.si_code == CLD_KILLED && info.si_status == SIGKILL,
+                "owned child not available to waiter");
+        state->release = true;
+        state->changed.notify_all();
+        require(state->changed.wait_for(lock, std::chrono::seconds(5), [&] { return state->completed != 0; }),
+                "waiter did not complete real waitpid");
+        require(!state->invalid && state->acquired == 1 && state->completed == 1,
+                "ownership sequence invalid after release");
+    }
+    int status = 0;
+    errno = 0;
+    require(::waitpid(state->child, &status, WNOHANG) == -1 && errno == ECHILD, "child was not reaped");
+    const auto result = probe_process::run(helper, {"args", "after"}, "", std::chrono::seconds(5));
+    require(result.returncode == 0 && result.out == std::string("after\0", 6) && result.err.empty(),
+            "subsequent helper in same process failed");
+    std::cout << "ok deferred-reaped-once\n";
+}
+#endif
 }
 int main(int argc, char** argv) {
 #ifdef _WIN32
@@ -71,6 +183,9 @@ int main(int argc, char** argv) {
 #endif
             std::cout << "ok " << result.returncode << '\n';
 #ifndef _WIN32
+        } else if (command == "deferred-reap" && argc == 4) {
+            try { deferred_reap(fs::u8path(argv[2]), fs::u8path(argv[3])); }
+            catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 3; }
         } else if (command == "closed-stdio" && argc == 3) {
             const int report = ::fcntl(1, F_DUPFD_CLOEXEC, 10);
             if (report < 0) return 3;

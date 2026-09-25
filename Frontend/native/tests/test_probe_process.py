@@ -1,6 +1,7 @@
 """Native probe runner against lodge.profiles.codec_inspect (authored inputs only)."""
 import json
 import os
+import signal
 from pathlib import Path
 import stat
 import subprocess
@@ -87,6 +88,26 @@ class ProbeProcess(unittest.TestCase):
         for _ in range(5):
             self.assertEqual(native('io-failure', HELPER), ('ok', b'after\0'.hex()))
         self.assertLess(time.monotonic() - start, 5)
+
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux close_range backend required')
+    def test_deferred_cleanup(self):
+        ready = self.root / 'ready.fifo'
+        os.mkfifo(ready)
+        # Bound even a deadlocked runner and clean its entire owned test group
+        # on failure, including a helper stranded before the injected failure.
+        child = subprocess.Popen([DRIVER, 'deferred-reap', HELPER, str(ready)],
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                 start_new_session=True)
+        try:
+            out, err = child.communicate(timeout=15)
+            self.assertEqual(child.returncode, 0, (out, err))
+            self.assertEqual(out, b'ok deferred-reaped-once\n', err)
+        finally:
+            try:
+                os.killpg(child.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            child.communicate()
 
     def test_inheritance_isolation(self):
         self.assertEqual(native('inheritance', HELPER), ('ok', '0'))
@@ -242,4 +263,5 @@ class ProbeProcess(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main(argv=sys.argv[:1])
+    selected = ['ProbeProcess.test_deferred_cleanup'] if sys.argv[4:] == ['deferred-only'] else []
+    unittest.main(argv=sys.argv[:1] + selected)
