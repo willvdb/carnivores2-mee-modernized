@@ -1,5 +1,6 @@
 #include "probe_process.hpp"
 #include "probe_process_test.hpp"
+#include "process_internal.hpp"
 #include "c2/frontend/core.hpp"
 #include "content_internal.hpp"
 #include "schema_compat.hpp"
@@ -11,177 +12,28 @@
 #include <cstdlib>
 #include <cstring>
 #include <system_error>
-#ifdef _WIN32
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-
-#else
-#include <fcntl.h>
+#ifndef _WIN32
 #include <poll.h>
-#include <signal.h>
-#include <sys/wait.h>
-#include <atomic>
-#include <memory>
-#include <thread>
 #ifdef __linux__
 #include <sys/syscall.h>
 #endif
-#include <unistd.h>
 #endif
 namespace fs = std::filesystem;
 namespace c2::frontend::probe_process {
 #ifndef _WIN32
 thread_local std::shared_ptr<testing::ReapObserver> testing::reap_observer;
 #endif
-namespace {
-using Clock = std::chrono::steady_clock;
-[[noreturn]] void os_failure(const char* what, const fs::path& path, int code) {
-#ifdef _WIN32
-    throw fs::filesystem_error(what, path, std::error_code(code, std::system_category()));
-#else
-    throw fs::filesystem_error(what, path, std::error_code(code, std::generic_category()));
-#endif
-}
-#ifndef _WIN32
-struct Fd {
-    int fd = -1;
-    Fd() = default;
-    Fd(const Fd&) = delete;
-    Fd& operator=(const Fd&) = delete;
-    ~Fd() { reset(); }
-    void reset() { if (fd >= 0) { ::close(fd); fd = -1; } }
-};
-void make_pipe(Fd& read_end, Fd& write_end, const fs::path& executable) {
-    int fds[2];
-#if defined(__linux__)
-    if (::pipe2(fds, O_CLOEXEC) != 0) os_failure("probe pipe", executable, errno);
-#else
-    if (::pipe(fds) != 0) os_failure("probe pipe", executable, errno);
-
-#endif
-    read_end.fd = fds[0];
-    write_end.fd = fds[1];
-    // Reserve 0..2 for dup2 even when the caller started with closed stdio.
-    for (Fd* end : {&read_end, &write_end}) {
-        if (end->fd < 3) {
-            const int moved = ::fcntl(end->fd, F_DUPFD_CLOEXEC, 3);
-            if (moved < 0) os_failure("probe pipe descriptor", executable, errno);
-            end->reset();
-            end->fd = moved;
-        } else if (::fcntl(end->fd, F_SETFD, FD_CLOEXEC) < 0) {
-            os_failure("probe pipe flags", executable, errno);
-        }
-    }
-}
-void nonblocking(int fd, const fs::path& executable) {
-    const int flags = ::fcntl(fd, F_GETFL);
-    if (flags < 0 || ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0)
-        os_failure("probe pipe flags", executable, errno);
-}
-// A cleanup waiter is allocated and started BEFORE fork, so thread startup
-// failure cannot strand a child. Normal operation alone owns waitpid/kill.
-// On failure it sends SIGKILL, then transfers the owned PID to this waiter;
-// a kernel-delayed exit cannot make the caller's deadline an unbounded reap.
-// No reference to the runner's stack escapes and no thread is ever joined.
-struct Child {
-    std::shared_ptr<testing::ReapObserver> observer = testing::reap_observer;
-    void observe(testing::ReapEvent event) const noexcept {
-        if (observer) observer->observe(event, pid);
-    }
-    std::shared_ptr<std::atomic<pid_t>> cleanup = std::make_shared<std::atomic<pid_t>>(-2);
-    pid_t pid = -1;
-    bool reaped = false;
-    int status = 0;
-    Child() {
-        std::thread([state = cleanup, observer = observer] {
-            pid_t owned;
-            while ((owned = state->load()) == -2) ::usleep(1000);
-            if (owned > 0) {
-                if (observer) observer->observe(testing::ReapEvent::waiter_acquired, owned);
-                int status = 0;
-                pid_t got;
-                do { got = ::waitpid(owned, &status, 0); } while (got < 0 && errno == EINTR);
-                if (observer) observer->observe(testing::ReapEvent::waiter_reaped, got, status);
-            }
-        }).detach();
-    }
-    ~Child() {
-        if (pid > 0 && !reaped) {
-            observe(testing::ReapEvent::signal);
-            ::kill(pid, SIGKILL);
-            // Usually reap immediately; otherwise the already-running waiter
-            // retains exclusive ownership until the child actually exits.
-            const auto reap_deadline = Clock::now() + std::chrono::milliseconds(250);
-            do {
-                observe(testing::ReapEvent::synchronous_wait);
-                const pid_t got = observer && observer->defer_synchronous_reap
-                    ? 0 : ::waitpid(pid, &status, WNOHANG);
-                if (got == pid || (got < 0 && errno == ECHILD)) { reaped = true; break; }
-                ::usleep(1000);
-            } while (Clock::now() < reap_deadline);
-        }
-        if (pid > 0 && !reaped) observe(testing::ReapEvent::transfer);
-        cleanup->store(pid > 0 && !reaped ? pid : -1);
-    }
-    bool try_wait() {
-        const pid_t got = ::waitpid(pid, &status, WNOHANG);
-        if (got < 0 && errno != EINTR) {
-            const int code = errno;
-            if (code == ECHILD) reaped = true; // never signal a no-longer-owned PID
-            os_failure("probe wait", {}, code);
-        }
-        if (got == pid) reaped = true;
-        return reaped;
-    }
-};
-// A helper that exits without reading stdin must produce EPIPE, not kill this
-// process: block SIGPIPE for the calling thread and discard one raised here.
-struct SigpipeGuard {
-    sigset_t previous{};
-    bool was_pending = false;
-    SigpipeGuard() {
-        sigset_t pending;
-        ::sigpending(&pending);
-        was_pending = ::sigismember(&pending, SIGPIPE) == 1;
-        sigset_t block;
-        ::sigemptyset(&block);
-        ::sigaddset(&block, SIGPIPE);
-        ::pthread_sigmask(SIG_BLOCK, &block, &previous);
-    }
-    ~SigpipeGuard() {
-        if (!was_pending) {
-            sigset_t pending;
-            ::sigpending(&pending);
-            if (::sigismember(&pending, SIGPIPE) == 1) {
-                sigset_t only;
-                ::sigemptyset(&only);
-                ::sigaddset(&only, SIGPIPE);
-#if defined(__linux__)
-                const timespec zero{0, 0};
-                ::sigtimedwait(&only, nullptr, &zero);
-#else
-                int ignored;
-                ::sigwait(&only, &ignored);
-#endif
-            }
-        }
-        ::pthread_sigmask(SIG_SETMASK, &previous, nullptr);
-    }
-};
-#endif
-} // namespace
-
+using process_internal::Clock;
+using process_internal::os_failure;
 #ifndef _WIN32
 Result run(const fs::path& executable, const std::vector<std::string>& arguments,
            std::string_view input, std::chrono::milliseconds timeout, std::size_t output_limit, const FailureHook& hook) {
     const auto deadline = Clock::now() + timeout;
-    Fd in_r, in_w, out_r, out_w, err_r, err_w, fail_r, fail_w;
-    make_pipe(in_r, in_w, executable);
-    make_pipe(out_r, out_w, executable);
-    make_pipe(err_r, err_w, executable);
-    make_pipe(fail_r, fail_w, executable);
+    process_internal::Fd in_r, in_w, out_r, out_w, err_r, err_w, fail_r, fail_w;
+    process_internal::make_pipe(in_r, in_w, executable, "probe");
+    process_internal::make_pipe(out_r, out_w, executable, "probe");
+    process_internal::make_pipe(err_r, err_w, executable, "probe");
+    process_internal::make_pipe(fail_r, fail_w, executable, "probe");
     // Everything the child needs is built before fork; only async-signal-safe
     // calls run between fork and exec.
     const std::string program = executable.string();
@@ -195,8 +47,8 @@ Result run(const fs::path& executable, const std::vector<std::string>& arguments
 #if !defined(__linux__) || !defined(SYS_close_range)
     os_failure("probe requires close_range descriptor isolation", executable, ENOTSUP);
 #endif
-    SigpipeGuard sigpipe;
-    Child child;
+    process_internal::SigpipeGuard sigpipe;
+    process_internal::Child child("probe");
     child.pid = ::fork();
     if (child.pid < 0) { child.pid = -1; os_failure("probe fork", executable, errno); }
     if (child.pid == 0) {
@@ -228,14 +80,14 @@ Result run(const fs::path& executable, const std::vector<std::string>& arguments
         ::_exit(127);
     }
     in_r.reset(); out_w.reset(); err_w.reset(); fail_w.reset();
-    nonblocking(in_w.fd, executable); nonblocking(out_r.fd, executable);
-    nonblocking(err_r.fd, executable); nonblocking(fail_r.fd, executable);
+    process_internal::nonblocking(in_w.fd, executable, "probe"); process_internal::nonblocking(out_r.fd, executable, "probe");
+    process_internal::nonblocking(err_r.fd, executable, "probe"); process_internal::nonblocking(fail_r.fd, executable, "probe");
     if (hook) hook(); // test-only failure after spawn and descriptor setup
     std::string exec_error;
     Result result;
     std::size_t written = 0;
     if (input.empty()) in_w.reset();
-    auto drain = [&](Fd& fd, std::string& into) {
+    auto drain = [&](process_internal::Fd& fd, std::string& into) {
         char buffer[65536];
         for (int reads = 0; reads < 4; ++reads) {
             if (Clock::now() >= deadline) throw Timeout("codec helper timed out");
@@ -294,77 +146,22 @@ Result run(const fs::path& executable, const std::vector<std::string>& arguments
         if (Clock::now() >= deadline) throw Timeout("codec helper timed out");
         ::usleep(2000);
     }
-    if (WIFEXITED(child.status)) result.returncode = WEXITSTATUS(child.status);
-    else if (WIFSIGNALED(child.status)) result.returncode = -WTERMSIG(child.status);
-    else result.returncode = child.status;
+    result.returncode = child.returncode();
     return result;
 }
 #else
-namespace {
-struct Handle {
-    HANDLE h = nullptr;
-    Handle() = default;
-    Handle(const Handle&) = delete;
-    Handle& operator=(const Handle&) = delete;
-    ~Handle() { reset(); }
-    void reset() { if (h && h != INVALID_HANDLE_VALUE) ::CloseHandle(h); h = nullptr; }
-};
-// subprocess.list2cmdline quoting (MS C runtime argument rules).
-void append_argument(std::wstring& line, const std::wstring& argument) {
-    if (!line.empty()) line.push_back(L' ');
-    const bool quote = argument.empty() || argument.find_first_of(L" \t") != std::wstring::npos;
-    if (quote) line.push_back(L'"');
-    std::size_t slashes = 0;
-    for (const wchar_t c : argument) {
-        if (c == L'\\') { ++slashes; continue; }
-        if (c == L'"') { line.append(slashes * 2 + 1, L'\\'); line.push_back(L'"'); slashes = 0; continue; }
-        line.append(slashes, L'\\'); slashes = 0; line.push_back(c);
-    }
-    line.append(quote ? slashes * 2 : slashes, L'\\');
-    if (quote) line.push_back(L'"');
-}
-std::wstring widen(const std::string& utf8) {
-    if (utf8.empty()) return {};
-    const int n = ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(), static_cast<int>(utf8.size()), nullptr, 0);
-    if (n <= 0) throw std::invalid_argument("probe argument is not UTF-8");
-    std::wstring wide(static_cast<std::size_t>(n), L'\0');
-    ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(), static_cast<int>(utf8.size()), wide.data(), n);
-    return wide;
-}
-void make_pipe(Handle& read_end, Handle& write_end, bool child_reads, const fs::path& executable) {
-    // Parent ends are synchronous, nonblocking byte-mode named pipes. There
-    // are no worker threads, pending OVERLAPPED buffers, cancellation races,
-    // or joins. Children receive ordinary blocking handles. Every operation
-    // in the owner loop returns immediately (PIPE_NOWAIT).
-    const std::string id = store_write::new_id();
-    const std::wstring name = L"\\\\.\\pipe\\c2-codec-" + std::wstring(id.begin(), id.end());
-    Handle& parent = child_reads ? write_end : read_end;
-    Handle& child = child_reads ? read_end : write_end;
-    parent.h = ::CreateNamedPipeW(name.c_str(),
-        (child_reads ? PIPE_ACCESS_OUTBOUND : PIPE_ACCESS_INBOUND) | FILE_FLAG_FIRST_PIPE_INSTANCE,
-        PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_NOWAIT | PIPE_REJECT_REMOTE_CLIENTS,
-        1, 65536, 65536, 0, nullptr);
-    if (parent.h == INVALID_HANDLE_VALUE) os_failure("probe pipe", executable, static_cast<int>(::GetLastError()));
-    SECURITY_ATTRIBUTES attributes{sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
-    child.h = ::CreateFileW(name.c_str(), child_reads ? GENERIC_READ : GENERIC_WRITE,
-        0, &attributes, OPEN_EXISTING, SECURITY_SQOS_PRESENT | SECURITY_ANONYMOUS, nullptr);
-    if (child.h == INVALID_HANDLE_VALUE) os_failure("probe pipe client", executable, static_cast<int>(::GetLastError()));
-    if (!::ConnectNamedPipe(parent.h, nullptr)) {
-        const DWORD code = ::GetLastError();
-        if (code != ERROR_PIPE_CONNECTED) os_failure("probe pipe connect", executable, static_cast<int>(code));
-    }
-}
-}
+using process_internal::Handle;
+using process_internal::append_argument;
 Result run(const fs::path& executable, const std::vector<std::string>& arguments,
            std::string_view input, std::chrono::milliseconds timeout, std::size_t output_limit, const FailureHook& hook) {
     const auto deadline = Clock::now() + timeout;
     Handle in_r, in_w, out_r, out_w, err_r, err_w;
-    make_pipe(in_r, in_w, true, executable);
-    make_pipe(out_r, out_w, false, executable);
-    make_pipe(err_r, err_w, false, executable);
+    process_internal::make_pipe(in_r, in_w, true, executable, "probe");
+    process_internal::make_pipe(out_r, out_w, false, executable, "probe");
+    process_internal::make_pipe(err_r, err_w, false, executable, "probe");
     std::wstring line;
     append_argument(line, executable.wstring());
-    for (const auto& a : arguments) append_argument(line, widen(a));
+    for (const auto& a : arguments) append_argument(line, process_internal::widen(a, "probe"));
     // Restrict inheritance to exactly the three child ends.
     HANDLE inherited[3] = {in_r.h, out_w.h, err_w.h};
     SIZE_T size = 0;

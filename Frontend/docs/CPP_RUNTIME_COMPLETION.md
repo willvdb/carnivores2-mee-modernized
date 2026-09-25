@@ -43,39 +43,43 @@ dictionaries as `compat::Value`; no second JSON representation.
 
 ## Command / operation matrix
 
-Status columns: Impl = native implementation, Wired = native CLI, Diff =
-differential test against unchanged Python, E2E = native-only workflow test.
+Columns: **Impl** native implementation (A/B/C = in progress in that
+workstream); **Wired** dispatched by `c2-frontend-native` (`native/src/cli.cpp`;
+"stub" = dispatcher wired to an explicit refusing stub in
+`runtime_pending.cpp` until the workstream lands); **CLI diff** compared
+against `frontend.py` on twin stores by `test_cli.py` (stdout, exit status,
+error text, every store byte); **E2E** exercised by the native-only
+`test_native_workflow.py` (expectations validated against Python with
+`--reference`).
 
-| Python command | Python entry | Native implementation | Impl | Wired | Diff | E2E |
+| Python command | Python entry | Native implementation | Impl | Wired | CLI diff | E2E |
 | --- | --- | --- | --- | --- | --- | --- |
-| `status` | `Store.read` | `Store::read`, `export_json(status)` | yes | yes | yes | pending |
-| `hunter list` | `Store.read` | `export_json(hunters)` | yes | yes | yes | pending |
-| `expedition list` | `Store.read` | `export_json(expeditions)` | yes | yes | yes | pending |
-| `host-settings` (read) | `Store.read` | `export_json(host_settings)` | yes | yes | yes | pending |
-| `managed-state inspect` | `inspect_history` | `resolve_generation().export_history_json()` | yes | yes | yes | pending |
-| `hunter create/select/rename/archive` | `store.hunter` | `store_ops::hunter` | B | pending | pending | pending |
-| `host-settings --json` | inline | `store_ops::update_host_settings` | B | pending | pending | pending |
-| `recover-backup` | `Store.restore_backup` | `store_ops::restore_backup` | B | pending | pending | pending |
-| `expedition discover` | `discover`,`move_candidates` | `store_ops::discover_view` | B | pending | pending | pending |
-| `expedition discover --register-managed` | `register` | `store_ops::discover_register` | B | pending | pending | pending |
-| `expedition register/relocate/refresh` | `discovery.*` | `store_ops::*` | B | pending | pending | pending |
-| `profiles` | `inspect_set`,`inventory` | `probe_process::inspect_set` | yes | pending | yes (lib) | pending |
-| `associate [--import-copy]` | `profiles.associate` | `store_ops::associate` | B | pending | pending | pending |
-| `refresh-state` | `refresh_association` | `planning_store::refresh_state` | yes | pending | yes (lib) | pending |
-| `catalog --instance/--path` | `catalog.project` | `catalog::project` | yes | pending | yes (lib) | pending |
-| `launch-dry-run` | `launch.prepare` | `planning_store::launch_dry_run` | yes | pending | yes (lib) | pending |
-| `simulate-return` | `launch.simulated_return` | coordinator | pending | pending | pending | pending |
-| `genesis-observer-plan` | `genesis.plan_observer` | `planning_store::plan_observer` | yes | pending | yes (lib) | pending |
-| `native-hunt plan` | `native_hunt.plan_hunt` | `planning_store::plan_hunt` | yes | pending | yes (lib) | pending |
-| `session prepare-synthetic` | `sessions.prepare_session` | `sessions::prepare_session` | A | pending | pending | pending |
-| `session inspect` / `native-hunt inspect` | `read_journal` | `session_journal::read` | yes | pending | yes (lib) | pending |
-| `session run` (+auto reconcile) | `run_session` | `session_runner::run_session` | A | pending | pending | pending |
-| `session reconcile` | `reconcile_session` | `reconciliation::reconcile_session` | A | pending | pending | pending |
-| `session recover` | `recover_session` | `session_runner::recover_session` | A | pending | pending | pending |
-| `native-observer prepare/run` | `native_observer.*` | `native_session::prepare`, `run_native` | A | pending | pending | pending |
-| `native-hunt prepare/run` | `native_hunt.*` | `native_session::prepare`, `run_native` | A | pending | pending | pending |
-| `managed-state upgrade` | `upgrade_store` | `store_ops::upgrade_store` | B | pending | pending | pending |
-| `managed-state preview/accept/recover-acceptance` | `acceptance.*` | `acceptance::*` | C | pending | pending | pending |
+| `status`, `hunter list`, `expedition list`, `host-settings` | `Store.read` | `Manifest::export_json` | yes | yes | yes | pending |
+| `managed-state inspect` | `inspect_history` | `resolve_generation().export_history_json()` | yes | yes | yes (refusal) | pending |
+| `profiles` | `inventory`,`inspect_set` | `inventory_profiles`, `probe_process::inspect_set` | yes | yes | yes | pending |
+| `catalog --instance/--path` | `catalog.project` | `catalog::project` | yes | yes | yes | pending |
+| `refresh-state` | `refresh_association` | `planning_store::refresh_state` | yes | yes | yes | pending |
+| `simulate-return` | `launch.simulated_return` | dispatcher + `refresh_association` | yes | yes | yes | — |
+| `launch-dry-run` | `launch.prepare` | `planning_store::launch_dry_run` | yes | yes | yes | pending |
+| `genesis-observer-plan` | `genesis.plan_observer` | `planning_store::plan_observer` | yes | yes | yes (real refusal + double) | — |
+| `native-hunt plan` | `native_hunt.plan_hunt` | `planning_store::plan_hunt` | yes | yes | yes (real refusal + double) | pending |
+| `session inspect`, `native-hunt inspect` | `read_journal` | `session_journal::read` | yes | yes | pending | pending |
+| `hunter create/select/rename/archive` | `store.hunter` | `store_ops::hunter` | B | stub | pending | pending |
+| `host-settings --json` | inline | `store_ops::update_host_settings` | B | stub | pending | pending |
+| `recover-backup` | `Store.restore_backup` | `store_ops::restore_backup` | B | stub | pending | — |
+| `expedition discover [--register-managed]` | `discover`,`register` | `store_ops::discover_view/discover_register` | B | stub | pending | pending |
+| `expedition register/relocate/refresh` | `discovery.*` | `store_ops::*` | B | stub | pending | pending |
+| `associate [--import-copy]` | `profiles.associate` | `store_ops::associate` | B | stub | pending | pending |
+| `managed-state upgrade` | `upgrade_store` | `store_ops::upgrade_store` | B | stub | pending | pending |
+| `session prepare-synthetic` | `sessions.prepare_session` | `sessions::prepare_session` | A | stub | pending | pending |
+| `session run/reconcile/recover` | `session_runner`, `reconciliation` | `session_runner::*`, `reconciliation::*` | A (+C process) | stub | pending | pending |
+| `native-observer prepare/run` | `native_observer.*` | `native_session::prepare`, `run_native` | A | stub | pending | pending |
+| `native-hunt prepare/run` | `native_hunt.*` | `native_session::prepare`, `run_native` | A | stub | pending | pending |
+| `managed-state preview/accept/recover-acceptance` | `acceptance.*` | `acceptance::*` | C | stub | pending | pending |
+
+Global options: `--store` (default `$LOCALAPPDATA` or `~/.local/share`, then
+`carnivores-lodge`, as the reference) and `--probe` (explicit codec helper;
+otherwise `C2_PROFILE_PROBE`; never auto-discovered, as the reference).
 
 ## Open findings and decisions
 
@@ -84,6 +88,22 @@ differential test against unchanged Python, E2E = native-only workflow test.
   choices, int/float types, required options, unique long-option prefixes).
   Argparse usage errors are reported as the JSON error envelope with exit 2
   instead of argparse's usage text (documented difference).
+
+- Output: the reference `json.dumps(indent=2, ensure_ascii=True)` + LF on
+  stdout, only after the operation (and its transaction) completed. Errors:
+  the reference envelope `{"error": "..."}` (default separators) on stderr,
+  exit 2; resource exhaustion exit 3. Python lets non-`FrontendError`/
+  `OSError`/`ValueError` exceptions escape with a traceback (exit 1); native
+  reports every exception through the envelope (exit 2). OS error texts use
+  the native `filesystem_error` wording, not CPython's `[Errno N]` text.
+- Ctrl-C: native sets a flag instead of raising. A running owned session
+  treats it as cancellation (the reference `KeyboardInterrupt` path: stop the
+  owned child, record `cancelled`); every other command finishes its bounded
+  operation, so an interrupt never abandons a held writer lock mid-write.
+- Test-only seams: `c2-frontend-native-fixture` (BUILD_TESTING only, never
+  staged) is the production dispatcher with the labelled asset-free policy
+  doubles that the Python tests patch in. `reference_cli.py --fixture-policy`
+  installs the identical doubles in the reference. Production has no seam.
 
 ## Next actionable task
 
