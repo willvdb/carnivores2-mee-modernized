@@ -8,6 +8,10 @@
 #ifdef _WIN32
 #include <fcntl.h>
 #include <io.h>
+#include <windows.h>
+#else
+#include <fcntl.h>
+#include <unistd.h>
 #endif
 using namespace c2::frontend;
 namespace fs = std::filesystem;
@@ -31,7 +35,44 @@ int main(int argc, char** argv) {
     if (argc < 2) return 2;
     const std::string command = argv[1];
     try {
-        if (command == "inspect" && argc == 6) {
+        if (command == "io-failure" && argc == 3) {
+            try {
+                probe_process::run(fs::u8path(argv[2]), {"hold"}, "", std::chrono::seconds(5), 65536,
+                    [] { throw fs::filesystem_error("injected pipe I/O failure", std::make_error_code(std::errc::io_error)); });
+                return 3;
+            } catch (const fs::filesystem_error&) {}
+            // Cleanup must leave this process usable for another real spawn.
+            const auto result = probe_process::run(fs::u8path(argv[2]), {"args", "after"}, "", std::chrono::seconds(5));
+            std::cout << "ok " << hex(result.out) << '\n';
+        } else if (command == "inheritance" && argc == 3) {
+#ifdef _WIN32
+            SECURITY_ATTRIBUTES attributes{sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
+            HANDLE handle = ::CreateEventW(&attributes, TRUE, FALSE, nullptr);
+            if (!handle) return 3;
+            const auto number = std::to_string(reinterpret_cast<std::uintptr_t>(handle));
+#else
+            const int handle = ::open("/dev/null", O_RDONLY);
+            if (handle < 0) return 3;
+            const auto number = std::to_string(handle);
+#endif
+            const auto result = probe_process::run(fs::u8path(argv[2]), {"inherited", number}, "", std::chrono::seconds(5));
+#ifdef _WIN32
+            ::CloseHandle(handle);
+#else
+            ::close(handle);
+#endif
+            std::cout << "ok " << result.returncode << '\n';
+#ifndef _WIN32
+        } else if (command == "closed-stdio" && argc == 3) {
+            const int report = ::fcntl(1, F_DUPFD_CLOEXEC, 10);
+            if (report < 0) return 3;
+            ::close(0); ::close(1); ::close(2);
+            const auto result = probe_process::run(fs::u8path(argv[2]), {"args", "stdio"}, "", std::chrono::seconds(5));
+            const std::string message = "ok " + hex(result.out) + "\n";
+            (void)!::write(report, message.data(), message.size());
+            ::close(report);
+#endif
+        } else if (command == "inspect" && argc == 6) {
             const std::string content((std::istreambuf_iterator<char>(std::cin)), std::istreambuf_iterator<char>());
             const auto value = probe_process::codec_inspect(content, argv[2], optional_path(argv[4]), argv[3],
                                                             std::chrono::milliseconds(std::stol(argv[5])));

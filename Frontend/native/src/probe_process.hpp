@@ -13,6 +13,7 @@
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -21,10 +22,11 @@
 namespace c2::frontend::probe_process {
 // Carries only reference FrontendError messages.
 class ProbeError : public std::runtime_error { public: using std::runtime_error::runtime_error; };
-// The child was killed and reaped before this is thrown.
+// Termination is requested before this is thrown. On POSIX a prestarted
+// cleanup waiter owns any kernel-delayed reap; the caller never joins it.
 class Timeout : public ProbeError { public: using ProbeError::ProbeError; };
 // Native-only bound (the reference buffers without limit): the child is
-// killed and reaped, then this is thrown. Never truncates into a result.
+// terminated on failure. Never truncates into a result.
 class OutputLimit : public std::runtime_error { public: using std::runtime_error::runtime_error; };
 struct Result {
     // subprocess returncode: exit status, or -signal on POSIX termination.
@@ -36,9 +38,10 @@ constexpr std::size_t default_output_limit = 16u * 1024u * 1024u;
 // The executable path is used as given, without PATH search: a bare name
 // resolves against the working directory, not PATH (documented divergence;
 // session callers always pass the resolved executable_evidence path).
+using FailureHook = std::function<void()>; // tests only: throw after successful spawn
 Result run(const std::filesystem::path& executable, const std::vector<std::string>& arguments,
            std::string_view input, std::chrono::milliseconds timeout,
-           std::size_t output_limit = default_output_limit);
+           std::size_t output_limit = default_output_limit, const FailureHook& hook = {});
 // sessions.executable_evidence: expanduser + strict resolve, regular file,
 // {'path', 'sha256'} in that order.
 compat::Value executable_evidence(const std::filesystem::path&);

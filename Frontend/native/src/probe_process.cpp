@@ -4,20 +4,30 @@
 #include "schema_compat.hpp"
 #include "planning_internal.hpp"
 #include "store_paths.hpp"
+#include "store_write.hpp"
+#include <algorithm>
 #include <cerrno>
 #include <cstdlib>
+#include <cstring>
 #include <system_error>
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
 #include <windows.h>
-#include <thread>
+
 #else
 #include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <sys/resource.h>
+#include <atomic>
+#include <memory>
+#include <thread>
+#ifdef __linux__
+#include <sys/syscall.h>
+#endif
 #include <unistd.h>
 #endif
 namespace fs = std::filesystem;
@@ -46,26 +56,68 @@ void make_pipe(Fd& read_end, Fd& write_end, const fs::path& executable) {
     if (::pipe2(fds, O_CLOEXEC) != 0) os_failure("probe pipe", executable, errno);
 #else
     if (::pipe(fds) != 0) os_failure("probe pipe", executable, errno);
-    ::fcntl(fds[0], F_SETFD, FD_CLOEXEC);
-    ::fcntl(fds[1], F_SETFD, FD_CLOEXEC);
+
 #endif
     read_end.fd = fds[0];
     write_end.fd = fds[1];
+    // Reserve 0..2 for dup2 even when the caller started with closed stdio.
+    for (Fd* end : {&read_end, &write_end}) {
+        if (end->fd < 3) {
+            const int moved = ::fcntl(end->fd, F_DUPFD_CLOEXEC, 3);
+            if (moved < 0) os_failure("probe pipe descriptor", executable, errno);
+            end->reset();
+            end->fd = moved;
+        } else if (::fcntl(end->fd, F_SETFD, FD_CLOEXEC) < 0) {
+            os_failure("probe pipe flags", executable, errno);
+        }
+    }
 }
-void nonblocking(int fd) { ::fcntl(fd, F_SETFL, ::fcntl(fd, F_GETFL) | O_NONBLOCK); }
-// Owns the child until reaped: every exit path kills (if still running) and waits.
+void nonblocking(int fd, const fs::path& executable) {
+    const int flags = ::fcntl(fd, F_GETFL);
+    if (flags < 0 || ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0)
+        os_failure("probe pipe flags", executable, errno);
+}
+// A cleanup waiter is allocated and started BEFORE fork, so thread startup
+// failure cannot strand a child. Normal operation alone owns waitpid/kill.
+// On failure it sends SIGKILL, then transfers the owned PID to this waiter;
+// a kernel-delayed exit cannot make the caller's deadline an unbounded reap.
+// No reference to the runner's stack escapes and no thread is ever joined.
 struct Child {
+    std::shared_ptr<std::atomic<pid_t>> cleanup = std::make_shared<std::atomic<pid_t>>(-2);
     pid_t pid = -1;
     bool reaped = false;
     int status = 0;
-    ~Child() { if (pid > 0 && !reaped) { ::kill(pid, SIGKILL); wait_blocking(); } }
-    void wait_blocking() {
-        while (::waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
-        reaped = true;
+    Child() {
+        std::thread([state = cleanup] {
+            pid_t owned;
+            while ((owned = state->load()) == -2) ::usleep(1000);
+            if (owned > 0) {
+                int ignored;
+                while (::waitpid(owned, &ignored, 0) < 0 && errno == EINTR) {}
+            }
+        }).detach();
+    }
+    ~Child() {
+        if (pid > 0 && !reaped) {
+            ::kill(pid, SIGKILL);
+            // Usually reap immediately; otherwise the already-running waiter
+            // retains exclusive ownership until the child actually exits.
+            const auto reap_deadline = Clock::now() + std::chrono::milliseconds(250);
+            do {
+                const pid_t got = ::waitpid(pid, &status, WNOHANG);
+                if (got == pid || (got < 0 && errno == ECHILD)) { reaped = true; break; }
+                ::usleep(1000);
+            } while (Clock::now() < reap_deadline);
+        }
+        cleanup->store(pid > 0 && !reaped ? pid : -1);
     }
     bool try_wait() {
-        pid_t got;
-        do got = ::waitpid(pid, &status, WNOHANG); while (got < 0 && errno == EINTR);
+        const pid_t got = ::waitpid(pid, &status, WNOHANG);
+        if (got < 0 && errno != EINTR) {
+            const int code = errno;
+            if (code == ECHILD) reaped = true; // never signal a no-longer-owned PID
+            os_failure("probe wait", {}, code);
+        }
         if (got == pid) reaped = true;
         return reaped;
     }
@@ -109,7 +161,7 @@ struct SigpipeGuard {
 
 #ifndef _WIN32
 Result run(const fs::path& executable, const std::vector<std::string>& arguments,
-           std::string_view input, std::chrono::milliseconds timeout, std::size_t output_limit) {
+           std::string_view input, std::chrono::milliseconds timeout, std::size_t output_limit, const FailureHook& hook) {
     const auto deadline = Clock::now() + timeout;
     Fd in_r, in_w, out_r, out_w, err_r, err_w, fail_r, fail_w;
     make_pipe(in_r, in_w, executable);
@@ -123,6 +175,15 @@ Result run(const fs::path& executable, const std::vector<std::string>& arguments
     argv.push_back(const_cast<char*>(program.c_str()));
     for (const auto& a : arguments) argv.push_back(const_cast<char*>(a.c_str()));
     argv.push_back(nullptr);
+    // The Linux close_range syscall closes *all* unrelated inherited fds.
+    // A precomputed hard limit is the portable fallback; no directory walking
+    // or allocation is allowed in the forked child.
+    rlimit descriptor_limit{};
+    if (::getrlimit(RLIMIT_NOFILE, &descriptor_limit) != 0)
+        os_failure("probe descriptor limit", executable, errno);
+    if (descriptor_limit.rlim_max == RLIM_INFINITY || descriptor_limit.rlim_max > 0x7fffffff)
+        os_failure("probe descriptor limit", executable, EOVERFLOW);
+    const int max_fd = static_cast<int>(descriptor_limit.rlim_max);
     SigpipeGuard sigpipe;
     Child child;
     child.pid = ::fork();
@@ -134,6 +195,15 @@ Result run(const fs::path& executable, const std::vector<std::string>& arguments
             (void)!::write(fail_w.fd, &code, sizeof code);
             ::_exit(127);
         }
+        // Keep only the exec-error pipe above stdio. All pipe descriptors were
+        // moved above 2, so none of the dup2 sources can alias a destination.
+        bool closed = false;
+#if defined(__linux__) && defined(SYS_close_range)
+        const long low = fail_w.fd == 3 ? 0 : ::syscall(SYS_close_range, 3u, static_cast<unsigned>(fail_w.fd - 1), 0u);
+        const long high = ::syscall(SYS_close_range, static_cast<unsigned>(fail_w.fd + 1), ~0u, 0u);
+        closed = low == 0 && high == 0;
+#endif
+        if (!closed) for (int fd = 3; fd < max_fd; ++fd) if (fd != fail_w.fd) ::close(fd);
         sigset_t none;
         ::sigemptyset(&none);
         ::sigprocmask(SIG_SETMASK, &none, nullptr);
@@ -144,22 +214,17 @@ Result run(const fs::path& executable, const std::vector<std::string>& arguments
         ::_exit(127);
     }
     in_r.reset(); out_w.reset(); err_w.reset(); fail_w.reset();
-    {   // exec success closes the pipe; failure delivers errno.
-        int code = 0;
-        ssize_t got;
-        do got = ::read(fail_r.fd, &code, sizeof code); while (got < 0 && errno == EINTR);
-        if (got == static_cast<ssize_t>(sizeof code)) {
-            child.wait_blocking();
-            os_failure("probe exec", executable, code);
-        }
-    }
-    nonblocking(in_w.fd); nonblocking(out_r.fd); nonblocking(err_r.fd);
+    nonblocking(in_w.fd, executable); nonblocking(out_r.fd, executable);
+    nonblocking(err_r.fd, executable); nonblocking(fail_r.fd, executable);
+    if (hook) hook(); // test-only failure after spawn and descriptor setup
+    std::string exec_error;
     Result result;
     std::size_t written = 0;
     if (input.empty()) in_w.reset();
     auto drain = [&](Fd& fd, std::string& into) {
         char buffer[65536];
-        for (;;) {
+        for (int reads = 0; reads < 4; ++reads) {
+            if (Clock::now() >= deadline) throw Timeout("codec helper timed out");
             const ssize_t got = ::read(fd.fd, buffer, sizeof buffer);
             if (got > 0) {
                 if (into.size() + static_cast<std::size_t>(got) > output_limit)
@@ -175,17 +240,32 @@ Result run(const fs::path& executable, const std::vector<std::string>& arguments
     };
     // All three pipes are serviced together so neither side can block on a
     // full pipe (the classic write-all-then-read deadlock).
-    while (in_w.fd >= 0 || out_r.fd >= 0 || err_r.fd >= 0) {
-        pollfd fds[3];
+    while (in_w.fd >= 0 || out_r.fd >= 0 || err_r.fd >= 0 || fail_r.fd >= 0) {
+        pollfd fds[4];
         nfds_t count = 0;
-        int in_at = -1, out_at = -1, err_at = -1;
+        int in_at = -1, out_at = -1, err_at = -1, fail_at = -1;
         if (in_w.fd >= 0) { in_at = static_cast<int>(count); fds[count++] = {in_w.fd, POLLOUT, 0}; }
         if (out_r.fd >= 0) { out_at = static_cast<int>(count); fds[count++] = {out_r.fd, POLLIN, 0}; }
         if (err_r.fd >= 0) { err_at = static_cast<int>(count); fds[count++] = {err_r.fd, POLLIN, 0}; }
+        if (fail_r.fd >= 0) { fail_at = static_cast<int>(count); fds[count++] = {fail_r.fd, POLLIN, 0}; }
         const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - Clock::now()).count();
         if (remaining <= 0) throw Timeout("codec helper timed out");
         const int ready = ::poll(fds, count, static_cast<int>(remaining > 1000 ? 1000 : remaining));
         if (ready < 0) { if (errno == EINTR) continue; os_failure("probe poll", executable, errno); }
+        if (fail_at >= 0 && fds[fail_at].revents) {
+            char bytes[sizeof(int)];
+            const ssize_t got = ::read(fail_r.fd, bytes, sizeof bytes);
+            if (got > 0) exec_error.append(bytes, static_cast<std::size_t>(got));
+            else if (got == 0) fail_r.reset();
+            else if (errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK)
+                os_failure("probe exec handshake", executable, errno);
+            if (exec_error.size() == sizeof(int)) {
+                int code;
+                std::memcpy(&code, exec_error.data(), sizeof code);
+                os_failure("probe exec", executable, code);
+            }
+            if (fail_r.fd < 0 && !exec_error.empty()) os_failure("probe exec handshake", executable, EIO);
+        }
         if (in_at >= 0 && fds[in_at].revents) {
             const ssize_t put = ::write(in_w.fd, input.data() + written, input.size() - written);
             if (put > 0) { written += static_cast<std::size_t>(put); if (written == input.size()) in_w.reset(); }
@@ -238,14 +318,32 @@ std::wstring widen(const std::string& utf8) {
     return wide;
 }
 void make_pipe(Handle& read_end, Handle& write_end, bool child_reads, const fs::path& executable) {
+    // Parent ends are synchronous, nonblocking byte-mode named pipes. There
+    // are no worker threads, pending OVERLAPPED buffers, cancellation races,
+    // or joins. Children receive ordinary blocking handles. Every operation
+    // in the owner loop returns immediately (PIPE_NOWAIT).
+    const std::string id = store_write::new_id();
+    const std::wstring name = L"\\\\.\\pipe\\c2-codec-" + std::wstring(id.begin(), id.end());
+    Handle& parent = child_reads ? write_end : read_end;
+    Handle& child = child_reads ? read_end : write_end;
+    parent.h = ::CreateNamedPipeW(name.c_str(),
+        (child_reads ? PIPE_ACCESS_OUTBOUND : PIPE_ACCESS_INBOUND) | FILE_FLAG_FIRST_PIPE_INSTANCE,
+        PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_NOWAIT | PIPE_REJECT_REMOTE_CLIENTS,
+        1, 65536, 65536, 0, nullptr);
+    if (parent.h == INVALID_HANDLE_VALUE) os_failure("probe pipe", executable, static_cast<int>(::GetLastError()));
     SECURITY_ATTRIBUTES attributes{sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
-    if (!::CreatePipe(&read_end.h, &write_end.h, &attributes, 0)) os_failure("probe pipe", executable, static_cast<int>(::GetLastError()));
-    // Only the child's end stays inheritable.
-    ::SetHandleInformation(child_reads ? write_end.h : read_end.h, HANDLE_FLAG_INHERIT, 0);
+    child.h = ::CreateFileW(name.c_str(), child_reads ? GENERIC_READ : GENERIC_WRITE,
+        0, &attributes, OPEN_EXISTING, SECURITY_SQOS_PRESENT | SECURITY_ANONYMOUS, nullptr);
+    if (child.h == INVALID_HANDLE_VALUE) os_failure("probe pipe client", executable, static_cast<int>(::GetLastError()));
+    if (!::ConnectNamedPipe(parent.h, nullptr)) {
+        const DWORD code = ::GetLastError();
+        if (code != ERROR_PIPE_CONNECTED) os_failure("probe pipe connect", executable, static_cast<int>(code));
+    }
 }
 }
 Result run(const fs::path& executable, const std::vector<std::string>& arguments,
-           std::string_view input, std::chrono::milliseconds timeout, std::size_t output_limit) {
+           std::string_view input, std::chrono::milliseconds timeout, std::size_t output_limit, const FailureHook& hook) {
+    const auto deadline = Clock::now() + timeout;
     Handle in_r, in_w, out_r, out_w, err_r, err_w;
     make_pipe(in_r, in_w, true, executable);
     make_pipe(out_r, out_w, false, executable);
@@ -256,7 +354,8 @@ Result run(const fs::path& executable, const std::vector<std::string>& arguments
     // Restrict inheritance to exactly the three child ends.
     HANDLE inherited[3] = {in_r.h, out_w.h, err_w.h};
     SIZE_T size = 0;
-    ::InitializeProcThreadAttributeList(nullptr, 1, 0, &size);
+    if (::InitializeProcThreadAttributeList(nullptr, 1, 0, &size) || ::GetLastError() != ERROR_INSUFFICIENT_BUFFER)
+        os_failure("probe spawn attributes", executable, static_cast<int>(::GetLastError()));
     std::vector<char> storage(size);
     auto list = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(storage.data());
     if (!::InitializeProcThreadAttributeList(list, 1, 0, &size)) os_failure("probe spawn", executable, static_cast<int>(::GetLastError()));
@@ -279,7 +378,7 @@ Result run(const fs::path& executable, const std::vector<std::string>& arguments
     if (!::SetInformationJobObject(job.h, JobObjectExtendedLimitInformation, &limits, sizeof limits))
         os_failure("probe job", executable, static_cast<int>(::GetLastError()));
     PROCESS_INFORMATION info{};
-    const std::wstring application = executable.wstring();
+    const std::wstring application = fs::absolute(executable).wstring();
     if (!::CreateProcessW(application.c_str(), line.data(), nullptr, nullptr, TRUE,
                           CREATE_SUSPENDED | CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT, nullptr, nullptr,
                           &startup.StartupInfo, &info))
@@ -287,43 +386,71 @@ Result run(const fs::path& executable, const std::vector<std::string>& arguments
     Handle process, thread;
     process.h = info.hProcess;
     thread.h = info.hThread;
-    struct Kill { HANDLE p; bool armed = true; ~Kill() { if (armed) { ::TerminateProcess(p, 1); ::WaitForSingleObject(p, INFINITE); } } } kill{process.h};
+    // Before job assignment only the suspended direct child exists. After
+    // assignment close/terminate the job *before* releasing pipe ownership,
+    // so descendants cannot keep pipes open past the operation deadline.
+    struct Kill {
+        HANDLE process, job;
+        bool assigned = false, armed = true;
+        ~Kill() {
+            if (armed) {
+                if (assigned) ::TerminateJobObject(job, 1);
+                else ::TerminateProcess(process, 1);
+            }
+        }
+    } kill{process.h, job.h};
     if (!::AssignProcessToJobObject(job.h, process.h)) os_failure("probe job", executable, static_cast<int>(::GetLastError()));
-    ::ResumeThread(thread.h);
+    kill.assigned = true;
+    if (::ResumeThread(thread.h) == static_cast<DWORD>(-1)) os_failure("probe resume", executable, static_cast<int>(::GetLastError()));
     in_r.reset(); out_w.reset(); err_w.reset();
+    if (hook) hook(); // test-only failure after job assignment and resume
     Result result;
-    bool overflow = false;
-    auto reader = [&](HANDLE h, std::string& into) {
-        char buffer[65536];
+    std::size_t written = 0;
+    if (input.empty()) in_w.reset();
+    bool exited = false;
+    auto drain = [&](Handle& handle, std::string& into) {
+        if (!handle.h) return false;
+        char bytes[65536];
         DWORD got = 0;
-        while (::ReadFile(h, buffer, sizeof buffer, &got, nullptr) && got) {
-            if (into.size() + got > output_limit) { overflow = true; ::TerminateProcess(process.h, 1); return; }
-            into.append(buffer, got);
+        if (!::ReadFile(handle.h, bytes, sizeof bytes, &got, nullptr)) {
+            const DWORD code = ::GetLastError();
+            if (code == ERROR_BROKEN_PIPE) { handle.reset(); return true; }
+            if (code == ERROR_NO_DATA) return false;
+            os_failure("probe read", executable, static_cast<int>(code));
         }
+        if (got > output_limit - into.size()) throw OutputLimit("codec helper output exceeds native bound");
+        into.append(bytes, got);
+        return got != 0;
     };
-    // One thread per pipe: no pipe can fill while another is being serviced.
-    std::thread out_thread(reader, out_r.h, std::ref(result.out));
-    std::thread err_thread(reader, err_r.h, std::ref(result.err));
-    std::thread in_thread([&] {
-        std::size_t written = 0;
-        while (written < input.size()) {
-            DWORD put = 0;
-            const auto chunk = static_cast<DWORD>(std::min<std::size_t>(input.size() - written, 65536));
-            if (!::WriteFile(in_w.h, input.data() + written, chunk, &put, nullptr)) break; // broken pipe ignored
-            written += put;
+    while (!exited || in_w.h || out_r.h || err_r.h) {
+        if (Clock::now() >= deadline) throw Timeout("codec helper timed out");
+        bool progress = false;
+        if (!exited) {
+            const DWORD waited = ::WaitForSingleObject(process.h, 0);
+            if (waited == WAIT_OBJECT_0) { exited = true; progress = true; }
+            else if (waited != WAIT_TIMEOUT) os_failure("probe wait", executable, static_cast<int>(::GetLastError()));
         }
-        in_w.reset();
-    });
-    const DWORD waited = ::WaitForSingleObject(process.h, static_cast<DWORD>(timeout.count()));
-    const bool timed_out = waited != WAIT_OBJECT_0;
-    if (timed_out) { ::TerminateProcess(process.h, 1); ::WaitForSingleObject(process.h, INFINITE); }
-    // Termination closes the child's pipe ends, so the threads finish.
-    in_thread.join(); out_thread.join(); err_thread.join();
-    kill.armed = false;
-    if (overflow) throw OutputLimit("codec helper output exceeds native bound");
-    if (timed_out) throw Timeout("codec helper timed out");
+        if (in_w.h) {
+            DWORD put = 0;
+            const DWORD chunk = static_cast<DWORD>(std::min<std::size_t>(65536, input.size() - written));
+            if (!::WriteFile(in_w.h, input.data() + written, chunk, &put, nullptr)) {
+                const DWORD code = ::GetLastError();
+                if (code == ERROR_BROKEN_PIPE || code == ERROR_NO_DATA) in_w.reset();
+                else os_failure("probe write", executable, static_cast<int>(code));
+            } else {
+                written += put;
+                progress = put != 0;
+                if (written == input.size()) in_w.reset();
+            }
+        }
+        progress = drain(out_r, result.out) || progress;
+        progress = drain(err_r, result.err) || progress;
+        if (!progress) ::Sleep(1);
+    }
     DWORD code = 0;
-    ::GetExitCodeProcess(process.h, &code);
+    if (!::GetExitCodeProcess(process.h, &code)) os_failure("probe exit code", executable, static_cast<int>(::GetLastError()));
+    if (!::TerminateJobObject(job.h, 1)) os_failure("probe job cleanup", executable, static_cast<int>(::GetLastError()));
+    kill.armed = false;
     result.returncode = static_cast<int>(code);
     return result;
 }

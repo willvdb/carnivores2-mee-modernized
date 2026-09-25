@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from lodge import profiles, sessions  # noqa: E402
 from lodge.store import FrontendError  # noqa: E402
 
-DRIVER, PROBE = sys.argv[1], sys.argv[2]
+DRIVER, PROBE, HELPER = sys.argv[1:4]
 POSIX = os.name == 'posix'
 
 
@@ -56,6 +56,71 @@ class ProbeProcess(unittest.TestCase):
         self.assertEqual(got[0], 'ok', got)
         self.assertEqual(json.loads(got[1]), expected)
         self.assertEqual(list(json.loads(got[1])), list(expected))
+
+    def test_compiled_argument_fidelity(self):
+        args = ['', 'a b', 'tabs\there', '"', '\\', 'space tail\\', 'x\\"y', '; $() &', 'plain']
+        kind, rest = native('run', '10000', '65536', HELPER, 'args', *args)
+        self.assertEqual(kind, 'ok', rest)
+        self.assertEqual(bytes.fromhex(rest.split(' ')[1]), b''.join(a.encode() + b'\0' for a in args))
+
+    def test_compiled_simultaneous_io_and_nonzero_exit(self):
+        data = bytes(range(256)) * 8192
+        kind, rest = native('run', '15000', str(1 << 24), HELPER, 'streams', data=data)
+        self.assertEqual(kind, 'ok', rest[:100])
+        code, out, err = rest.split(' ')
+        self.assertEqual(code, '7')
+        self.assertEqual(bytes.fromhex(out), b'x' * (1 << 21) + data)
+        self.assertEqual(bytes.fromhex(err), b'x' * (1 << 21))
+
+    def test_compiled_early_stdin_close(self):
+        kind, rest = native('run', '5000', '65536', HELPER, 'early-close', data=b'x' * (1 << 22))
+        self.assertEqual((kind, rest), ('ok', '9 ' + b'closed'.hex() + ' '))
+
+    def test_compiled_overflow_and_timeout(self):
+        self.assertEqual(native('run', '5000', '1000', HELPER, 'overflow')[0], 'limit')
+        start = time.monotonic()
+        self.assertEqual(native('run', '1000', '65536', HELPER, 'hold')[0], 'timeout')
+        self.assertLess(time.monotonic() - start, 5)
+
+    def test_failure_after_spawn_cleans_up(self):
+        start = time.monotonic()
+        for _ in range(5):
+            self.assertEqual(native('io-failure', HELPER), ('ok', b'after\0'.hex()))
+        self.assertLess(time.monotonic() - start, 5)
+
+    def test_inheritance_isolation(self):
+        self.assertEqual(native('inheritance', HELPER), ('ok', '0'))
+
+    @unittest.skipUnless(POSIX, 'POSIX descriptor allocation regression')
+    def test_initially_closed_standard_descriptors(self):
+        self.assertEqual(native('closed-stdio', HELPER), ('ok', b'stdio\0'.hex()))
+
+    def test_descendant_pipe_deadline(self):
+        marker = self.root / 'descendant'
+        start = time.monotonic()
+        try:
+            self.assertEqual(native('run', '1500', '65536', HELPER, 'descendant', str(marker))[0], 'timeout')
+            self.assertLess(time.monotonic() - start, 5)
+            self.assertTrue(marker.exists())
+            if not POSIX:
+                import ctypes
+                kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+                kernel.OpenProcess.restype = ctypes.c_void_p
+                kernel.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+                kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+                handle = kernel.OpenProcess(0x100000, False, int(marker.read_text()))
+                if handle:
+                    try:
+                        self.assertEqual(kernel.WaitForSingleObject(handle, 3000), 0)
+                    finally:
+                        kernel.CloseHandle(handle)
+        finally:
+            # POSIX intentionally retains Python's direct-child-only cleanup.
+            if POSIX and marker.exists():
+                try:
+                    os.kill(int(marker.read_text()), 9)
+                except ProcessLookupError:
+                    pass
 
     def test_real_probe_matches_reference(self):
         self.same(save(), 'sav', PROBE)
