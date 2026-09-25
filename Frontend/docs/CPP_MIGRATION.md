@@ -95,16 +95,19 @@ so the merged 3A head is not independently approved by every reviewer.
 Inherited 3A follow-ups: Python-side Windows safety fixes, lone-surrogate
 path policy, the older copyable handle in `store_paths`, and
 clustered-Windows hostname behaviour.
-An **unreviewed implementation sprint** continues 2C.2/3B on
-`frontend/cpp-session-sprint`; see `CPP_SPRINT_HANDOFF.md`. Nothing on that
-branch is approved or merged.
-Deferred to **2C.2**, after 3A: the `genesis-observer-plan`, `native-hunt plan`
-and `launch-dry-run` wrappers (store lock, pin snapshot/capture, codec-helper
-evidence, the `StateObservation` producer and the `last_observation` write).
-Carried into 2C.2 from the 2C.1 review: assert `kind == 'unexpected'` for the
-two KeyError oracle cases; bind or document that `evaluate_launch` receives the
-projection/state of the same stage-one instance and that callers check
-`complete()`; add a canonical non-negative ordinal guard before masks.
+The inherited **unreviewed implementation sprint** at
+`frontend/cpp-session-sprint` / `42eebc9` is preserved. Its bounded continuation,
+`frontend/cpp-planning-completion`, implements 2C.2 library wrappers and helper
+hardening; see `CPP_PLANNING_HANDOFF.md` for exact code SHAs, tests and pending
+CI/review gates. Nothing from either branch is approved or merged.
+Implemented: `snapshot_pins`, authoritative managed-history refresh,
+`genesis-observer-plan`, `native-hunt plan`, and complete shared paths for
+`launch-dry-run`. The latter retains the reference observation write. No
+workspace/session preparation or engine launch was added. The inherited
+session-journal component remains draft, outside this milestone's review.
+The inherited sprint implements the 2C.1 follow-ups: unexpected-oracle-kind
+assertions, canonical ordinal guards, documented typed API limits and stage-one
+completion/same-instance binding. The continuation completes their store paths.
 Convention since 2C.1: reference `TypeError` paths map to `std::invalid_argument`;
 module errors carry only reference `FrontendError` messages. From 3A: write
 primitives propagate reference `OSError` paths as
@@ -112,9 +115,12 @@ primitives propagate reference `OSError` paths as
 from `allow_nan=False` encoding maps to `StoreError`. From 2B.2:
 `project`/`text_reference` also propagate `ContentError`, `StoreError` and
 `filesystem_error`; a future CLI must catch `std::exception`.
-Unresolved findings: none.
-Implementation and independent review use separately routed Fable agents; the
-coordinator records final dispositions in the PR, not in this ledger.
+Open completion gates: final-head Windows verification and independent review;
+bare-name/PATH behavior, native helper output bounds, Linux `close_range`
+availability and bounded deferred reaping remain explicit compatibility review
+items. See the planning handoff rather than treating local passes as approval.
+Independent review remains separate from implementation; none was performed
+for this continuation. This ledger does not approve the cumulative sprint.
 
 ### Operation coverage (Python CLI to native)
 
@@ -124,10 +130,10 @@ coordinator records final dispositions in the PR, not in this ledger.
 | `profiles` | Library only (1B.2/1B.3); CLI pending 7 |
 | `expedition discover` (read-only), `expedition refresh` observation | Library only (2A); refresh write pending 5A |
 | `catalog` | Parser 2B.1; projection library 2B.2; CLI pending 7 |
-| `launch-dry-run`, `genesis-observer-plan`, `native-hunt plan` | Pure policies library 2C.1 (review pending); wrappers 2C.2 (after 3A) |
+| `launch-dry-run`, `genesis-observer-plan`, `native-hunt plan` | 2C.2 library wrappers implemented on `frontend/cpp-planning-completion`; local verification complete, final-head Windows/review gates pending; no CLI |
 | `session prepare-synthetic/inspect/run/reconcile/recover`, `simulate-return` | Pending 3B-4C (synthetic sessions remain developer tooling) |
 | `native-observer prepare/run`, `native-hunt prepare/run/inspect` | Pending 3B-4C |
-| `hunter create/select/rename/archive`, `host-settings --json`, `associate`, `refresh-state` | Pending 5A |
+| `hunter create/select/rename/archive`, `host-settings --json`, `associate`, `refresh-state` | `refresh-state` library implemented, including managed history; other mutations and CLI pending 5A |
 | `expedition register/relocate`, `discover --register-managed`, `managed-state upgrade`, `recover-backup` | Pending 5B |
 | `managed-state preview/accept/recover-acceptance` | Pending 6A/6B |
 
@@ -147,7 +153,7 @@ coordinator records final dispositions in the PR, not in this ledger.
 | 2B.1 pure catalog parser/scalars | Reviewed and merged in PR #24 |
 | 2B.2 filesystem catalog projection | Reviewed and merged in PR #25 |
 | 2C.1 pure planning policies | Reviewed and merged in PR #26 |
-| 2C.2 planning wrappers (lock, pins, observation write) | Unreviewed draft on `frontend/cpp-session-sprint` |
+| 2C.2 planning wrappers (lock, pins, observation write) | Implemented, locally tested, unreviewed on `frontend/cpp-planning-completion`; final-head Windows verification pending |
 | 3A safe paths/capture/atomic I/O | Merged in PR #27 (final correction rounds not re-reviewed) |
 | 3B preparation/journal | Pending |
 | 4A trust/process/capabilities | Pending |
@@ -1752,3 +1758,36 @@ temporary applies the same rule (existing entry retries, genuine error
 propagates). The harness asserts the exact refusal for a plain directory
 on every platform and adds directory-link and Windows junction lock cases.
 Windows is proven only by actual CI.
+
+
+### Slice 2C.2 bounded planning completion
+
+This continuation preserves all ten inherited sprint commits and adds runner
+hardening, pin snapshots, current-generation refresh and the remaining library
+wrappers. `ManifestAccess::snapshot` validates/copies the retained transaction
+value; it neither rereads disk nor serializes/reparses unknown metadata.
+Generation resolution uses the existing immutable manifest/capture component;
+invalid current authority fails without fallback. Codec evidence is compared
+before the resolved helper path is executed. No native bytes are rewritten.
+
+The Windows runner now has one nonblocking named-pipe owner loop, a restricted
+handle list and a kill-on-close job, with no pipe worker threads or joins.
+Linux closes unrelated descriptors with `close_range`, moves all pipe fds above
+stdio before `dup2`, and polls the exec handshake under the I/O deadline.
+Cleanup has a bounded 250 ms reap grace then transfers an owned PID to a waiter
+started before fork. Missing complete descriptor isolation refuses execution;
+older Linux and other POSIX backends are an explicit compatibility gate.
+
+Differential coverage uses unchanged Python functions and the existing
+asset-free policy-double convention for successful observer/hunt wrapper
+composition; production Genesis gates remain unchanged and separately tested.
+The compiled helper exercises real Windows/POSIX pipe execution and pin-refusal
+invocation markers. The catalog-projection flake reproduced: relative-path
+immutability checks had scanned CTest's changing build directory. A separate
+commit binds those checks to the fixture's actual working directory without
+weakening assertions or serializing the suite.
+
+Exact revisions, configuration results, preserved logs, CI links, exceptions
+and the next bounded review task are in `CPP_PLANNING_HANDOFF.md`. This is
+implementation evidence, not independent approval, runtime game certification
+or a merge. Session preparation remains unimplemented.
