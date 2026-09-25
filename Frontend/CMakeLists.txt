@@ -3,7 +3,9 @@ project(CarnivoresFrontend LANGUAGES CXX)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
 # Deliberately standalone: configure with -S Frontend, no engine dependencies.
-set(c2_frontend_core_sources native/src/core.cpp native/src/json_compat.cpp native/src/schema_compat.cpp native/src/manifest_schema.cpp native/src/store_paths.cpp native/src/store.cpp native/src/capture.cpp native/src/profile.cpp native/src/profile_files.cpp native/src/content.cpp native/src/discovery.cpp native/src/catalog.cpp native/src/catalog_projection.cpp native/src/planning.cpp native/src/launch_planning.cpp native/src/store_write.cpp native/src/probe_process.cpp native/src/session_journal.cpp native/src/planning_store.cpp)
+set(c2_frontend_core_sources native/src/core.cpp native/src/json_compat.cpp native/src/schema_compat.cpp native/src/manifest_schema.cpp native/src/store_paths.cpp native/src/store.cpp native/src/capture.cpp native/src/profile.cpp native/src/profile_files.cpp native/src/content.cpp native/src/discovery.cpp native/src/catalog.cpp native/src/catalog_projection.cpp native/src/planning.cpp native/src/launch_planning.cpp native/src/store_write.cpp native/src/probe_process.cpp native/src/session_journal.cpp native/src/planning_store.cpp
+  native/src/sessions.cpp native/src/session_process.cpp native/src/session_runner.cpp native/src/reconciliation.cpp
+  native/src/acceptance.cpp native/src/store_ops.cpp)
 add_library(c2_frontend_core STATIC ${c2_frontend_core_sources})
 target_link_libraries(c2_frontend_core PRIVATE Threads::Threads)
 target_compile_features(c2_frontend_core PUBLIC cxx_std_17)
@@ -22,6 +24,11 @@ foreach(target IN ITEMS c2_frontend_core c2-frontend-native)
     target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
   endif()
 endforeach()
+# Compiled controlled synthetic child for developer synthetic sessions
+# (session prepare-synthetic/run); staged next to c2-frontend-native.
+add_executable(c2-frontend-synthetic-child native/src/synthetic_child.cpp)
+target_compile_features(c2-frontend-synthetic-child PRIVATE cxx_std_17)
+target_include_directories(c2-frontend-synthetic-child PRIVATE ..)
 add_executable(c2-profile-probe profile_probe.cpp)
 target_compile_features(c2-profile-probe PRIVATE cxx_std_17)
 if(MSVC)
@@ -29,13 +36,33 @@ if(MSVC)
 else()
   target_compile_options(c2-profile-probe PRIVATE -Wall -Wextra -Wpedantic)
 endif()
-find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
-add_custom_target(c2-frontend
-  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/frontend.py" --help
-  DEPENDS c2-profile-probe
-  COMMENT "Show the optional frontend CLI")
 include(CTest)
+# The production artifact (c2-frontend-native, c2-profile-probe,
+# c2-frontend-synthetic-child) never needs Python. The Python reference
+# implementation is optional developer/test tooling: it is required only for
+# BUILD_TESTING (differential oracles) or C2_FRONTEND_REFERENCE_TOOLS.
+option(C2_FRONTEND_REFERENCE_TOOLS "Add the Python reference CLI helper target c2-frontend" ${BUILD_TESTING})
+if(BUILD_TESTING OR C2_FRONTEND_REFERENCE_TOOLS)
+  find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
+endif()
+if(C2_FRONTEND_REFERENCE_TOOLS)
+  add_custom_target(c2-frontend
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/frontend.py" --help
+    DEPENDS c2-profile-probe
+    COMMENT "Show the optional Python reference frontend CLI")
+endif()
 if(BUILD_TESTING)
+  # Test driver: one private-API executable per suite, warnings as elsewhere.
+  function(c2_frontend_test_driver name)
+    add_executable(${name} ${ARGN})
+    target_link_libraries(${name} PRIVATE c2_frontend_core Threads::Threads)
+    target_include_directories(${name} PRIVATE native/src)
+    if(MSVC)
+      target_compile_options(${name} PRIVATE /W4 /utf-8)
+    else()
+      target_compile_options(${name} PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+  endfunction()
   add_executable(c2-frontend-catalog-tests native/tests/catalog_tests.cpp)
   target_link_libraries(c2-frontend-catalog-tests PRIVATE c2_frontend_core)
   target_include_directories(c2-frontend-catalog-tests PRIVATE native/src)
@@ -295,4 +322,7 @@ if(BUILD_TESTING)
       "C2_LAUNCH_ARGUMENT_PROBE=$<TARGET_FILE:c2-launch-argument-probe>"
       "C2_NATIVE_TEST_ENGINE=$<TARGET_FILE:c2-native-session-fixture>"
       "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/run_tests.py")
+  include(native/tests/workstream_sessions.cmake)
+  include(native/tests/workstream_store_ops.cmake)
+  include(native/tests/workstream_acceptance.cmake)
 endif()
