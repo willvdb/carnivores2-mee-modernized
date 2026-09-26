@@ -240,15 +240,32 @@ Value trusted_engine(const fs::path& engine, const Value& digest, bool experimen
         throw StoreError("selected engine does not match the explicitly trusted hash");
     return evidence;
 }
+namespace {
+// tempfile.TemporaryDirectory(prefix='c2-contract-'): a fresh empty directory
+// the frontend owns for the query's working directory, removed afterwards.
+struct ContractDirectory {
+    fs::path path;
+    ContractDirectory() {
+        std::error_code error;
+        const fs::path base = fs::temp_directory_path(error);
+        if (error) throw fs::filesystem_error("temporary directory", base, error);
+        path = base / ("c2-contract-" + store_write::new_id());
+        if (!fs::create_directory(path, error) || error)
+            throw fs::filesystem_error("cannot create temporary directory", path, error ? error : std::make_error_code(std::errc::file_exists));
+    }
+    ~ContractDirectory() { std::error_code ignored; fs::remove_all(path, ignored); }
+};
+} // namespace
 Value query_contract(const Value& evidence) {
     // Only after explicit binary trust; capability text is not certification.
-    // Bounded helper-style query: the child inherits this process's working
-    // directory rather than the reference's fresh temporary directory
-    // (documented difference); stdin is closed and both streams are captured.
+    // Bounded helper-style query: stdin closed, both streams captured, and the
+    // engine started in a fresh empty temporary directory it may not outlive.
     const fs::path path = path_of(evidence.at(U"path"));
     probe_process::Result result;
     try {
-        result = probe_process::run(path, {"--session-capabilities"}, "", std::chrono::seconds(5));
+        const ContractDirectory directory;
+        result = probe_process::run(path, {"--session-capabilities"}, "", std::chrono::seconds(5),
+                                    probe_process::default_output_limit, {}, directory.path);
     } catch (const probe_process::Timeout&) {
         throw StoreError("trusted engine capability query timed out");
     } catch (const probe_process::OutputLimit&) {
