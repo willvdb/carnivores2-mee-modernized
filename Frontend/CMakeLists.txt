@@ -5,8 +5,7 @@ find_package(Threads REQUIRED)
 # Deliberately standalone: configure with -S Frontend, no engine dependencies.
 set(c2_frontend_core_sources native/src/core.cpp native/src/json_compat.cpp native/src/schema_compat.cpp native/src/manifest_schema.cpp native/src/store_paths.cpp native/src/store.cpp native/src/capture.cpp native/src/profile.cpp native/src/profile_files.cpp native/src/content.cpp native/src/discovery.cpp native/src/catalog.cpp native/src/catalog_projection.cpp native/src/planning.cpp native/src/launch_planning.cpp native/src/store_write.cpp native/src/probe_process.cpp native/src/session_journal.cpp native/src/planning_store.cpp
   native/src/sessions.cpp native/src/session_process.cpp native/src/session_runner.cpp native/src/reconciliation.cpp
-  native/src/acceptance.cpp native/src/store_ops.cpp native/src/cli.cpp
-  native/src/runtime_pending.cpp)
+  native/src/acceptance.cpp native/src/store_ops.cpp native/src/cli.cpp)
 add_library(c2_frontend_core STATIC ${c2_frontend_core_sources})
 target_link_libraries(c2_frontend_core PRIVATE Threads::Threads)
 target_compile_features(c2_frontend_core PUBLIC cxx_std_17)
