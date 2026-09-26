@@ -384,7 +384,32 @@ Value boolean(bool b) { Value v; v.kind = compat::Kind::boolean; v.boolean = b; 
 Value array() { Value v; v.kind = compat::Kind::array; return v; }
 Value object() { Value v; v.kind = compat::Kind::object; return v; }
 
-fs::path dot(const fs::path& p) { return p.empty() ? fs::path(".") : p; }
+// str(Path(value)) as argparse type=Path produces it: Path('') is '.', and on
+// POSIX pathlib collapses repeated separators and '.' components and drops a
+// trailing separator (keeping exactly two leading slashes), so a spelling
+// such as './C:x' is judged as 'C:x' by the foreign-path rules. On Windows
+// fs::path is passed through (PureWindowsPath keeps such prefixes).
+fs::path dot(const fs::path& p) {
+#ifdef _WIN32
+    return p.empty() ? fs::path(".") : p;
+#else
+    const std::string& s = p.native();
+    std::string root;
+    if (s.rfind("//", 0) == 0 && s.rfind("///", 0) != 0) root = "//";
+    else if (!s.empty() && s[0] == '/') root = "/";
+    std::string joined;
+    std::size_t start = 0;
+    while (start <= s.size()) {
+        auto end = s.find('/', start);
+        if (end == std::string::npos) end = s.size();
+        const auto part = s.substr(start, end - start);
+        if (!part.empty() && part != ".") joined += (joined.empty() ? "" : "/") + part;
+        start = end + 1;
+    }
+    const auto result = root + joined;
+    return result.empty() ? fs::path(".") : fs::path(result);
+#endif
+}
 struct Arguments {
     const Parsed& p;
     bool has(const std::string& name) const { return p.values.count(name) > 0; }

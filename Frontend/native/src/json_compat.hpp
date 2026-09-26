@@ -45,6 +45,10 @@ public:
 
 class ResourceError : public Error { public: using Error::Error; };
 Value parse(std::string_view utf8, std::size_t max_depth = 1000);
+// Plain json.loads object semantics for command-line JSON: a repeated key keeps
+// its first position and takes the last value. Never for persisted documents,
+// whose readers refuse duplicate keys.
+Value parse_last_wins(std::string_view utf8, std::size_t max_depth = 1000);
 std::string display(const Value&, std::size_t max_depth = 1000);
 std::string compact(const Value& value);
 // json.dumps(value, sort_keys=...) with default separators, ensure_ascii and

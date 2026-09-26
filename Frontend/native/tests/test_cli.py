@@ -47,10 +47,10 @@ class Side:
             return [FIXTURE if fixture else NATIVE, *common]
         return [sys.executable, str(REFERENCE), *(['--fixture-policy'] if fixture else []), *common]
 
-    def run(self, args, fixture=False, env=None, probe=True):
+    def run(self, args, fixture=False, env=None, probe=True, cwd=None):
         environment = {k: v for k, v in os.environ.items() if k != 'C2_PROFILE_PROBE'}
         environment.update(env or {})
-        done = subprocess.run(self.command(args, fixture, probe), capture_output=True, timeout=300, env=environment)
+        done = subprocess.run(self.command(args, fixture, probe), capture_output=True, timeout=300, env=environment, cwd=cwd)
         out, err = (s.decode('utf-8', 'surrogateescape') for s in (done.stdout, done.stderr))
         if os.name == 'nt' and not self.native:
             # Documented difference: frontend.py's text-mode print emits CRLF on
@@ -146,11 +146,11 @@ class Parity(unittest.TestCase):
                  '{managed}': self.managed, '{game}': str(self.game)}
         return [names.get(a, a) for a in args]
 
-    def step(self, *args, fixture=False, expect=None, env=None, probe=True):
+    def step(self, *args, fixture=False, expect=None, env=None, probe=True, cwd=None):
         args = self.fill(list(args))
         results = []
         for side in (self.reference, self.candidate):
-            code, out, err = side.run(side.translate(args, self.reference), fixture, env, probe)
+            code, out, err = side.run(side.translate(args, self.reference), fixture, env, probe, cwd)
             results.append((code, side.normalize(out), side.normalize(error_message(err)) if code else '', side))
         (rcode, rout, rerr, _), (ncode, nout, nerr, _) = results
         context = f'{args}: reference rc={rcode} err={rerr!r}; native rc={ncode} err={nerr!r}'
@@ -304,6 +304,19 @@ class Parity(unittest.TestCase):
         self.step('--version', 'status', expect=2)
         for args in (['status', '--'], ['hunter', 'list', '--'], ['host-settings', '--json', '{}', '--']):
             self.step(*args, expect=2)
+
+
+    def test_path_spelling_and_command_line_json(self):
+        # argparse type=Path normalizes the spelling the foreign-path rules judge.
+        work = Path(self.temp.name).resolve() / 'work'
+        work.mkdir()
+        if os.name == 'posix':
+            game(work, 'C:x')
+            self.step('expedition', 'register', './C:x', cwd=work, expect=2)
+            self.step('expedition', 'register', './/C:x/', cwd=work, expect=2)
+        self.step('expedition', 'register', str(self.game) + '/./', expect=0)
+        # json.loads semantics for --json: last value wins, first position kept.
+        self.step('host-settings', '--json', '{"display": {"a": 1}, "audio": {}, "display": {"b": 2, "b": 3}}', expect=0)
 
 
 if __name__ == '__main__':
