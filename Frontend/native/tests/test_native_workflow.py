@@ -209,6 +209,30 @@ class Workflow(unittest.TestCase):
             self.assertTrue(Path(f'/proc/{target}/exe').resolve().name.startswith('c2-frontend-native'))
         os.kill(target, signal.SIGINT)
 
+    def reap_windows_child(self, pid):
+        """Harness cleanup of an orphaned Windows test child that may already have exited:
+        terminate it if it still exists, and in either case prove that it is gone."""
+        import ctypes
+        from ctypes import wintypes
+        kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        kernel32.TerminateProcess.argtypes = (wintypes.HANDLE, wintypes.UINT)
+        kernel32.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+        kernel32.WaitForSingleObject.restype = wintypes.DWORD
+        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        synchronize, terminate, invalid_parameter = 0x00100000, 0x0001, 87
+        handle = kernel32.OpenProcess(synchronize | terminate, False, pid)
+        if not handle:
+            # No process has this id any more: the child already exited.
+            self.assertEqual(ctypes.get_last_error(), invalid_parameter, f'cannot open child {pid}')
+            return
+        try:
+            kernel32.TerminateProcess(handle, 1)  # fails harmlessly if it is already exiting
+            self.assertEqual(kernel32.WaitForSingleObject(handle, 10000), 0, f'child {pid} still running')
+        finally:
+            kernel32.CloseHandle(handle)
+
     def wait_state(self, identity, state, timeout=60):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -388,9 +412,15 @@ class Workflow(unittest.TestCase):
             # the reference dies with STATUS_CONTROL_C_EXIT like a killed supervisor. It cannot
             # represent cancellation here; the native run of this workflow asserts it instead.
             self.assertEqual(process.returncode, 0xC000013A, err)
-            os.kill(running['process']['pid'], signal.SIGTERM)  # TerminateProcess the orphaned child
-            (self.store / 'lodge.lock').unlink()
-            self.assertEqual(self.cli('session', 'recover', identity)['state'], 'interrupted')
+            # The reference spawns its child in the same console process group, so the break
+            # usually reaches (and kills) the child too; reap it only if it is still alive.
+            self.reap_windows_child(running['process']['pid'])
+            lock = self.store / 'lodge.lock'
+            self.assertTrue(lock.exists(), 'a killed supervisor leaves its writer lock for manual review')
+            lock.unlink()
+            recovered = self.cli('session', 'recover', identity)
+            self.assertEqual(recovered['state'], 'interrupted')
+            self.assertIn('process-ownership-lost', [d['code'] for d in recovered['diagnostics']])
         else:
             self.assertEqual(process.returncode, 0, err)
             cancelled = json.loads(out)
