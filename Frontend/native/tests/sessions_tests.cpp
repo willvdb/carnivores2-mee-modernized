@@ -12,6 +12,8 @@
 #include "store_paths.hpp"
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <mutex>
 #include <thread>
 #include <iostream>
 #include <iterator>
@@ -158,6 +160,36 @@ int main(int argc, char** argv) {
             });
             struct Join { std::thread& t; ~Join() { if (t.joinable()) t.join(); } } join{timer};
             ok(session_runner::run_session(Store(fs::u8path(args[0])), wide(args[1]), optional_path(args[2]), &cancel, std::nullopt, {}));
+        } else if (command == "run-cancel-after-running" && args.size() == 4) {
+            // run-cancel-after-running <store> <id> <probe|-> <ms>: synthetic run cancelled <ms> after
+            // the 'running' transition (the second journal write of the run, made once the child is
+            // spawned), so preflight and spawn time never consume the delay.
+            std::atomic<bool> cancel{false};
+            std::mutex mutex;
+            std::condition_variable changed;
+            bool running = false, finished = false;
+            int replacements = 0;
+            const store_write::FailureHook hook = [&](store_write::WritePhase phase, const fs::path& target) {
+                if (phase == store_write::WritePhase::replace && target.filename() == "journal.json" && ++replacements == 2) {
+                    { std::lock_guard<std::mutex> guard(mutex); running = true; }
+                    changed.notify_all();
+                }
+            };
+            std::thread timer([&, delay = std::stoi(args[3])] {
+                std::unique_lock<std::mutex> lock(mutex);
+                changed.wait(lock, [&] { return running || finished; });
+                if (running && !changed.wait_for(lock, std::chrono::milliseconds(delay), [&] { return finished; }))
+                    cancel.store(true);
+            });
+            struct Finish {
+                std::mutex& mutex; std::condition_variable& changed; bool& finished; std::thread& timer;
+                ~Finish() {
+                    { std::lock_guard<std::mutex> guard(mutex); finished = true; }
+                    changed.notify_all();
+                    timer.join();
+                }
+            } finish{mutex, changed, finished, timer};
+            ok(session_runner::run_session(Store(fs::u8path(args[0])), wide(args[1]), optional_path(args[2]), &cancel, std::nullopt, {}, nullptr, hook));
         } else if (command == "run-native" && args.size() == 7) {
             // run-native <store> <observer|hunt> <id> <probe|-> <policy> <cancel-after-ms|-> <experimental 0|1>; stdin {"engine", "digest"}
             const Value in = compat::parse(input());

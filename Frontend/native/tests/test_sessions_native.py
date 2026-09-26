@@ -10,6 +10,7 @@ and the text of OS-error-derived diagnostic messages.
 
 usage: test_sessions_native.py DRIVER PROBE ENGINE CHILD HELPER [prepare|run|reconcile]
 """
+import ast
 import copy
 from contextlib import ExitStack
 from datetime import datetime
@@ -17,6 +18,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -34,6 +36,7 @@ from lodge.managed_state import upgrade_store  # noqa: E402
 from lodge.native_hunt import prepare_hunt, run_hunt  # noqa: E402
 from lodge.native_observer import CAPABILITY, CONFIG, prepare_native, run_native  # noqa: E402
 from lodge import native_continuation, native_hunt, native_observer, native_session  # noqa: E402
+from lodge import session_runner as reference_runner  # noqa: E402
 from lodge.profiles import associate  # noqa: E402
 from lodge.reconciliation import reconcile_session  # noqa: E402
 from lodge.session_io import capture, encode, persist, read_journal, session_root, transition, write_blobs  # noqa: E402
@@ -51,6 +54,55 @@ SMOD = 'smod=0.85,0.70,0.80,1.0,1.25,1.0'
 DEFAULT = object()
 BEHAVIOR = 'C2_NATIVE_FIXTURE_BEHAVIOR'
 ENGINE_MARKER = 'C2_NATIVE_FIXTURE_MARKER'
+# CPython str(OSError): "[Errno N] text" or "[WinError N] text", then ": 'filename'" when named.
+OS_ERROR = re.compile(r"\[(Errno|WinError) (-?\d+)\] (.+?)(?:: ('.*'|\".*\"))?\Z", re.S)
+# The synthetic child's hang is reached once both lines are out (lodge/synthetic_child.py).
+READY_MARKERS = {'stdout.log': b'\n', 'stderr.log': b'synthetic fixture stderr\n'}
+
+
+def os_error_semantics(message):
+    """(kind, code, OS text, filename or None) of a CPython OSError string, else None."""
+    match = OS_ERROR.match(message)
+    if not match:
+        return None
+    kind, code, text, filename = match.groups()
+    return kind, int(code), text, ast.literal_eval(filename) if filename else None
+
+
+def system_text(kind, code):
+    """The operating system's own description of the code, as CPython renders it."""
+    if kind == 'Errno':
+        return os.strerror(code)
+    import ctypes
+    # CPython strips trailing whitespace and dots from the FormatMessage text.
+    return ctypes.FormatError(code).rstrip(' \t\r\n.')
+
+
+class WatchedPipe:
+    """The reference runner's pipe, unchanged: read(n) keeps BufferedReader.read semantics
+    (n bytes or EOF), but the marker is noticed when it crosses the pipe, not at EOF."""
+
+    def __init__(self, pipe, marker, event):
+        self.pipe, self.marker, self.event, self.seen = pipe, marker, event, b''
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return self.pipe.__exit__(*exc)
+
+    def read(self, size):
+        data = b''
+        while len(data) < size:
+            chunk = self.pipe.read1(size - len(data))
+            if not chunk:
+                break
+            data += chunk
+            if not self.event.is_set():
+                self.seen += chunk
+                if self.marker in self.seen:
+                    self.event.set()
+        return data
 
 
 def observer_double(revision, catalog, slot, selection, score):
@@ -205,13 +257,26 @@ class Base(unittest.TestCase):
         self.sync_times(actual, expected)
         return actual, copy.deepcopy(expected)
 
+    def assert_same_os_error(self, native_message, reference_message):
+        """The wording of an OSError-derived message is the native filesystem_error text
+        (documented difference), but it must report the same condition on the same path:
+        the OS's own text for the reference's errno/WinError code and the identical filename."""
+        kind, code, text, filename = os_error_semantics(reference_message)
+        self.assertEqual(text, system_text(kind, code), reference_message)
+        self.assertIn(text, native_message, f'different error condition: {native_message!r} vs {reference_message!r}')
+        if filename is not None:
+            # libstdc++/libc++ print [path]; the MSVC STL prints "path".
+            self.assertTrue(f'[{filename}]' in native_message or f'"{filename}"' in native_message,
+                            f'different path: {native_message!r} vs {reference_message!r}')
+
     def assert_diagnostics(self, actual, expected):
-        """Codes, domains, paths and reference-message texts must agree; the text of an
-        OSError-derived message is the native OS error (documented difference)."""
+        """Codes, domains, paths and reference-message texts must agree; an OSError-derived
+        message must agree in error condition and path (see assert_same_os_error)."""
         self.assertEqual(len(actual), len(expected), (actual, expected))
         for a, e in zip(actual, expected):
-            if isinstance(e.get('message'), str) and e['message'].startswith('[Errno ') and isinstance(a.get('message'), str):
-                self.assertTrue(a['message'])
+            if (isinstance(e.get('message'), str) and os_error_semantics(e['message'])
+                    and isinstance(a.get('message'), str) and a['message'] != e['message']):
+                self.assert_same_os_error(a['message'], e['message'])
                 a = {**a, 'message': e['message']}
             self.assertEqual(a, e)
             self.assertEqual(list(a), list(e))
@@ -664,8 +729,16 @@ class Prepare(Base):
             (root / 'work').unlink()
         kind, findings = native('workspace-findings', str(root), '1')
         self.assertEqual(kind, 'ok')
-        self.assert_diagnostics(findings, native_session.workspace_findings(root, True))
+        reference = native_session.workspace_findings(root, True)
+        self.assert_diagnostics(findings, reference)
         self.assertEqual([f['domain'] for f in findings], ['workspace', 'config', 'output'])
+        # The workspace finding is the missing work directory itself: the same listing
+        # (directory iteration) failed with ENOENT / ERROR_PATH_NOT_FOUND on that path.
+        kind_, code, _, filename = os_error_semantics(reference[0]['message'])
+        self.assertEqual((kind_, code), ('WinError', 3) if os.name == 'nt' else ('Errno', 2))
+        self.assertEqual(filename, str(root / 'work'))
+        self.assertRegex(findings[0]['message'], r'directory[_ ]iterator')
+        self.assertEqual([f['message'] for f in findings[1:]], [f['message'] for f in reference[1:]])
 
     def test_native_pins_match_reference_for_every_adapter(self):
         def reference(adapter, **kwargs):
@@ -747,27 +820,80 @@ class Run(Base):
                         self.assertEqual((root / log['path']).stat().st_size, LOG_LIMIT)
                 self.assertFalse(child_running(str(root / 'work')))
 
-    def test_synthetic_cancellation_stops_the_owned_child(self):
-        # Both sides cancel a 60 s hang 150 ms after launch, once the receipt is out.
-        def reference():
-            cancel = threading.Event()
-            timer = threading.Timer(0.15, cancel.set)
-            prepared = self.py_prepare_synthetic(scenario='hang', timeout=20)
-            timer.start()
-            try:
-                return run_session(self.store, prepared['id'], PROBE, cancel)
-            finally:
-                timer.cancel()
-        def candidate():
-            kind, prepared = self.nt_prepare_synthetic(scenario='hang', timeout=20)
-            self.assertEqual(kind, 'ok', prepared)
-            return native('run-cancel', str(self.store.directory), prepared['id'], PROBE, '150')
-        expected, actual, result = self.both(reference, candidate)
-        journal = self.assert_same_store(expected, actual, self.store.directory, result, synthetic=True)
+    def logs_ready(self, store, identity):
+        """The synthetic child had emitted its receipt and stderr line (reached its hang)."""
+        logs = store / 'sessions' / identity / 'logs'
+        return all((logs / name).is_file() and marker in (logs / name).read_bytes() for name, marker in READY_MARKERS.items())
+
+    def assert_cancelled(self, journal, store):
+        self.assertEqual(journal['state'], 'returned')
+        self.assertEqual([e['state'] for e in journal['transitions']], ['prepared', 'launching', 'running', 'returned'])
         self.assertEqual(journal['process']['stop_reason'], 'cancelled')
         self.assertIsInstance(journal['process']['exit_code'], int)
         self.assertNotEqual(journal['process']['exit_code'], 0)
-        self.assertFalse(child_running(str(result / 'sessions' / journal['id'] / 'work')))
+        self.assertFalse(child_running(str(store / 'sessions' / journal['id'] / 'work')))
+
+    def test_synthetic_cancellation_stops_the_owned_child(self):
+        """Both sides cancel a 60 s hang only once the child has reached it, so the retained
+        logs are deterministic (the receipt and the stderr line) and compared exactly.
+
+        Reference: cancellation is triggered when both lines have crossed the pipes its
+        runner drains. Native: the driver cancels a delay after the durable 'running'
+        transition; the logs then prove the compiled child had reached its hang, and a
+        run cancelled before that point is repeated (with a longer delay) after its own
+        cancellation was asserted. Neither side relies on a sleep as proof."""
+        store = self.store.directory
+        native_attempts = []
+
+        def reference():
+            ready = {name: threading.Event() for name in READY_MARKERS}
+
+            class Watched(reference_runner.BoundedLog):
+                def __init__(self, pipe, path):
+                    name = Path(path).name
+                    super().__init__(WatchedPipe(pipe, READY_MARKERS[name], ready[name]), path)
+
+            cancel, reached = threading.Event(), []
+
+            def trigger():
+                reached.append(all(event.wait(15) for event in ready.values()))
+                cancel.set()
+
+            prepared = self.py_prepare_synthetic(scenario='hang', timeout=20)
+            watcher = threading.Thread(target=trigger)
+            with patch.object(reference_runner, 'BoundedLog', Watched):
+                watcher.start()
+                try:
+                    return run_session(self.store, prepared['id'], PROBE, cancel)
+                finally:
+                    cancel.set()
+                    watcher.join()
+                    self.assertEqual(reached, [True], 'the reference child never reached its hang')
+
+        def candidate():
+            pristine = self.base / 'native-pristine'
+            shutil.rmtree(pristine, ignore_errors=True)
+            shutil.copytree(store, pristine, symlinks=True)
+            for delay in ('150', '1000', '5000'):
+                kind, prepared = self.nt_prepare_synthetic(scenario='hang', timeout=20)
+                self.assertEqual(kind, 'ok', prepared)
+                outcome = native('run-cancel-after-running', str(store), prepared['id'], PROBE, delay)
+                self.assertEqual(outcome[0], 'ok', outcome)
+                self.assert_cancelled(outcome[1], store)
+                native_attempts.append(delay)
+                if self.logs_ready(store, prepared['id']):
+                    break
+                shutil.rmtree(store)
+                shutil.copytree(pristine, store, symlinks=True)
+            shutil.rmtree(pristine)
+            return outcome
+
+        expected, actual, result = self.both(reference, candidate)
+        self.assertTrue(self.logs_ready(result, actual[1]['id']), f'the compiled child never reached its hang: {native_attempts}')
+        self.assertTrue(self.logs_ready(store, expected[1]['id']))
+        journal = self.assert_same_store(expected, actual, store, result, synthetic=True)
+        self.assert_cancelled(journal, result)
+        self.assert_cancelled(expected[1], store)
 
     def test_python_prepared_synthetic_journal_is_refused_without_execution(self):
         prepared = self.py_prepare_synthetic(scenario='sav')
