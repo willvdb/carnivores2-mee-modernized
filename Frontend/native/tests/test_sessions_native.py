@@ -674,26 +674,37 @@ class Prepare(Base):
         if os.name != 'posix':
             self.assertTrue(True, 'the authored shell engine needs a POSIX shebang; Windows keeps the CreateProcess cwd path')
             return
+        # A private temporary root (TMPDIR for native, tempfile.tempdir for the reference):
+        # parallel tests create and remove their own c2-contract-* directories in the shared one.
+        temp = self.base / 'private-tmp'
+        temp.mkdir()
+        seen = self.base / 'engine-cwd'
         engine = self.base / 'engine.sh'
         engine.write_text('#!/bin/sh\necho touched > "$PWD/ENGINE_WROTE_HERE"\n'
+                          f'echo "$PWD" >> "{seen}"\n'
                           "printf '%s' '" + json.dumps(CAPABILITY, separators=(',', ':')) + "'\n")
         engine.chmod(0o755)
         caller = self.base / 'caller-cwd'
         caller.mkdir()
-        temp = Path(tempfile.gettempdir())
-        leftovers = lambda: sorted(p.name for p in temp.iterdir() if p.name.startswith('c2-contract-'))
-        before = leftovers()
-        self.assertEqual(native('query-contract', str(engine), cwd=caller), ('ok', CAPABILITY))
+        self.assertEqual(native('query-contract', str(engine), cwd=caller, env={'TMPDIR': str(temp)}), ('ok', CAPABILITY))
         self.assertEqual(list(caller.iterdir()), [], 'the engine wrote into the caller working directory')
-        self.assertEqual(leftovers(), before, 'the temporary query directory leaked')
+        self.assertEqual(list(temp.iterdir()), [], 'the temporary query directory leaked')
         previous = os.getcwd()
         os.chdir(caller)
         try:
-            self.assertEqual(native_session.query_contract(native_session.executable_evidence(str(engine))), CAPABILITY)
+            with patch.object(tempfile, 'tempdir', str(temp)):
+                self.assertEqual(native_session.query_contract(native_session.executable_evidence(str(engine))), CAPABILITY)
         finally:
             os.chdir(previous)
         self.assertEqual(list(caller.iterdir()), [])
-        self.assertEqual(leftovers(), before)
+        self.assertEqual(list(temp.iterdir()), [])
+        # Each side ran the engine in its own fresh c2-contract-* directory directly below the root.
+        cwds = [Path(line) for line in seen.read_text().splitlines()]
+        self.assertEqual(len(cwds), 2, cwds)
+        for cwd in cwds:
+            self.assertEqual(cwd.parent, temp.resolve())
+            self.assertTrue(cwd.name.startswith('c2-contract-'), cwd)
+        self.assertNotEqual(cwds[0], cwds[1])
 
     def test_workspace_findings_match_reference(self):
         expected, actual, result = self.native_prepare()
