@@ -30,5 +30,6 @@ private:
     std::shared_ptr<const Impl> impl_;
     explicit GenerationObservation(std::shared_ptr<const Impl>);
     friend class Manifest;
+    friend struct ManifestAccess;
 };
 }

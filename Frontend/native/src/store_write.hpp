@@ -50,6 +50,10 @@ private:
 // changed. Returns whether the manifest was written. Callback and validation
 // failures write nothing; the lock is released on every path.
 bool transaction(const Store& store, const std::function<void(compat::Value&)>& mutate, const FailureHook& hook = {});
+// managed_state.sync_directory: safe_path check, then fsync the directory on
+// POSIX (no-op on Windows, as in the reference). OS failures throw
+// std::filesystem::filesystem_error.
+void sync_directory(const std::filesystem::path& directory);
 // session_io.session_root: validated UUID below <store>/sessions, safe-path checked.
 std::filesystem::path session_root(const Store& store, std::u32string_view identity);
 // session_io.write_blobs over captured relative POSIX names.

@@ -12,6 +12,12 @@ struct Manifest::Impl { Value data; ReadPolicy policy; std::filesystem::path dir
 const Value& ManifestAccess::data(const Manifest& m) { return m.impl_->data; }
 const Value& ManifestAccess::instances(const Manifest& m) { return m.impl_->data.at(U"instances"); }
 const ReadPolicy& ManifestAccess::policy(const Manifest& m) { return m.impl_->policy; }
+Manifest ManifestAccess::snapshot(const Store& store, Value data) {
+    schema::validate_manifest(data);
+    auto p = std::make_shared<Manifest::Impl>();
+    p->data = std::move(data); p->directory = store.directory_; p->policy = store.policy_;
+    return Manifest(std::move(p));
+}
 struct GenerationObservation::Impl {
     Value generation, history;
     std::u32string id;
@@ -20,6 +26,7 @@ struct GenerationObservation::Impl {
     ReadPolicy policy;
     bool is_head = false;
 };
+const Value& ManifestAccess::generation(const GenerationObservation& g) { return g.impl_->generation; }
 GenerationObservation::GenerationObservation(std::shared_ptr<const Impl> p) : impl_(std::move(p)) {}
 const std::u32string& GenerationObservation::id() const noexcept { return impl_->id; }
 const std::filesystem::path& GenerationObservation::root() const noexcept { return impl_->root; }

@@ -9,5 +9,9 @@ struct ManifestAccess {
     static const compat::Value& data(const Manifest&);
     static const compat::Value& instances(const Manifest&);
     static const ReadPolicy& policy(const Manifest&);
+    // Validate/copy a transaction's retained value without another disk read,
+    // serialization round trip, or different store/path policy.
+    static Manifest snapshot(const Store&, compat::Value);
+    static const compat::Value& generation(const GenerationObservation&);
 };
 }

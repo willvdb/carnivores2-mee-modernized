@@ -234,6 +234,10 @@ LaunchRequest evaluate_launch(const LaunchRequest& stage_one, const catalog::Pro
             std::uint32_t sum = 0;
             for (const Value* e : entries) {
                 const auto& ordinal = e->at(U"ordinal").integer;
+                // Canonical non-negative decimal below ten before any native shift:
+                // the reference raises ValueError for 1 << negative, and std::stoul
+                // would wrap a sign into an undefined shift count.
+                if (!pi::canonical_decimal(ordinal) || ordinal[0] == '-') throw std::logic_error("ordinal is not a canonical non-negative integer");
                 if (pi::compare_decimal(ordinal, "10") >= 0) throw std::logic_error("ordinal above the evidenced mask limit");
                 sum += std::uint32_t{1} << std::stoul(ordinal);
             }

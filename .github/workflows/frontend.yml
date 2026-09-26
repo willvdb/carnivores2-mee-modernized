@@ -14,9 +14,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Native-only production build (Python disabled, no tests)
+        run: |
+          cmake -S Frontend -B build/native-only -DBUILD_TESTING=OFF -DCMAKE_DISABLE_FIND_PACKAGE_Python3=TRUE -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/native-only --config Release --parallel 2
+          cmake --install build/native-only --config Release --prefix build/stage
       - name: Configure standalone frontend
         run: cmake -S Frontend -B build/frontend -DCMAKE_BUILD_TYPE=Debug
       - name: Build production codec probe
         run: cmake --build build/frontend --config Debug --parallel 2
+      - name: Repeat Windows live timestamp check (1000 samples, no retries)
+        if: runner.os == 'Windows'
+        run: python Frontend/native/tests/test_store_write.py build/frontend/Debug/c2-frontend-store-write-tests.exe timestamp-repeat
+      - name: Staged Release artifact runs the native workflow without Python
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then d=build/frontend/Debug; x=.exe; else d=build/frontend; x=; fi
+          python Frontend/native/tests/test_native_workflow.py build/stage/bin "$d/c2-frontend-native-fixture$x" "$d/c2-native-session-fixture$x"
       - name: Run frontend with required codec probe
         run: ctest --test-dir build/frontend -C Debug --output-on-failure --no-tests=error

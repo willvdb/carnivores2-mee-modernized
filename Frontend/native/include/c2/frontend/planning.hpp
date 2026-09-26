@@ -88,6 +88,14 @@ private:
 // every policy refuses with the same message. Slot is the association's
 // filename_slot. Violations raise Error with the reference message; the
 // caller must have obtained a fresh full fingerprint for the revision.
+// Representation limits of this typed API (no coercion is invented):
+//  - Selection lists are sequences of text only. The reference distinguishes
+//    a tuple from a list and accepts arbitrary element kinds; neither is
+//    representable here, so those reference branches are reachable only
+//    through the private supplied-value seam used by the oracle tests.
+//  - A non-finite or fractional score (NaN, +/-Infinity, 1.5) cannot be passed
+//    as an Integer. It is nullopt, which refuses exactly as the reference
+//    refuses every non-exact-int score; it is never rounded or clamped.
 GenesisPlan observer_policy(const Revision&, const catalog::Projection&, const Integer& slot,
                             const Selection&, const std::optional<Integer>& score);
 GenesisPlan hunt_policy(const Revision&, const catalog::Projection&, const Integer& slot,

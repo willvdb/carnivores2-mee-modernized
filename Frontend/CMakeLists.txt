@@ -1,8 +1,19 @@
 cmake_minimum_required(VERSION 3.20)
 project(CarnivoresFrontend LANGUAGES CXX)
+# The sources are C++17 (u8string() returns std::string there). cxx_std_17 is only a
+# minimum, and newer compilers (GCC 16) default to C++20, so pin the standard.
+if(NOT DEFINED CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 17)
+endif()
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(THREADS_PREFER_PTHREAD_FLAG TRUE)
+find_package(Threads REQUIRED)
 # Deliberately standalone: configure with -S Frontend, no engine dependencies.
-set(c2_frontend_core_sources native/src/core.cpp native/src/json_compat.cpp native/src/schema_compat.cpp native/src/manifest_schema.cpp native/src/store_paths.cpp native/src/store.cpp native/src/capture.cpp native/src/profile.cpp native/src/profile_files.cpp native/src/content.cpp native/src/discovery.cpp native/src/catalog.cpp native/src/catalog_projection.cpp native/src/planning.cpp native/src/launch_planning.cpp native/src/store_write.cpp)
+set(c2_frontend_core_sources native/src/core.cpp native/src/json_compat.cpp native/src/schema_compat.cpp native/src/manifest_schema.cpp native/src/store_paths.cpp native/src/store.cpp native/src/capture.cpp native/src/profile.cpp native/src/profile_files.cpp native/src/content.cpp native/src/discovery.cpp native/src/catalog.cpp native/src/catalog_projection.cpp native/src/planning.cpp native/src/launch_planning.cpp native/src/store_write.cpp native/src/probe_process.cpp native/src/session_journal.cpp native/src/planning_store.cpp
+  native/src/sessions.cpp native/src/session_process.cpp native/src/session_runner.cpp native/src/reconciliation.cpp
+  native/src/acceptance.cpp native/src/store_ops.cpp native/src/cli.cpp)
 add_library(c2_frontend_core STATIC ${c2_frontend_core_sources})
+target_link_libraries(c2_frontend_core PRIVATE Threads::Threads)
 target_compile_features(c2_frontend_core PUBLIC cxx_std_17)
 target_include_directories(c2_frontend_core PUBLIC native/include PRIVATE native/src)
 target_include_directories(c2_frontend_core SYSTEM PRIVATE native/third_party)
@@ -19,6 +30,11 @@ foreach(target IN ITEMS c2_frontend_core c2-frontend-native)
     target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
   endif()
 endforeach()
+# Compiled controlled synthetic child for developer synthetic sessions
+# (session prepare-synthetic/run); staged next to c2-frontend-native.
+add_executable(c2-frontend-synthetic-child native/src/synthetic_child.cpp)
+target_compile_features(c2-frontend-synthetic-child PRIVATE cxx_std_17)
+target_include_directories(c2-frontend-synthetic-child PRIVATE ..)
 add_executable(c2-profile-probe profile_probe.cpp)
 target_compile_features(c2-profile-probe PRIVATE cxx_std_17)
 if(MSVC)
@@ -26,13 +42,39 @@ if(MSVC)
 else()
   target_compile_options(c2-profile-probe PRIVATE -Wall -Wextra -Wpedantic)
 endif()
-find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
-add_custom_target(c2-frontend
-  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/frontend.py" --help
-  DEPENDS c2-profile-probe
-  COMMENT "Show the optional frontend CLI")
+# Production artifact: the native frontend and the native helpers it runs.
+# `cmake --install <build> --prefix <stage>` stages them together in bin/;
+# sessions locate the compiled synthetic child next to c2-frontend-native.
+include(GNUInstallDirs)
+install(TARGETS c2-frontend-native c2-profile-probe c2-frontend-synthetic-child
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 include(CTest)
+# The production artifact (c2-frontend-native, c2-profile-probe,
+# c2-frontend-synthetic-child) never needs Python. The Python reference
+# implementation is optional developer/test tooling: it is required only for
+# BUILD_TESTING (differential oracles) or C2_FRONTEND_REFERENCE_TOOLS.
+option(C2_FRONTEND_REFERENCE_TOOLS "Add the Python reference CLI helper target c2-frontend" ${BUILD_TESTING})
+if(BUILD_TESTING OR C2_FRONTEND_REFERENCE_TOOLS)
+  find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
+endif()
+if(C2_FRONTEND_REFERENCE_TOOLS)
+  add_custom_target(c2-frontend
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/frontend.py" --help
+    DEPENDS c2-profile-probe
+    COMMENT "Show the optional Python reference frontend CLI")
+endif()
 if(BUILD_TESTING)
+  # Test driver: one private-API executable per suite, warnings as elsewhere.
+  function(c2_frontend_test_driver name)
+    add_executable(${name} ${ARGN})
+    target_link_libraries(${name} PRIVATE c2_frontend_core Threads::Threads)
+    target_include_directories(${name} PRIVATE native/src)
+    if(MSVC)
+      target_compile_options(${name} PRIVATE /W4 /utf-8)
+    else()
+      target_compile_options(${name} PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+  endfunction()
   add_executable(c2-frontend-catalog-tests native/tests/catalog_tests.cpp)
   target_link_libraries(c2-frontend-catalog-tests PRIVATE c2_frontend_core)
   target_include_directories(c2-frontend-catalog-tests PRIVATE native/src)
@@ -55,6 +97,43 @@ if(BUILD_TESTING)
   endif()
   add_test(NAME frontend-native-catalog-projection COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_catalog_projection.py" "$<TARGET_FILE:c2-frontend-catalog-projection-tests>")
+  add_executable(c2-frontend-probe-helper native/tests/probe_helper.cpp)
+  target_compile_features(c2-frontend-probe-helper PRIVATE cxx_std_17)
+  add_executable(c2-frontend-probe-process-tests native/tests/probe_process_tests.cpp)
+  target_link_libraries(c2-frontend-probe-process-tests PRIVATE c2_frontend_core Threads::Threads)
+  target_include_directories(c2-frontend-probe-process-tests PRIVATE native/src)
+  if(MSVC)
+    target_compile_options(c2-frontend-probe-process-tests PRIVATE /W4 /utf-8)
+  else()
+    target_compile_options(c2-frontend-probe-process-tests PRIVATE -Wall -Wextra -Wpedantic)
+  endif()
+  add_test(NAME frontend-native-probe-process COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_probe_process.py" "$<TARGET_FILE:c2-frontend-probe-process-tests>" "$<TARGET_FILE:c2-profile-probe>" "$<TARGET_FILE:c2-frontend-probe-helper>")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_test(NAME frontend-native-probe-deferred-reap COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_probe_process.py" "$<TARGET_FILE:c2-frontend-probe-process-tests>" "$<TARGET_FILE:c2-profile-probe>" "$<TARGET_FILE:c2-frontend-probe-helper>" deferred-only)
+    set_tests_properties(frontend-native-probe-deferred-reap PROPERTIES TIMEOUT 20)
+  endif()
+  add_executable(c2-frontend-session-journal-tests native/tests/session_journal_tests.cpp)
+  target_link_libraries(c2-frontend-session-journal-tests PRIVATE c2_frontend_core)
+  target_include_directories(c2-frontend-session-journal-tests PRIVATE native/src)
+  if(MSVC)
+    target_compile_options(c2-frontend-session-journal-tests PRIVATE /W4 /utf-8)
+  else()
+    target_compile_options(c2-frontend-session-journal-tests PRIVATE -Wall -Wextra -Wpedantic)
+  endif()
+  add_test(NAME frontend-native-session-journal COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_session_journal.py" "$<TARGET_FILE:c2-frontend-session-journal-tests>")
+  add_executable(c2-frontend-planning-store-tests native/tests/planning_store_tests.cpp)
+  target_link_libraries(c2-frontend-planning-store-tests PRIVATE c2_frontend_core)
+  target_include_directories(c2-frontend-planning-store-tests PRIVATE native/src)
+  if(MSVC)
+    target_compile_options(c2-frontend-planning-store-tests PRIVATE /W4 /utf-8)
+  else()
+    target_compile_options(c2-frontend-planning-store-tests PRIVATE -Wall -Wextra -Wpedantic)
+  endif()
+  add_test(NAME frontend-native-planning-store COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_planning_store.py" "$<TARGET_FILE:c2-frontend-planning-store-tests>" "$<TARGET_FILE:c2-profile-probe>" "$<TARGET_FILE:c2-frontend-probe-helper>")
   add_executable(c2-frontend-planning-tests native/tests/planning_tests.cpp)
   target_link_libraries(c2-frontend-planning-tests PRIVATE c2_frontend_core)
   target_include_directories(c2-frontend-planning-tests PRIVATE native/src)
@@ -167,6 +246,7 @@ if(BUILD_TESTING)
     set(c2_no_elision_flag "-fno-elide-constructors")
   endif()
   add_executable(c2-frontend-store-write-no-elision-tests native/tests/store_write_tests.cpp ${c2_frontend_core_sources})
+  target_link_libraries(c2-frontend-store-write-no-elision-tests PRIVATE Threads::Threads)
   target_compile_features(c2-frontend-store-write-no-elision-tests PRIVATE cxx_std_17)
   target_include_directories(c2-frontend-store-write-no-elision-tests PRIVATE native/include native/src)
   target_include_directories(c2-frontend-store-write-no-elision-tests SYSTEM PRIVATE native/third_party)
@@ -224,7 +304,7 @@ if(BUILD_TESTING)
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_native_stack.py"
       "$<TARGET_FILE:c2-frontend-native-tests>")
   add_test(NAME frontend-native-help COMMAND c2-frontend-native --help)
-  set_tests_properties(frontend-native-help PROPERTIES PASS_REGULAR_EXPRESSION "Read-only commands")
+  set_tests_properties(frontend-native-help PROPERTIES PASS_REGULAR_EXPRESSION "native-hunt prepare")
   add_test(NAME frontend-native-version COMMAND c2-frontend-native --version)
   set_tests_properties(frontend-native-version PROPERTIES PASS_REGULAR_EXPRESSION "0.1.0-foundation")
   add_test(NAME frontend-native-unsupported COMMAND c2-frontend-native discover)
@@ -254,4 +334,25 @@ if(BUILD_TESTING)
       "C2_LAUNCH_ARGUMENT_PROBE=$<TARGET_FILE:c2-launch-argument-probe>"
       "C2_NATIVE_TEST_ENGINE=$<TARGET_FILE:c2-native-session-fixture>"
       "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/run_tests.py")
+  # Test-only dispatcher with the labelled asset-free policy doubles.
+  c2_frontend_test_driver(c2-frontend-native-fixture native/tests/fixture_cli.cpp)
+  add_test(NAME frontend-native-cli COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_cli.py" "$<TARGET_FILE:c2-frontend-native>"
+    "$<TARGET_FILE:c2-frontend-native-fixture>" "$<TARGET_FILE:c2-profile-probe>"
+    "$<TARGET_FILE:c2-native-session-fixture>" "$<TARGET_FILE:c2-frontend-synthetic-child>")
+  # Native-only end-to-end workflow (checkpoints 1-3): native binaries only,
+  # PATH reduced to failing python shims; the same workflow against the
+  # unchanged Python frontend validates its expectations.
+  set(c2_workflow "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_native_workflow.py"
+    "$<TARGET_FILE_DIR:c2-frontend-native>" "$<TARGET_FILE:c2-frontend-native-fixture>"
+    "$<TARGET_FILE:c2-native-session-fixture>")
+  add_test(NAME frontend-native-workflow COMMAND "${Python3_EXECUTABLE}" ${c2_workflow})
+  add_test(NAME frontend-native-workflow-reference COMMAND "${Python3_EXECUTABLE}" ${c2_workflow} --reference)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_test(NAME frontend-native-workflow-sandbox COMMAND "${Python3_EXECUTABLE}" ${c2_workflow} --sandbox)
+    set_tests_properties(frontend-native-workflow-sandbox PROPERTIES SKIP_RETURN_CODE 77)
+  endif()
+  include(native/tests/workstream_sessions.cmake)
+  include(native/tests/workstream_store_ops.cmake)
+  include(native/tests/workstream_acceptance.cmake)
 endif()
