@@ -235,7 +235,8 @@ class Parity(unittest.TestCase):
         self.step('expedition', 'register', str(first), expect=0)
         self.step('expedition', 'register', str(expeditions / 'Partial'), expect=2)
         self.step('expedition', 'register', str(first), '--dialect', 'bogus', expect=2)
-        self.step('expedition', 'register', 'C:\\Games\\Foreign', expect=2)
+        # Foreign/ambiguous on this host: a rooted drive-less path on NT, a drive path on POSIX.
+        self.step('expedition', 'register', '/Games/Foreign' if os.name == 'nt' else 'C:\\Games\\Foreign', expect=2)
         self.step('expedition', 'discover', str(expeditions), expect=0)
         managed = self.step('expedition', 'discover', str(expeditions), '--register-managed', expect=0)
         self.assertEqual([m['path'] for m in managed], [str(first), str(nested)])
