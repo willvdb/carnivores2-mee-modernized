@@ -231,7 +231,9 @@ class Base(unittest.TestCase):
             self.assertEqual(a['fixture'], a['executable'])
             child = Path(CHILD).resolve()
             self.assertEqual(a['executable'], {'path': str(child), 'sha256': hashlib.sha256(child.read_bytes()).hexdigest()})
-            self.assertEqual(e['argv'][:2], [sys.executable, '-I'])
+            # The reference resolves its interpreter (python.exe versus python3.exe on Windows).
+            self.assertEqual(e['executable'], native_session.executable_evidence(sys.executable))
+            self.assertEqual(e['argv'][:2], [e['executable']['path'], '-I'])
             for key in ('kind', 'cwd', 'timeout_seconds', 'scenario', 'shell'):
                 self.assertEqual(a[key], e[key], key)
         if synthetic and 'logs' in actual and 'logs' in expected:
