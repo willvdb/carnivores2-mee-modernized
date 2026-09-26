@@ -6,19 +6,17 @@ through `c2-frontend-native`), **tested** (differential and/or end-to-end
 tests pass at a recorded SHA), **reviewed** (separate reviewer context
 inspected it), **merged** (never, in this sprint; `main` is not touched).
 
-## Identity (live state at handoff, 2026-09-25)
+## Identity (final, 2026-09-26)
 
-- Main: `a86be96faec2aacb4594d253bb9385091a0c2739` — untouched, nothing merged.
-- Base: `frontend/cpp-planning-completion` `38b398a` (its tested code SHA
-  `75eff4b`; its CI evidence is not re-attributed here).
+- **Frozen candidate code SHA: `a0ea7cb63f6c1a7fb9f569e691ca446fec2da385`.** Every
+  final gate below ran against exactly this SHA. Commits after it touch only this
+  record.
+- Main: `a86be96faec2aacb4594d253bb9385091a0c2739`, untouched. Nothing was merged.
+- Base: `frontend/cpp-planning-completion` `38b398a`.
 - Integration branch `frontend/cpp-runtime-completion`, worktree
-  `~/code/games/carnivores2-runtime-completion`. Last code checkpoint:
-  **`3962cd8`** (merge of A's R4 fixes; this documentation commit follows it).
-- Worker branches (worktrees `~/code/games/carnivores2-runtime-{a-sessions,b-store,c-acceptance}`):
-  - B `frontend/cpp-runtime-b-store` `c34678a` — fully integrated.
-  - C `frontend/cpp-runtime-c-acceptance` `fcb121f` — fully integrated (merge `468679d`).
-  - A `frontend/cpp-runtime-a-sessions` `31cb3a7` — fully integrated (merge `3962cd8`).
-- `runtime_pending.cpp` is **deleted** (commit after merge of A); no stubs remain.
+  `~/code/games/carnivores2-runtime-completion`.
+- Worker branches A `31cb3a7`, B `c34678a` and C `fcb121f` are fully integrated.
+  `runtime_pending.cpp` is deleted and no stubs remain.
 
 ## Canonical native executable
 
@@ -92,7 +90,8 @@ the workstream's differential suite; "E2E" = native-only
 | R1 (separate context) | dispatcher `cli.cpp`/`main.cpp` at `1f7a059` | repeated-option checks, `Path('')`, discover positional, `--version`, unconsumed `--` | fixed `21969c9`, regression steps in `test_cli.py` |
 | R2 (separate context) | workstream B `store_ops.cpp` at `fc78714` | B1 POSIX Path spelling (`./C:x` accepted), B2 `--json` duplicate keys | fixed `276bed2` (dispatcher normalization, `parse_last_wins`), parity steps added |
 | R3 (separate context) | workstream C supervisor + acceptance at `4216a4d` | B1 spawn-failed text, B2 log error text, B3 Windows unsigned exit codes (+N4 post-exec failure) | fixed `fcb121f`, integrated `468679d` |
-| R4 (separate context) | workstream A lifecycle at `9631d66` | B1 capability query ran in caller cwd (reference: fresh temp dir), B2 CLI Ctrl-C before launch still launched | fixed `31cb3a7` (fresh `c2-contract-*` dir; `Interrupted`, CLI exit 130), integrated `3962cd8`; fixes not re-reviewed |
+| R4 (separate context) | workstream A lifecycle at `9631d66` | B1 capability query ran in caller cwd (reference: fresh temp dir), B2 CLI Ctrl-C before launch still launched | fixed `31cb3a7` (fresh `c2-contract-*` dir; `Interrupted`, CLI exit 130), integrated `3962cd8`; re-reviewed in R5 |
+| R5 final integrated review (separate context) | CLI -> prepare -> trust/capability -> owned run/cancel -> reconcile -> candidate -> accept/recover -> G0/G1/G2 -> Python-free cutover at `c1d4b88`, including both R4 fixes and every closure-session harness correction | B1 a terminal Ctrl-C (SIGINT to the whole foreground process group) killed the capability query during run preflight; native then recorded `failed` and exited 0 instead of leaving the session `prepared` and exiting 130 | fixed `5270af6` (a preflight failure seen with the interrupt flag set raises `Interrupted` without writing); POSIX process-group regression in `test_native_workflow.py`; the same reviewer re-verified the fix at `5270af6`: **clean** |
 
 Accepted deviations from R3/R4 (nonblocking): native keeps draining and
 counting after a log open/write failure (reference stops reading, its child
@@ -106,6 +105,23 @@ journal duplicate-key message lacks the key; NT overlap check uses
 locally). Accepted helper restrictions from planning (explicit-path helper
 lookup, 16 MiB helper output bound, Linux `close_range`/Windows only,
 direct-child POSIX termination) carry into the CLI unchanged.
+
+Accepted deviations from R5 (nonblocking):
+- A terminal Ctrl-C during `native-observer`/`native-hunt prepare` kills the
+  capability query. The command then exits 2 with "capability query failed",
+  where the reference's KeyboardInterrupt exits 130. Nothing is written in
+  either case.
+- The native capability-query directory is created with mode 0777 minus the
+  umask. Python's `mkdtemp` uses 0700. The directory is empty and removed on
+  every path.
+- On Windows, CTRL_BREAK kills the Python reference (0xC000013A) because
+  CPython raises KeyboardInterrupt only for CTRL_C. The reference therefore
+  cannot demonstrate cancellation there. The native workflow asserts
+  cancellation on Windows, and the reference-mode harness asserts only the
+  killed-supervisor outcome.
+- OS-error diagnostics keep the native `filesystem_error` wording. The
+  differential harness requires the OS text for the reference's errno or
+  WinError code and the identical path.
 
 Accepted, documented differences from R2 (nonblocking):
 - `recover-backup` reads manifests through the safe-path policy: a
@@ -160,34 +176,66 @@ Accepted, documented differences from R2 (nonblocking):
   **Not done (manual validation):** an interactive hunt that returns a clean
   candidate and its explicit acceptance with real Genesis gameplay.
 
-## Next actionable task
+## Closure session (2026-09-26)
 
-Frontend CI at `7071068` (run 36208984040): Linux green; Windows 56/59 with
-three failures. `2b2ea4c` fixes the first; the other two are still open.
+Windows issues left by the previous coordinator, all resolved in the test
+harness except B1:
 
-1. **Fixed in `2b2ea4c` (harness only):** `frontend-native-workflow-reference`
-   now accepts CPython's CTRL_BREAK exit 0xC000013A on Windows, then recovers
-   the session. The native workflow still asserts cancellation on every platform.
-2. **Open, fails the same way every run:** `frontend-native-sessions-prepare`
-   `test_workspace_findings_match_reference`. On Windows, the native finding for
-   a missing directory says `directory_iterator::directory_iterator: ...`, but the
-   reference says `[WinError 3] The system cannot find the ...`. This is a
-   difference in diagnostic text. Decide whether it is a production parity
-   defect (format native OS errors like the reference) or an accepted
-   platform-text difference (compare code/path only on Windows).
-3. **Open, seen once (run 36208984040):**
-   `frontend-native-sessions-run` `test_synthetic_cancellation_stops_the_owned_child`.
-   The log `total_bytes` differ by 243 against a tolerance of 4. The likely
-   cause is the 150 ms cancel racing child startup on Windows. Confirm by
-   rerunning, then fix the harness timing without weakening the
-   cancellation assertions.
-4. Freeze a code SHA. At that exact SHA, get green Linux and Windows CI, a
-   Python-disabled build, the staged Python-free workflow, a Release build and
-   local ASan/UBSan, and the native G0->G1->G2 E2E.
-5. Run one final separate review of the integrated path: CLI -> prepare ->
-   trust/capability -> owned run/cancel -> reconcile -> candidate ->
-   accept/recover -> G0/G1/G2 -> Python-free cutover. Include the R4 fixes: the
-   capability query uses a fresh temporary cwd, and a pre-launch interrupt
-   exits 130 without launching.
-6. Record the verdict. An interactive real-Genesis hunt plus acceptance
-   remains manual validation.
+| Issue | Finding | Fix |
+| --- | --- | --- |
+| `frontend-native-workflow-reference` | `2b2ea4c` did **not** work: run 36213683091 failed with `[WinError 87]`. The reference starts its child in the same console group, so CTRL_BREAK had already killed it. Once past that point, run 36216374114 failed in teardown: the killed supervisor's orphan survived because the reference has no kill-on-close job. | `b6ce3d2` and `c1d4b88`: reap the child if it is alive and prove it is gone, then assert the leftover lock and `process-ownership-lost` recovery |
+| `frontend-native-sessions-prepare` | Same missing-directory condition (ENOENT / `ERROR_PATH_NOT_FOUND`) on the same path. Only the prose differed, and the old relaxation recognized only `[Errno N]`, accepting any non-empty text. | `6f3c908`: semantic comparison. The native text must contain the OS text for the reference code and the identical path, and the missing-work step pins the code, path and directory-iteration operation. No production change. |
+| `frontend-native-sessions-run` cancellation | Reproduced twice with the same 243-byte difference, which is exactly one receipt line. A 150 ms timer, started before preflight, could stop the Python child before it printed. | `6f3c908`: the reference cancels once the receipt and stderr lines cross the drained pipes. Native `run-cancel-after-running` counts its delay from the running transition, and readiness is proven from the logs. `b44f0cc`: CRLF-aware markers. Logs compared exactly. |
+| C++ standard | GCC 16 defaults to C++20, so the documented native-only configure failed to compile | `09766c6`: `CMAKE_CXX_STANDARD 17` unless overridden |
+| R5 B1 | See the review record | `5270af6` |
+| Parallel-test race | The capability-query leak check scanned the shared temp directory (a reference `mkdtemp` entry appeared mid-test in a local Release run) | `a0ea7cb`: private temp root, exact leak check, engine cwd proven |
+
+## Final verification evidence (`a0ea7cb`)
+
+Local logs are under `~/.local/state/c2-runtime-completion/`: `gates-a0ea7cb.txt`
+and `*-a0ea7cb.log`.
+
+| Gate | Result |
+| --- | --- |
+| Frontend CI run 36220220762, Linux (ubuntu-24.04) | success: ctest 44/44; native-only production build; staged Release workflow without Python OK |
+| Frontend CI run 36220220762, Windows (windows-latest) | success: ctest 59/59, including workflow, workflow-reference and sessions prepare/run/reconcile; native-only production build; staged Release workflow without Python OK |
+| Build and Test CI run 36220220752 | success |
+| Local Debug (GCC 16.2.1, pinned CPython 3.12.14 oracles) | 44/44 |
+| Local Release | 44/44, three consecutive parallel runs |
+| Clang ASan+UBSan, focused (`halt_on_error`, leak detection) | 13/13, no sanitizer reports: probe-process, probe-deferred-reap, session-journal, sessions-prepare/run/reconcile, session-process, store-ops, acceptance, native-cli, native-workflow, workflow-reference, workflow-sandbox |
+| Native-only production build | `BUILD_TESTING=OFF`, `CMAKE_DISABLE_FIND_PACKAGE_Python3=TRUE`, Release, fresh configure with no explicit standard. Python is never looked up (no `Python3_EXECUTABLE`). `cmake --install` stages exactly `c2-frontend-native`, `c2-profile-probe` and `c2-frontend-synthetic-child`, linked only against libstdc++, libm, libgcc and libc. |
+| Staged Python-free workflow | `test_native_workflow.py <stage>/bin` with Python shims passed. With `--sandbox`, it passed in a bubblewrap namespace with no interpreter, and the negative control confirmed that. |
+| Native G0 -> G1 -> G2 | Covered by the staged and sandboxed workflow: G0 hunt, preview, accept to G1, continuation from G1, accept to G2, stale-generation refusal, and an idempotent G1 retry that never rewinds the head |
+| Compatibility generators | `generate_{catalog_fixtures,compatibility,profile_unicode,schema_fixtures,schema_unicode}.py --check`: all exit 0 |
+
+Earlier-SHA results in "Verification evidence" above remain history. They are
+not attributed to the candidate.
+
+**Actual Genesis engine smoke, rerun at `a0ea7cb`.** The engine is unchanged
+since `9631d66` (no `Hunt`/`Shared` commits) and its binary matches the trusted
+digest `43cb590c…c336`. The run used the staged production binary against the
+disposable Genesis Redux 1.1 copy and store:
+
+- The production-policy `native-hunt plan` validated the pinned revision
+  (`huntdat-sha256-v1`, 344 files).
+- `prepare` performed a real capability query and got contract v1.
+- The headless launch (SDL offscreen) initialized OpenGL, loaded the session's
+  trophy files and config, ran until the 30 s owned timeout, and exited 0.
+- The journal went prepared, launching, running, returned, inspecting,
+  quarantined.
+- Preview refused the session ("candidate has unresolved failure/review
+  conditions") and authority stayed at `caa43e6b…` (G0).
+- The Genesis copy is byte-identical, the lock was released, and no
+  query-directory leftovers remain. The real installation was never written.
+
+Evidence: `genesis-smoke-a0ea7cb/`; the original `9631d66` run is in `genesis-smoke/`.
+
+**Manual validation (not automated by design):** an interactive real-Genesis
+hunt that returns a valid changed save, followed by explicit acceptance. Neither
+gameplay nor production policy was altered to remove this step.
+
+## Final verdict
+
+**Production Python-to-C++ frontend/backend migration complete.** The frozen
+candidate is `a0ea7cb`. `main` is not merged, and the Python reference
+implementation is retained for differential testing.
