@@ -205,7 +205,9 @@ class SessionProcess(unittest.TestCase):
         # The reference raises OSError from Popen for the same executable.
         with self.assertRaises(OSError) as caught:
             reference([CHILD, 'exit', '0'], str(self.root / 'absent'), str(self.root), 5, self.logs('oracle-missing'))
-        self.assertEqual(got['code'], caught.exception.errno)
+        self.assertEqual(got['code'], caught.exception.errno if POSIX else caught.exception.winerror)
+        # The runner records what() verbatim as the spawn-failed diagnostic: it is str(OSError).
+        self.assertEqual(got['what'], str(caught.exception))
         self.assertFalse((self.root / 'oracle-missing' / 'stdout.log').exists())
 
     @unittest.skipUnless(POSIX, 'execute permission bits are POSIX')
@@ -219,6 +221,7 @@ class SessionProcess(unittest.TestCase):
         with self.assertRaises(PermissionError) as caught:
             reference([CHILD, 'exit', '0'], str(plain), str(self.root), 5, self.logs('oracle-plain'))
         self.assertEqual(got['code'], caught.exception.errno)
+        self.assertEqual(got['what'], str(caught.exception))
 
     def test_missing_cwd_is_spawn_failure_without_logs(self):
         got = self.native(['exit', '0'], cwd=self.root / 'nowhere')
@@ -228,8 +231,34 @@ class SessionProcess(unittest.TestCase):
             reference([CHILD, 'exit', '0'], CHILD, str(self.root / 'nowhere'), 5, self.logs('oracle-cwd'))
         # Native reports the OS code; on Windows that is winerror (errno is CPython's mapping).
         self.assertEqual(got['code'], caught.exception.errno if POSIX else caught.exception.winerror)
+        self.assertEqual(got['what'], str(caught.exception))
         if POSIX:
             self.assertEqual(got['path'], str(self.root / 'nowhere'))
+
+    @unittest.skipUnless(POSIX, 'RLIMIT_FSIZE write failures are POSIX')
+    def test_log_write_failure_records_errno_text_without_filename(self):
+        # A 32 KiB file size limit with SIGXFSZ ignored makes the retained log
+        # write fail with EFBIG on both sides: Python's file-object error carries
+        # no filename. The reference then stops reading that pipe (its child
+        # dies of SIGPIPE) while the native supervisor keeps draining, a
+        # documented deviation, so exit codes and total_bytes are not compared.
+        logs = self.logs('native')
+        limited = ['bash', '-c', 'trap "" XFSZ; ulimit -f 32; exec "$@"', '_']
+        command = [*limited, DRIVER, 'run', CHILD, str(self.root), '5', str(logs / 'stdout.log'), str(logs / 'stderr.log'),
+                   '-', 'ok', '--', CHILD, 'flood', '100000', '10']
+        got = json.loads(subprocess.run(command, capture_output=True, timeout=60, check=True).stdout.decode())
+        self.assertEqual(got['kind'], 'ok', got)
+        oracle = self.logs('reference')
+        command = [*limited, sys.executable, __file__, DRIVER, CHILD, '--oracle', str(oracle),
+                   json.dumps([CHILD, 'flood', '100000', '10'])]
+        expected = json.loads(subprocess.run(command, capture_output=True, timeout=60, check=True).stdout.decode())
+        self.assertEqual(got['logs']['stdout']['error'], expected['logs']['stdout']['error'])
+        self.assertEqual(got['logs']['stdout']['error'], '[Errno 27] File too large')
+        self.assertEqual((logs / 'stdout.log').stat().st_size, (oracle / 'stdout.log').stat().st_size)
+        self.assertEqual((logs / 'stdout.log').read_bytes(), pattern(0, 32768))
+        self.assertEqual(got['logs']['stderr'], expected['logs']['stderr'])
+        self.assertEqual(got['logs']['stdout']['total_bytes'], 100000)
+        self.assertTrue(got['child_gone'])
 
     def test_existing_log_file_is_refused_exclusively(self):
         logs = self.logs('native')
@@ -318,4 +347,9 @@ class SessionProcess(unittest.TestCase):
 
 
 if __name__ == '__main__':
+    if sys.argv[3:4] == ['--oracle']:
+        # Reference BoundedLog/stop_owned run inside a caller-imposed resource limit.
+        outcome = reference(json.loads(sys.argv[5]), CHILD, str(Path(sys.argv[4]).parent), 5, Path(sys.argv[4]))
+        print(json.dumps(outcome))
+        sys.exit(0)
     unittest.main(argv=sys.argv[:1])

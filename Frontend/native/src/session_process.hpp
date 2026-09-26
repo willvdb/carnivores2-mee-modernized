@@ -33,13 +33,25 @@ struct LogResult {
 struct Outcome {
     long long pid = 0;
     std::string started_at, returned_at; // store_write::now() at the reference points
-    int exit_code = 0;                   // Popen.returncode (-signal on POSIX)
+    long long exit_code = 0;             // Popen.returncode: -signal on POSIX, the unsigned DWORD on Windows
     StopReason reason = StopReason::exited;
     LogResult out, err;                  // stdout, stderr
 };
+// Popen's OSError: what() is the reference str(OSError) text ("[Errno N]
+// strerror: 'path'" with the executable or cwd where Python names one, without
+// a filename otherwise; "[WinError N] message" on Windows), which the runner
+// records verbatim as the spawn-failed diagnostic.
+class SpawnError : public std::filesystem::filesystem_error {
+public:
+    SpawnError(std::string text, const std::string& what, const std::filesystem::path& path, std::error_code code)
+        : std::filesystem::filesystem_error(what, path, code), text_(std::move(text)) {}
+    const char* what() const noexcept override { return text_.c_str(); }
+private:
+    std::string text_;
+};
 // Spawns shell-free (stdin null, stdout/stderr pipes, new session on POSIX,
-// descriptor isolation). Spawn failure throws std::filesystem::filesystem_error
-// before any log file exists and before on_started. Logs are created
+// descriptor isolation). Spawn failure throws SpawnError (a
+// std::filesystem::filesystem_error) before any log file exists and before on_started. Logs are created
 // exclusively ('xb'). on_started(pid, started_at) is called once after spawn
 // (the runner persists the 'running' transition there); if it throws, the
 // child is stopped, logs finished, and the exception propagates. cancel may be null.

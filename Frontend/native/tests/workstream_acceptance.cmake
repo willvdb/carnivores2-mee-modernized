@@ -17,3 +17,7 @@ c2_frontend_test_driver(c2-frontend-acceptance-tests native/tests/acceptance_tes
 add_test(NAME frontend-native-acceptance COMMAND "${Python3_EXECUTABLE}"
   "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_acceptance.py"
   "$<TARGET_FILE:c2-frontend-acceptance-tests>" "$<TARGET_FILE:c2-profile-probe>" "$<TARGET_FILE:c2-native-session-fixture>")
+# Sessions-level spawn failure text (the runner records SpawnError::what()).
+add_test(NAME frontend-native-session-spawn COMMAND "${Python3_EXECUTABLE}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_session_spawn.py"
+  "$<TARGET_FILE:c2-frontend-sessions-tests>" "$<TARGET_FILE:c2-profile-probe>" "$<TARGET_FILE:c2-frontend-synthetic-child>")
