@@ -3,7 +3,6 @@
 // commands can be exercised. Every definition here must be deleted when the
 // real implementation is integrated (a duplicate definition fails the link);
 // the completion gate requires this file to be gone.
-#include "acceptance.hpp"
 #include "session_runner.hpp"
 #include "sessions.hpp"
 namespace {
@@ -25,17 +24,5 @@ Value recover_session(const Store&, std::u32string_view, const std::optional<std
 namespace reconciliation {
 Value reconcile_session(const Store&, std::u32string_view, const std::optional<std::filesystem::path>&,
                         const session_policy::Policies&) { pending("session reconcile"); }
-}
-namespace acceptance {
-Value preview_acceptance(const Store&, std::u32string_view, std::u32string_view,
-                         const std::optional<std::filesystem::path>&, const session_policy::Policies&) {
-    pending("managed-state preview");
-}
-Value accept_candidate(const Store&, std::u32string_view, std::u32string_view, std::u32string_view,
-                       const std::optional<std::filesystem::path>&, const session_policy::Policies&,
-                       const store_write::FailureHook&) { pending("managed-state accept"); }
-Value recover_acceptance(const Store&, std::u32string_view, const store_write::FailureHook&) {
-    pending("managed-state recover-acceptance");
-}
 }
 }
