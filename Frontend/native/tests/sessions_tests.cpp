@@ -10,6 +10,9 @@
 #include "probe_process.hpp"
 #include "session_journal.hpp"
 #include "store_paths.hpp"
+#include <atomic>
+#include <chrono>
+#include <thread>
 #include <iostream>
 #include <iterator>
 #include <string>
@@ -113,6 +116,44 @@ int main(int argc, char** argv) {
                                        optional_path(args[3]), policies(args[4])));
         } else if (command == "inspect" && args.size() == 2) {
             ok(session_journal::read(Store(fs::u8path(args[0])), wide(args[1])));
+        } else if (command == "run" && (args.size() == 3 || args.size() == 4)) {
+            // run <store> <id> <probe|-> [fail-running]: session_runner.run_session without native
+            // authorization; fail-running injects a replacement failure into the second journal
+            // write of the run (the 'running' transition), like the reference test's patched transition.
+            store_write::FailureHook hook;
+            int replacements = 0;
+            if (args.size() == 4 && args[3] == "fail-running") hook = [&replacements](store_write::WritePhase phase, const fs::path& target) {
+                if (phase == store_write::WritePhase::replace && target.filename() == "journal.json" && ++replacements == 2)
+                    throw fs::filesystem_error("simulated disk failure", target, std::make_error_code(std::errc::io_error));
+            };
+            ok(session_runner::run_session(Store(fs::u8path(args[0])), wide(args[1]), optional_path(args[2]), nullptr, std::nullopt, {}, hook));
+        } else if (command == "run-cancel" && args.size() == 4) {
+            // run-cancel <store> <id> <probe|-> <cancel-after-ms>: synthetic run cancelled by the flag.
+            std::atomic<bool> cancel{false};
+            std::thread timer([&cancel, delay = std::stoi(args[3])] {
+                std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+                cancel.store(true);
+            });
+            struct Join { std::thread& t; ~Join() { if (t.joinable()) t.join(); } } join{timer};
+            ok(session_runner::run_session(Store(fs::u8path(args[0])), wide(args[1]), optional_path(args[2]), &cancel, std::nullopt, {}));
+        } else if (command == "run-native" && args.size() == 7) {
+            // run-native <store> <observer|hunt> <id> <probe|-> <policy> <cancel-after-ms|-> <experimental 0|1>; stdin {"engine", "digest"}
+            const Value in = compat::parse(input());
+            std::atomic<bool> cancel{false};
+            std::thread timer;
+            if (args[5] != "-") timer = std::thread([&cancel, delay = std::stoi(args[5])] {
+                std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+                cancel.store(true);
+            });
+            struct Join { std::thread& t; ~Join() { if (t.joinable()) t.join(); } } join{timer};
+            ok(session_runner::run_native(args[1] == "observer" ? std::optional<native_session::Adapter>(native_session::Adapter::observer) : std::nullopt,
+                                          args[1] == "hunt", Store(fs::u8path(args[0])), wide(args[2]),
+                                          content_internal::native_units(in.at(U"engine").string), in.at(U"digest"),
+                                          args[6] == "1", optional_path(args[3]), &cancel, policies(args[4])));
+        } else if (command == "reconcile" && args.size() == 4) {
+            ok(reconciliation::reconcile_session(Store(fs::u8path(args[0])), wide(args[1]), optional_path(args[2]), policies(args[3])));
+        } else if (command == "recover" && args.size() == 4) {
+            ok(session_runner::recover_session(Store(fs::u8path(args[0])), wide(args[1]), optional_path(args[2]), policies(args[3])));
         } else return 2;
     } catch (const ResourceExhausted& e) { std::cout << "resource " << e.what() << '\n';
     } catch (const StoreError& e) { std::cout << "frontend " << e.what() << '\n';

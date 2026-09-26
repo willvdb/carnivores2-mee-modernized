@@ -7,9 +7,10 @@ using compat::Value;
 // run_session: preflight by journal kind, durable launching/running/returned
 // transitions, failed on preflight/spawn failure. native_authorization is
 // required for schema >= 2. cancel may be null (CLI passes its SIGINT flag).
+// The test-only hook reaches every journal write of the run (see store_write).
 Value run_session(const Store&, std::u32string_view identity, const std::optional<std::filesystem::path>& probe,
                   const std::atomic<bool>* cancel, const std::optional<native_session::Authorization>&,
-                  const session_policy::Policies&);
+                  const session_policy::Policies&, const store_write::FailureHook& hook = {});
 // native_session.run: journal adapter must equal `expected` (observer) or, for
 // native-hunt run, be hunt/continuation (pass std::nullopt with hunt_run=true).
 Value run_native(std::optional<native_session::Adapter> expected, bool hunt_run, const Store&,

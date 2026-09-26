@@ -300,7 +300,7 @@ std::vector<std::u32string> entry_names(const fs::path& directory) {
 Value finding(std::string_view domain, const std::string& message) {
     Value v = object_value();
     v.object = {{U"code", ascii_value("native-workspace-review-required")}, {U"domain", ascii_value(domain)},
-        {U"message", string_value(store_paths::native_points(fs::path(message)))}};
+        {U"message", string_value(store_paths::native_points(fs::u8path(message)))}};
     return v;
 }
 } // namespace
