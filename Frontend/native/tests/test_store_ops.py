@@ -26,7 +26,6 @@ FRONTEND = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(FRONTEND), str(FRONTEND / 'tests')]
 from lodge.discovery import discover, get_instance, move_candidates, refresh_instance, register, relocate  # noqa: E402
 from lodge.managed_state import UPGRADE_BACKUP, inspect_history, resolve_generation, upgrade_store  # noqa: E402
-from lodge.session_io import capture  # noqa: E402
 from lodge.profiles import associate  # noqa: E402
 from lodge.session_io import encode  # noqa: E402
 from lodge.store import FrontendError, Store, _unique_object, hunter, validate  # noqa: E402
@@ -203,7 +202,10 @@ class StoreOpsCase(unittest.TestCase):
             self.assertEqual(kind, 'oserror', rest)
         else:
             # Refusal texts may name the store directory; the twin lives elsewhere.
-            self.assertEqual((kind, rest.replace(str(self.twin), str(self.store.directory))), expected)
+            for twin, store in ((str(self.twin), str(self.store.directory)),
+                                (repr(str(self.twin))[1:-1], repr(str(self.store.directory))[1:-1])):
+                rest = rest.replace(twin, store)
+            self.assertEqual((kind, rest), expected)
         self.compare_stores(volatile, encoding)
         return expected[1], volatile
 
@@ -320,8 +322,17 @@ class HunterTests(StoreOpsCase):
         identity = self.hunter('create', name='A')[0]['id']
         # Temporary phases name the .pending-* file, so they are unfiltered:
         # the first write inside a transaction is the lodge.json.bak copy.
-        for phase, bak in (('temp_write', False), ('replace:lodge.json.bak', False), ('temp_fsync', False),
-                           ('replace:lodge.json', True), ('directory_fsync', True)):
+        phases = [('temp_write', False), ('replace:lodge.json.bak', False), ('temp_fsync', False), ('replace:lodge.json', True)]
+        if os.name == 'posix':
+            phases.append(('directory_fsync', True))
+        else:
+            # Neither implementation fsyncs directories on Windows: the phase never fires.
+            self.make_twin()
+            kind, rest = native('hunter', self.twin, {'action': 'rename', 'id': identity, 'name': 'B'},
+                                {'C2_TEST_WRITE_FAILURE': 'directory_fsync'})
+            self.assertEqual(kind, 'ok', rest)
+            self.assertEqual(loads((self.twin / 'lodge.json').read_bytes())['hunters'][identity]['name'], 'B')
+        for phase, bak in phases:
             with self.subTest(phase=phase):
                 self.make_twin()
                 before = sorted((p.name, p.read_bytes()) for p in self.twin.iterdir())
@@ -450,6 +461,13 @@ class RecoverBackupTests(StoreOpsCase):
 
 
 FOREIGN = 'foreign or ambiguous path; supply an explicit native location'
+if os.name == 'nt':
+    # native_path on NT rejects a drive without a root and a root without a drive.
+    FOREIGN_ABSOLUTE, FOREIGN_RELATIVE, FOREIGN_ROOT, FOREIGN_OTHER = '/Games/Foreign', 'C:Games\\Foreign', 'C:Games', '/Games'
+    FOREIGN_FLAVOR, FOREIGN_LOCATOR, FOREIGN_MANAGED, FOREIGN_MANAGED_ROOT = 'posix', '/games/foreign', '/games/managed/foreign', '/games/managed'
+else:
+    FOREIGN_ABSOLUTE, FOREIGN_RELATIVE, FOREIGN_ROOT, FOREIGN_OTHER = 'C:\\Games\\Foreign', 'Games\\Foreign', 'C:\\Games', 'D:\\Games'
+    FOREIGN_FLAVOR, FOREIGN_LOCATOR, FOREIGN_MANAGED, FOREIGN_MANAGED_ROOT = 'nt', 'C:\\Games\\Foreign', 'C:\\Games\\Managed\\Foreign', 'C:\\Games\\Managed'
 
 
 class RegisterTests(StoreOpsCase):
@@ -486,8 +504,8 @@ class RegisterTests(StoreOpsCase):
                  (dict(path=self.root, mode='managed', managed_root=self.base / 'absent'), 'managed installation must be below the existing explicit Expeditions directory'),
                  (dict(path=self.root, mode='managed', managed_root=self.base / 'Expeditions-other'), 'managed installation must be below the existing explicit Expeditions directory'),
                  (dict(path=self.base / 'missing'), None), (dict(path=incoherent), None),
-                 (dict(path=Path('C:\\Games\\Foreign')), FOREIGN), (dict(path=Path('Games\\Foreign')), FOREIGN),
-                 (dict(path=self.root, mode='managed', managed_root=Path('C:\\Games')), FOREIGN)]
+                 (dict(path=Path(FOREIGN_ABSOLUTE)), FOREIGN), (dict(path=Path(FOREIGN_RELATIVE)), FOREIGN),
+                 (dict(path=self.root, mode='managed', managed_root=Path(FOREIGN_ROOT)), FOREIGN)]
         (self.base / 'Expeditions-other').mkdir()
         for kwargs, message in cases:
             with self.subTest(**{k: str(v) for k, v in kwargs.items()}):
@@ -565,17 +583,17 @@ class RelocateTests(StoreOpsCase):
         legacy = self.edit(lambda d: register(d, game(self.expeditions, 'Legacy'), 'managed', managed_root=self.expeditions))
         self.edit(lambda d: d['instances'][legacy['id']].pop('managed_root'))
         foreign = copy.deepcopy(registered)
-        foreign.update(id=str(uuid.uuid4()), path='C:\\Games\\Foreign', path_flavor='nt')
+        foreign.update(id=str(uuid.uuid4()), path=FOREIGN_LOCATOR, path_flavor=FOREIGN_FLAVOR)
         foreign_managed = copy.deepcopy(foreign)
-        foreign_managed.update(id=str(uuid.uuid4()), path='C:\\Games\\Managed\\Foreign', mode='managed',
-                               managed_root={'path': 'C:\\Games\\Managed', 'path_flavor': 'nt'})
+        foreign_managed.update(id=str(uuid.uuid4()), path=FOREIGN_MANAGED, mode='managed',
+                               managed_root={'path': FOREIGN_MANAGED_ROOT, 'path_flavor': FOREIGN_FLAVOR})
         self.edit(lambda d: d['instances'].update({foreign['id']: foreign, foreign_managed['id']: foreign_managed}))
         (self.expeditions / 'Legacy').rename(self.base / 'Legacy moved')
         before = self.store.path.read_bytes()
         moved = self.expeditions / 'Moved'
         cases = [(str(uuid.uuid4()), moved, 'unknown instance ID'),
                  (managed['id'], moved, 'old installation still exists; this could be a clone, not a move'),
-                 (managed['id'], Path('D:\\Games'), FOREIGN),
+                 (managed['id'], Path(FOREIGN_OTHER), FOREIGN),
                  (foreign['id'], other, 'destination already registered'),
                  (foreign_managed['id'], moved, 'foreign managed root requires explicit ownership reconciliation'),
                  (legacy['id'], self.base / 'Legacy moved', 'managed root context missing; explicit ownership reconciliation required')]
@@ -592,7 +610,7 @@ class RelocateTests(StoreOpsCase):
         # Foreign instances can be relocated onto a native root.
         other.rename(self.base / 'Other moved')
         result = self.relocate(foreign['id'], self.base / 'Other moved')[0]
-        self.assertEqual((result['path_flavor'], result['previous_locations']), (os.name, [{'path': 'C:\\Games\\Foreign', 'path_flavor': 'nt'}]))
+        self.assertEqual((result['path_flavor'], result['previous_locations']), (os.name, [{'path': FOREIGN_LOCATOR, 'path_flavor': FOREIGN_FLAVOR}]))
 
     def test_managed_root_missing_or_retargeted_is_ambiguous(self):
         instance = self.register(self.root, 'managed', managed_root=self.expeditions)[0]
@@ -640,7 +658,7 @@ class RefreshTests(StoreOpsCase):
         root = game(self.base)
         instance = self.register(root)[0]
         foreign = copy.deepcopy(instance)
-        foreign.update(id=str(uuid.uuid4()), path='C:\\Games\\Foreign', path_flavor='nt')
+        foreign.update(id=str(uuid.uuid4()), path=FOREIGN_LOCATOR, path_flavor=FOREIGN_FLAVOR)
         self.edit(lambda d: d['instances'].update({foreign['id']: foreign}))
         observed = self.refresh(foreign['id'])[0]
         self.assertEqual(observed['diagnostics'][0]['code'], 'foreign-path')
@@ -747,7 +765,7 @@ class AssociateTests(StoreOpsCase):
         archived = self.hunter('create', name='Archived')[0]['id']
         self.hunter('archive', archived)
         foreign = copy.deepcopy(self.instance)
-        foreign.update(id=str(uuid.uuid4()), path='C:\\Games\\Foreign', path_flavor='nt')
+        foreign.update(id=str(uuid.uuid4()), path=FOREIGN_LOCATOR, path_flavor=FOREIGN_FLAVOR)
         self.edit(lambda d: d['instances'].update({foreign['id']: foreign}))
         (self.root / 'trophy02.sab').write_bytes(room_bytes())
         (self.root / 'trophy04.sav').write_bytes(save_bytes(slot=4))
@@ -948,7 +966,8 @@ class NativeOnlySetupTests(unittest.TestCase):
             self.assertEqual(inspect_history(reference, association['id'])['current_generation'], generation['id'])
             self.assertEqual(reference.path.read_bytes(), encode(data))
             self.assertEqual((store / UPGRADE_BACKUP).read_bytes(), transaction_bytes(loads((store / UPGRADE_BACKUP).read_bytes())))
-            self.assertEqual(capture(root / 'HUNTDAT')[0][0]['path'], 'AREAS')
+            self.assertEqual({p.name: p.read_bytes() for p in root.iterdir() if p.is_file()},
+                             {'CARN2.EXE': b'synthetic executable evidence - never run', 'trophy00.sav': save_bytes(), 'trophy00.sab': room_bytes()})
 
 
 if __name__ == '__main__':
