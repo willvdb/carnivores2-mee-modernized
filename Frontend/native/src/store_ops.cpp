@@ -512,10 +512,10 @@ Value hunter(Value& data, std::u32string_view action, const std::optional<std::u
 }
 
 Value update_host_settings(Value& data, std::string_view json_text) {
-    // json.loads: a decode failure is the CLI's reported ValueError. Duplicate
-    // keys are refused here rather than silently last-wins (documented).
+    // json.loads: a decode failure is the CLI's reported ValueError; a repeated
+    // key keeps its first position and takes the last value.
     Value value;
-    try { value = compat::parse(json_text); }
+    try { value = compat::parse_last_wins(json_text); }
     catch (const compat::ResourceError& e) { throw ResourceExhausted(e.what()); }
     catch (const compat::Error& e) { throw StoreError(e.what()); }
     bool valid = value.kind == Kind::object;

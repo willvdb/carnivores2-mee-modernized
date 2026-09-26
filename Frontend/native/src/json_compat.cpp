@@ -50,6 +50,7 @@ class Parser {
     std::string_view source_;
     std::size_t position_ = 0;
     std::size_t max_depth_;
+    bool last_wins_ = false;
 
     char peek() const { return position_ == source_.size() ? '\0' : source_[position_]; }
     char take() {
@@ -193,7 +194,8 @@ class Parser {
         return result;
     }
 public:
-    explicit Parser(std::string_view source, std::size_t depth) : source_(source), max_depth_(depth) {}
+    explicit Parser(std::string_view source, std::size_t depth, bool last_wins = false)
+        : source_(source), max_depth_(depth), last_wins_(last_wins) {}
     Value run() {
         struct Frame {
             Value* container;
@@ -218,11 +220,21 @@ public:
             Value* child;
             if (object) {
                 auto key = string();
-                if (!frame.keys.insert(key).second) throw Error("duplicate JSON key");
+                const bool duplicate = !frame.keys.insert(key).second;
+                if (duplicate && !last_wins_) throw Error("duplicate JSON key");
                 whitespace();
                 expect(':');
-                frame.container->object.emplace_back(std::move(key), Value{});
-                child = &frame.container->object.back().second;
+                if (duplicate) {
+                    // json.loads dict semantics: the key keeps its first
+                    // position and takes the last value.
+                    auto& members = frame.container->object;
+                    child = &std::find_if(members.begin(), members.end(),
+                        [&](const auto& m) { return m.first == key; })->second;
+                    *child = Value{};
+                } else {
+                    frame.container->object.emplace_back(std::move(key), Value{});
+                    child = &frame.container->object.back().second;
+                }
             } else {
                 frame.container->array.emplace_back();
                 child = &frame.container->array.back();
@@ -432,6 +444,7 @@ Value::~Value() noexcept {
 }
 
 Value parse(std::string_view utf8, std::size_t max_depth) { return Parser(utf8, max_depth).run(); }
+Value parse_last_wins(std::string_view utf8, std::size_t max_depth) { return Parser(utf8, max_depth, true).run(); }
 std::string display(const Value& value, std::size_t max_depth) {
     std::string output;
     encode(output, value, true, false, max_depth);

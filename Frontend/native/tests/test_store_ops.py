@@ -384,10 +384,13 @@ class HostSettingsTests(StoreOpsCase):
         kind, rest = native('host-settings', self.twin, {'json': '{"display": '})
         self.assertEqual(kind, 'frontend', rest)
         self.assertEqual((self.twin / 'lodge.json').read_bytes(), before)
-        # Duplicate keys: the reference silently keeps the last; native refuses (documented).
-        kind, rest = native('host-settings', self.twin, {'json': '{"display": {}, "display": {"a": 1}}'})
-        self.assertEqual(kind, 'frontend', rest)
-        self.assertEqual((self.twin / 'lodge.json').read_bytes(), before)
+
+    def test_duplicate_keys_follow_json_loads(self):
+        # json.loads: a repeated key keeps its first position and the last value, at every depth.
+        self.settings('{"display": {"a": 1}, "audio": {}, "display": {"b": 2, "c": 0, "b": 3}}')
+        result = self.store.read()['host_settings']
+        self.assertEqual(list(result), ['display', 'audio'])
+        self.assertEqual(list(result['display'].items()), [('b', 3), ('c', 0)])
 
 
 class RecoverBackupTests(StoreOpsCase):
