@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
 project(CarnivoresFrontend LANGUAGES CXX)
+# The sources are C++17 (u8string() returns std::string there). cxx_std_17 is only a
+# minimum, and newer compilers (GCC 16) default to C++20, so pin the standard.
+if(NOT DEFINED CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 17)
+endif()
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
 # Deliberately standalone: configure with -S Frontend, no engine dependencies.
