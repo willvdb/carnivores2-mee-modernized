@@ -105,6 +105,30 @@ otherwise `C2_PROFILE_PROBE`; never auto-discovered, as the reference).
   doubles that the Python tests patch in. `reference_cli.py --fixture-policy`
   installs the identical doubles in the reference. Production has no seam.
 
+## Review record
+
+| Review | Scope | Blocking findings | Disposition |
+| --- | --- | --- | --- |
+| R1 (separate context) | dispatcher `cli.cpp`/`main.cpp` at `1f7a059` | repeated-option checks, `Path('')`, discover positional, `--version`, unconsumed `--` | fixed `21969c9`, regression steps in `test_cli.py` |
+| R2 (separate context) | workstream B `store_ops.cpp` at `fc78714` | B1 POSIX Path spelling (`./C:x` accepted), B2 `--json` duplicate keys | fixed `276bed2` (dispatcher normalization, `parse_last_wins`), parity steps added |
+| R3 (separate context) | workstream C supervisor + acceptance at `4216a4d` | pending | pending |
+
+Accepted, documented differences from R2 (nonblocking):
+- `recover-backup` reads manifests through the safe-path policy: a
+  symlinked/hard-linked or directory `lodge.json`/`.bak` is refused (the
+  reference restores through it). Accepted hardening consistent with the
+  contract's link/hardlink rule; recovery of such a store is manual.
+- A managed import of a state below a subdirectory containing `:` (or `\` on
+  POSIX) is refused by `write_blobs` before any snapshot is written (message
+  `unsafe captured state path`); the reference first publishes an orphan
+  snapshot, then refuses with `unsafe state member path`. Safer; text differs.
+- Error texts: nonfinite encoding (`nonfinite journal number` vs CPython's
+  `Out of range float values are not JSON compliant: nan`), `--json` decode
+  errors, and `repr()` of store paths containing control characters or
+  undecodable bytes. Outcomes and side effects match.
+- `hunter archive` on a manifest without `active_hunter`: reference KeyError
+  traceback (exit 1); native error envelope (exit 2).
+
 ## Next actionable task
 
 Workers A/B/C implement their streams; coordinator wires the existing
