@@ -380,12 +380,21 @@ class Workflow(unittest.TestCase):
         identity, _ = self.prepare_hunt()
         process = self.spawn(['native-hunt', 'run', identity, *self.trust('--experimental-native-hunt')],
                              fixture=True, env={'C2_NATIVE_FIXTURE_BEHAVIOR': 'hang'})
-        self.wait_state(identity, 'running')
+        running = self.wait_state(identity, 'running')
         self.interrupt(process)
         out, err = process.communicate(timeout=60)
-        self.assertEqual(process.returncode, 0, err)
-        cancelled = json.loads(out)
-        self.assertEqual((cancelled['state'], cancelled['process']['stop_reason']), ('quarantined', 'cancelled'))
+        if REFERENCE and os.name == 'nt':
+            # CPython has no handler for CTRL_BREAK (only CTRL_C raises KeyboardInterrupt), so
+            # the reference dies with STATUS_CONTROL_C_EXIT like a killed supervisor. It cannot
+            # represent cancellation here; the native run of this workflow asserts it instead.
+            self.assertEqual(process.returncode, 0xC000013A, err)
+            os.kill(running['process']['pid'], signal.SIGTERM)  # TerminateProcess the orphaned child
+            (self.store / 'lodge.lock').unlink()
+            self.assertEqual(self.cli('session', 'recover', identity)['state'], 'interrupted')
+        else:
+            self.assertEqual(process.returncode, 0, err)
+            cancelled = json.loads(out)
+            self.assertEqual((cancelled['state'], cancelled['process']['stop_reason']), ('quarantined', 'cancelled'))
         # Interrupted supervisor: the journal stays running; recovery never signals it.
         identity, _ = self.prepare_hunt()
         process = self.spawn(['native-hunt', 'run', identity, *self.trust('--experimental-native-hunt')],
