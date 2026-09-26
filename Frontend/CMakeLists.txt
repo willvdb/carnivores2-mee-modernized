@@ -334,6 +334,18 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_cli.py" "$<TARGET_FILE:c2-frontend-native>"
     "$<TARGET_FILE:c2-frontend-native-fixture>" "$<TARGET_FILE:c2-profile-probe>"
     "$<TARGET_FILE:c2-native-session-fixture>" "$<TARGET_FILE:c2-frontend-synthetic-child>")
+  # Native-only end-to-end workflow (checkpoints 1-3): native binaries only,
+  # PATH reduced to failing python shims; the same workflow against the
+  # unchanged Python frontend validates its expectations.
+  set(c2_workflow "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_native_workflow.py"
+    "$<TARGET_FILE_DIR:c2-frontend-native>" "$<TARGET_FILE:c2-frontend-native-fixture>"
+    "$<TARGET_FILE:c2-native-session-fixture>")
+  add_test(NAME frontend-native-workflow COMMAND "${Python3_EXECUTABLE}" ${c2_workflow})
+  add_test(NAME frontend-native-workflow-reference COMMAND "${Python3_EXECUTABLE}" ${c2_workflow} --reference)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_test(NAME frontend-native-workflow-sandbox COMMAND "${Python3_EXECUTABLE}" ${c2_workflow} --sandbox)
+    set_tests_properties(frontend-native-workflow-sandbox PROPERTIES SKIP_RETURN_CODE 77)
+  endif()
   include(native/tests/workstream_sessions.cmake)
   include(native/tests/workstream_store_ops.cmake)
   include(native/tests/workstream_acceptance.cmake)

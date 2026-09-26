@@ -26,5 +26,10 @@ jobs:
       - name: Repeat Windows live timestamp check (1000 samples, no retries)
         if: runner.os == 'Windows'
         run: python Frontend/native/tests/test_store_write.py build/frontend/Debug/c2-frontend-store-write-tests.exe timestamp-repeat
+      - name: Staged Release artifact runs the native workflow without Python
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then d=build/frontend/Debug; x=.exe; else d=build/frontend; x=; fi
+          python Frontend/native/tests/test_native_workflow.py build/stage/bin "$d/c2-frontend-native-fixture$x" "$d/c2-native-session-fixture$x"
       - name: Run frontend with required codec probe
         run: ctest --test-dir build/frontend -C Debug --output-on-failure --no-tests=error

@@ -110,8 +110,10 @@ class Workflow(unittest.TestCase):
         if REFERENCE:
             cls.env = {k: v for k, v in os.environ.items() if k != 'C2_PROFILE_PROBE'}
         if SANDBOX:
-            if not BWRAP:
-                raise SystemExit('--sandbox requires bubblewrap')
+            if not BWRAP or subprocess.run([BWRAP, '--ro-bind', '/', '/', '/bin/true'],
+                                           capture_output=True).returncode:
+                print('bubblewrap unavailable or user namespaces blocked on this host')
+                raise SystemExit(77)
             cls.libraries = shared_libraries([NATIVE, PROBE, BIN / 'c2-frontend-synthetic-child', FIXTURE_CLI, ENGINE])
         cls.game = cls.author_game(cls.base / 'Game')
         cls.game_bytes = cls.native_files(cls.game)
