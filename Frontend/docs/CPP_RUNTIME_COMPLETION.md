@@ -13,14 +13,11 @@ inspected it), **merged** (never, in this sprint; `main` is not touched).
   `75eff4b`; its CI evidence is not re-attributed here).
 - Integration branch `frontend/cpp-runtime-completion`, worktree
   `~/code/games/carnivores2-runtime-completion`. Last code checkpoint:
-  **`468679d`** (this documentation commit follows it).
+  **`3962cd8`** (merge of A's R4 fixes; this documentation commit follows it).
 - Worker branches (worktrees `~/code/games/carnivores2-runtime-{a-sessions,b-store,c-acceptance}`):
   - B `frontend/cpp-runtime-b-store` `c34678a` — fully integrated.
   - C `frontend/cpp-runtime-c-acceptance` `fcb121f` — fully integrated (merge `468679d`).
-  - A `frontend/cpp-runtime-a-sessions` — `dbf8668` integrated. Review-fix
-    commits after it (`efe03ad`, `8af13e4`, `653ea65`, `11cd7c6`, `df69937`,
-    possibly more) were in progress at handoff and are **NOT integrated**;
-    check the remote head before merging.
+  - A `frontend/cpp-runtime-a-sessions` `31cb3a7` — fully integrated (merge `3962cd8`).
 - `runtime_pending.cpp` is **deleted** (commit after merge of A); no stubs remain.
 
 ## Canonical native executable
@@ -37,7 +34,7 @@ CLI for differential testing, not the product.
 
 | Stream | Scope | State |
 | --- | --- | --- |
-| A session lifecycle | preparation, native adapters, run/recover, reconciliation, compiled synthetic child | implemented, wired, differentially tested, reviewed (R4); R4 fixes on branch, unintegrated |
+| A session lifecycle | preparation, native adapters, run/recover, reconciliation, compiled synthetic child | implemented, wired, differentially tested, reviewed (R4), fixes integrated |
 | B store operations | hunters, settings, backup recovery, register/relocate/refresh/discover, associate/import, upgrade | implemented, wired, tested, reviewed (R2), fixes integrated |
 | C supervisor + acceptance | owned child supervisor; preview/accept/recover-acceptance | implemented, wired, tested (incl. fault matrix), reviewed (R3), fixes integrated |
 | Coordinator | interfaces, CMake/CI, dispatcher, E2E, this record | dispatcher reviewed (R1), fixes integrated |
@@ -95,7 +92,7 @@ the workstream's differential suite; "E2E" = native-only
 | R1 (separate context) | dispatcher `cli.cpp`/`main.cpp` at `1f7a059` | repeated-option checks, `Path('')`, discover positional, `--version`, unconsumed `--` | fixed `21969c9`, regression steps in `test_cli.py` |
 | R2 (separate context) | workstream B `store_ops.cpp` at `fc78714` | B1 POSIX Path spelling (`./C:x` accepted), B2 `--json` duplicate keys | fixed `276bed2` (dispatcher normalization, `parse_last_wins`), parity steps added |
 | R3 (separate context) | workstream C supervisor + acceptance at `4216a4d` | B1 spawn-failed text, B2 log error text, B3 Windows unsigned exit codes (+N4 post-exec failure) | fixed `fcb121f`, integrated `468679d` |
-| R4 (separate context) | workstream A lifecycle at `9631d66` | B1 capability query ran in caller cwd (reference: fresh temp dir), B2 CLI Ctrl-C before launch still launched | fixes on A branch, **not yet integrated** |
+| R4 (separate context) | workstream A lifecycle at `9631d66` | B1 capability query ran in caller cwd (reference: fresh temp dir), B2 CLI Ctrl-C before launch still launched | fixed `31cb3a7` (fresh `c2-contract-*` dir; `Interrupted`, CLI exit 130), integrated `3962cd8`; fixes not re-reviewed |
 
 Accepted deviations from R3/R4 (nonblocking): native keeps draining and
 counting after a log open/write failure (reference stops reading, its child
@@ -148,6 +145,7 @@ Accepted, documented differences from R2 (nonblocking):
 - `a080c7f` CI run 36206160098: Linux and Windows success (store ops +
   supervisor; before A/C merges).
 - `468679d` local Debug 44/44; CI pending at handoff.
+- `3962cd8` local Debug 44/44 (A reported ASan/UBSan clean on its session suites at `31cb3a7`); CI pending at handoff.
 - Actual engine (compiled fixture results are separate): engine built from this
   branch (`/tmp/c2-runtime-engine/bin/Carnivores1_GL`, Linux SDL3/GL Release)
   answers the session contract. Against a disposable copy of the local Genesis
@@ -164,15 +162,13 @@ Accepted, documented differences from R2 (nonblocking):
 
 ## Next actionable task
 
-1. Integrate worker A's R4 fixes (B1 capability query in a fresh temp cwd;
-   B2 pre-launch interrupt leaves `prepared`/`launching`; test-strength N1/N2;
-   Windows `python.exe` harness) after checking the pushed head; wire
-   `interrupt` in `cli.cpp` (cancel=nullptr, interrupt=&flag, exit 130) if A
-   did not.
-2. Fix `frontend-native-workflow-reference` on Windows (send the reference a
-   Ctrl-C it can handle, or run the cancellation step natively only in
-   `--reference` mode) without weakening the native assertions.
-3. Push, obtain green Linux+Windows CI at an exact code SHA, rerun ASan/UBSan
-   and Release locally at that SHA.
-4. Final separate review of the integrated session + acceptance + CLI/cutover;
-   then record the final verdict.
+1. Check CI at the latest code SHA. The `python.exe` harness fix is included;
+   fix `frontend-native-workflow-reference` on Windows (the Python reference
+   dies of CTRL_BREAK 0xC000013A in the cancellation step) without weakening
+   native assertions.
+2. Freeze a code SHA; obtain green Linux+Windows CI and local ASan/UBSan +
+   Release at that exact SHA.
+3. Final separate review of the integrated session + acceptance + CLI/cutover
+   paths (including the unre-reviewed R4 fixes and `cli.cpp` interrupt wiring).
+4. Record the final verdict; interactive real-Genesis hunt + acceptance
+   remains manual validation.
