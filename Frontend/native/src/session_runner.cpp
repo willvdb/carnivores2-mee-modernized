@@ -12,6 +12,7 @@
 #include "store_paths.hpp"
 #include "store_write.hpp"
 #include <algorithm>
+#include <thread>
 namespace fs = std::filesystem;
 namespace c2::frontend::session_runner {
 namespace {
@@ -127,6 +128,26 @@ void native_preflight(const Store& store, const fs::path& root, const Value& jou
     store_paths::safe_path(root / "logs");
     if (has_entries(root / "logs")) throw StoreError("session logs already exist; no relaunch");
 }
+// After the spawn an interrupt is a cancellation. Both flags are watched when
+// a caller supplies both; the supervisor polls a single flag.
+struct StopFlags {
+    std::atomic<bool> either{false}, done{false};
+    std::thread poller;
+    const std::atomic<bool>* flag = nullptr;
+    StopFlags(const std::atomic<bool>* cancel, const std::atomic<bool>* interrupt) {
+        if (cancel && interrupt) {
+            flag = &either;
+            poller = std::thread([this, cancel, interrupt] {
+                while (!done.load()) {
+                    if (cancel->load() || interrupt->load()) { either.store(true); return; }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                }
+            });
+        } else flag = cancel ? cancel : interrupt;
+    }
+    ~StopFlags() { done.store(true); if (poller.joinable()) poller.join(); }
+};
+bool set(const std::atomic<bool>* flag) { return flag && flag->load(); }
 double seconds(const Value& timeout) {
     if (timeout.kind == Kind::floating) return timeout.floating;
     if (timeout.kind == Kind::integer) return std::stod(timeout.integer);
@@ -136,10 +157,12 @@ double seconds(const Value& timeout) {
 
 Value run_session(const Store& store, std::u32string_view identity, const std::optional<fs::path>& probe,
                   const std::atomic<bool>* cancel, const std::optional<native_session::Authorization>& authorization,
-                  const session_policy::Policies& policies, const store_write::FailureHook& hook) {
+                  const session_policy::Policies& policies, const std::atomic<bool>* interrupt,
+                  const store_write::FailureHook& hook) {
     // Launch once after the journal kind's preflight; never accept raw argv.
     store_write::WriterLock lock(store.directory());
     const fs::path root = store_write::session_root(store, identity);
+    if (set(interrupt)) throw Interrupted("interrupted before launch; session remains prepared");
     Value journal = session_journal::read(store, identity);
     const int schema = schema_of(journal);
     if (!is_text(journal.at(U"state"), U"prepared")) throw StoreError("only a prepared session can launch; recovery never relaunches");
@@ -156,7 +179,9 @@ Value run_session(const Store& store, std::u32string_view identity, const std::o
     const fs::path stdout_log = root / "logs" / "stdout.log", stderr_log = root / "logs" / "stderr.log";
     store_paths::safe_path(stdout_log);
     store_paths::safe_path(stderr_log);
+    if (set(interrupt)) throw Interrupted("interrupted before launch; session remains prepared");
     session_journal::transition(root, journal, "launching", {{U"launch_intent_at", ascii_value(store_write::now())}}, hook);
+    if (set(interrupt)) throw Interrupted("interrupted before spawn; session left launching, recover marks it interrupted");
     const Value spec = journal.at(U"execution");
     session_process::Spec process_spec;
     process_spec.executable = path_of(spec.at(U"executable").at(U"path"));
@@ -165,8 +190,9 @@ Value run_session(const Store& store, std::u32string_view identity, const std::o
     process_spec.timeout = std::chrono::duration<double>(seconds(spec.at(U"timeout_seconds")));
     session_process::Outcome outcome;
     bool started = false;
+    const StopFlags stop(cancel, interrupt);
     try {
-        outcome = session_process::run(process_spec, stdout_log, stderr_log, cancel, [&](long long pid, const std::string& started_at) {
+        outcome = session_process::run(process_spec, stdout_log, stderr_log, stop.flag, [&](long long pid, const std::string& started_at) {
             started = true;
             Value process = object_value();
             process.object = {{U"pid", integer_value(std::to_string(pid))}, {U"started_at", ascii_value(started_at)}, {U"exit_code", Value{}}};
@@ -216,7 +242,8 @@ Value run_session(const Store& store, std::u32string_view identity, const std::o
 
 Value run_native(std::optional<native_session::Adapter> expected, bool hunt_run, const Store& store,
                  std::u32string_view identity, const fs::path& engine, const Value& digest, bool experimental,
-                 const std::optional<fs::path>& probe, const std::atomic<bool>* cancel, const session_policy::Policies& policies) {
+                 const std::optional<fs::path>& probe, const std::atomic<bool>* cancel, const session_policy::Policies& policies,
+                 const std::atomic<bool>* interrupt) {
     native_session::Adapter adapter;
     if (hunt_run) {
         // native_hunt.run_hunt selects the journal's adapter, then shared.run rereads.
@@ -230,7 +257,7 @@ Value run_native(std::optional<native_session::Adapter> expected, bool hunt_run,
     const Value journal = session_journal::read(store, identity);
     if (native_session::adapter_for(journal) != adapter) throw StoreError("native command does not match the prepared session kind");
     native_session::trusted_engine(engine, digest, experimental);
-    return run_session(store, identity, probe, cancel, native_session::Authorization{engine, digest, experimental}, policies);
+    return run_session(store, identity, probe, cancel, native_session::Authorization{engine, digest, experimental}, policies, interrupt);
 }
 
 Value recover_session(const Store& store, std::u32string_view identity, const std::optional<fs::path>& probe,

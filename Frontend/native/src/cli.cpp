@@ -499,7 +499,7 @@ std::string execute(const Parsed& parsed, const Seams& seams) {
         return words == std::vector<std::string>(w.begin(), w.end());
     };
     Store store(parsed.store ? *parsed.store : Store::default_directory());
-    auto* cancel = &interrupt_flag();
+    auto* interrupt = &interrupt_flag();
     const auto& policies = seams.policies;
     if (words[0] == "managed-state") {
         if (is({"managed-state", "upgrade"})) return emit(store_ops::upgrade_store(store));
@@ -525,7 +525,7 @@ std::string execute(const Parsed& parsed, const Seams& seams) {
         }
         if (is({"native-hunt", "inspect"})) return emit(session_journal::read(store, id));
         const auto result = session_runner::run_native(std::nullopt, true, store, id, a.path("--engine"),
-            string_value(a.string("--trusted-engine-sha256", "")), true, probe, cancel, policies);
+            string_value(a.string("--trusted-engine-sha256", "")), true, probe, nullptr, policies, interrupt);
         return emit(after_run(store, result, id, probe, seams));
     }
     if (words[0] == "native-observer") {
@@ -537,7 +537,7 @@ std::string execute(const Parsed& parsed, const Seams& seams) {
                 a.path("--engine"), string_value(a.string("--trusted-engine-sha256", "")), true, timeout, probe, policies));
         }
         const auto result = session_runner::run_native(native_session::Adapter::observer, false, store, id,
-            a.path("--engine"), string_value(a.string("--trusted-engine-sha256", "")), true, probe, cancel, policies);
+            a.path("--engine"), string_value(a.string("--trusted-engine-sha256", "")), true, probe, nullptr, policies, interrupt);
         return emit(after_run(store, result, id, probe, seams));
     }
     if (words[0] == "session") {
@@ -551,7 +551,7 @@ std::string execute(const Parsed& parsed, const Seams& seams) {
         if (is({"session", "inspect"})) return emit(session_journal::read(store, id));
         if (is({"session", "recover"})) return emit(session_runner::recover_session(store, id, probe, policies));
         if (is({"session", "reconcile"})) return emit(reconciliation::reconcile_session(store, id, probe, policies));
-        const auto result = session_runner::run_session(store, id, probe, cancel, std::nullopt, policies);
+        const auto result = session_runner::run_session(store, id, probe, nullptr, std::nullopt, policies, interrupt);
         return emit(after_run(store, result, id, probe, seams));
     }
     if (is({"genesis-observer-plan"})) {
@@ -709,6 +709,8 @@ int run(const std::vector<fs::path>& args, std::ostream& out, std::ostream& err,
         return out.fail() ? 120 : 0;
     } catch (const ResourceExhausted& e) {
         diagnostic(err, e.what()); return 3;
+    } catch (const session_runner::Interrupted& e) {
+        diagnostic(err, e.what()); return 130;
     } catch (const std::exception& e) {
         diagnostic(err, e.what()); return 2;
     }
