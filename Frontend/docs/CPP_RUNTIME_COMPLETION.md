@@ -6,16 +6,22 @@ through `c2-frontend-native`), **tested** (differential and/or end-to-end
 tests pass at a recorded SHA), **reviewed** (separate reviewer context
 inspected it), **merged** (never, in this sprint; `main` is not touched).
 
-## Identity
+## Identity (live state at handoff, 2026-09-25)
 
-- Main baseline: `a86be96faec2aacb4594d253bb9385091a0c2739` (untouched).
-- Base: `frontend/cpp-planning-completion` at
-  `38b398a04f7a139b94138c7ae0e58d661ebd19d4` (22 commits ahead of main; its
-  tested code checkpoint is `75eff4b`, whose CI evidence is not re-attributed).
-- Integration branch: `frontend/cpp-runtime-completion`, worktree
-  `~/code/games/carnivores2-runtime-completion`.
-- Baseline local Debug at `38b398a` (GCC 16.2.1, `-DCMAKE_CXX_STANDARD=17`,
-  CPython 3.12.14): **33/33 CTests passed**.
+- Main: `a86be96faec2aacb4594d253bb9385091a0c2739` — untouched, nothing merged.
+- Base: `frontend/cpp-planning-completion` `38b398a` (its tested code SHA
+  `75eff4b`; its CI evidence is not re-attributed here).
+- Integration branch `frontend/cpp-runtime-completion`, worktree
+  `~/code/games/carnivores2-runtime-completion`. Last code checkpoint:
+  **`468679d`** (this documentation commit follows it).
+- Worker branches (worktrees `~/code/games/carnivores2-runtime-{a-sessions,b-store,c-acceptance}`):
+  - B `frontend/cpp-runtime-b-store` `c34678a` — fully integrated.
+  - C `frontend/cpp-runtime-c-acceptance` `fcb121f` — fully integrated (merge `468679d`).
+  - A `frontend/cpp-runtime-a-sessions` — `dbf8668` integrated. Review-fix
+    commits after it (`efe03ad`, `8af13e4`, `653ea65`, `11cd7c6`, `df69937`,
+    possibly more) were in progress at handoff and are **NOT integrated**;
+    check the remote head before merging.
+- `runtime_pending.cpp` is **deleted** (commit after merge of A); no stubs remain.
 
 ## Canonical native executable
 
@@ -29,57 +35,34 @@ CLI for differential testing, not the product.
 
 ## Workstreams
 
-| Stream | Owner | Scope | Branch |
-| --- | --- | --- | --- |
-| A session lifecycle | worker A | 3B preparation, native-session adapters, run/recover state machine, 4C reconciliation, compiled synthetic child | `frontend/cpp-runtime-a-sessions` |
-| B store operations | worker B | 5A/5B: hunters, host settings, register/relocate/refresh/discover-register, associate/import-copy, upgrade, recover-backup | `frontend/cpp-runtime-b-store` |
-| C process + acceptance | worker C | 4A/4B owned child supervisor, then 6A–6C acceptance/recovery/failure matrix | `frontend/cpp-runtime-c-acceptance` |
-| Coordinator | coordinator | shared interfaces, CMake/CI, CLI dispatcher, combined workflow tests, this record | integration branch |
-
-Shared interfaces (settled before delegation): `session_policy.hpp`,
-`sessions.hpp`, `session_process.hpp`, `session_runner.hpp`, `acceptance.hpp`,
-`store_ops.hpp`, `store_write::sync_directory`. All values are the reference
-dictionaries as `compat::Value`; no second JSON representation.
+| Stream | Scope | State |
+| --- | --- | --- |
+| A session lifecycle | preparation, native adapters, run/recover, reconciliation, compiled synthetic child | implemented, wired, differentially tested, reviewed (R4); R4 fixes on branch, unintegrated |
+| B store operations | hunters, settings, backup recovery, register/relocate/refresh/discover, associate/import, upgrade | implemented, wired, tested, reviewed (R2), fixes integrated |
+| C supervisor + acceptance | owned child supervisor; preview/accept/recover-acceptance | implemented, wired, tested (incl. fault matrix), reviewed (R3), fixes integrated |
+| Coordinator | interfaces, CMake/CI, dispatcher, E2E, this record | dispatcher reviewed (R1), fixes integrated |
 
 ## Command / operation matrix
 
-Columns: **Impl** native implementation (A/B/C = in progress in that
-workstream); **Wired** dispatched by `c2-frontend-native` (`native/src/cli.cpp`;
-"stub" = dispatcher wired to an explicit refusing stub in
-`runtime_pending.cpp` until the workstream lands); **CLI diff** compared
-against `frontend.py` on twin stores by `test_cli.py` (stdout, exit status,
-error text, every store byte); **E2E** exercised by the native-only
-`test_native_workflow.py` (expectations validated against Python with
-`--reference`).
+Every `frontend.py` command is **implemented and wired** in
+`c2-frontend-native`. "CLI diff" = `test_cli.py` twin-store parity with
+`frontend.py` (stdout, status, error text, every store byte); "Module diff" =
+the workstream's differential suite; "E2E" = native-only
+`test_native_workflow.py`.
 
-| Python command | Python entry | Native implementation | Impl | Wired | CLI diff | E2E |
-| --- | --- | --- | --- | --- | --- | --- |
-| `status`, `hunter list`, `expedition list`, `host-settings` | `Store.read` | `Manifest::export_json` | yes | yes | yes | pending |
-| `managed-state inspect` | `inspect_history` | `resolve_generation().export_history_json()` | yes | yes | yes (refusal) | pending |
-| `profiles` | `inventory`,`inspect_set` | `inventory_profiles`, `probe_process::inspect_set` | yes | yes | yes | pending |
-| `catalog --instance/--path` | `catalog.project` | `catalog::project` | yes | yes | yes | pending |
-| `refresh-state` | `refresh_association` | `planning_store::refresh_state` | yes | yes | yes | pending |
-| `simulate-return` | `launch.simulated_return` | dispatcher + `refresh_association` | yes | yes | yes | — |
-| `launch-dry-run` | `launch.prepare` | `planning_store::launch_dry_run` | yes | yes | yes | pending |
-| `genesis-observer-plan` | `genesis.plan_observer` | `planning_store::plan_observer` | yes | yes | yes (real refusal + double) | — |
-| `native-hunt plan` | `native_hunt.plan_hunt` | `planning_store::plan_hunt` | yes | yes | yes (real refusal + double) | pending |
-| `session inspect`, `native-hunt inspect` | `read_journal` | `session_journal::read` | yes | yes | pending | pending |
-| `hunter create/select/rename/archive` | `store.hunter` | `store_ops::hunter` | B | stub | pending | pending |
-| `host-settings --json` | inline | `store_ops::update_host_settings` | B | stub | pending | pending |
-| `recover-backup` | `Store.restore_backup` | `store_ops::restore_backup` | B | stub | pending | — |
-| `expedition discover [--register-managed]` | `discover`,`register` | `store_ops::discover_view/discover_register` | B | stub | pending | pending |
-| `expedition register/relocate/refresh` | `discovery.*` | `store_ops::*` | B | stub | pending | pending |
-| `associate [--import-copy]` | `profiles.associate` | `store_ops::associate` | B | stub | pending | pending |
-| `managed-state upgrade` | `upgrade_store` | `store_ops::upgrade_store` | B | stub | pending | pending |
-| `session prepare-synthetic` | `sessions.prepare_session` | `sessions::prepare_session` | A | stub | pending | pending |
-| `session run/reconcile/recover` | `session_runner`, `reconciliation` | `session_runner::*`, `reconciliation::*` | A (+C process) | stub | pending | pending |
-| `native-observer prepare/run` | `native_observer.*` | `native_session::prepare`, `run_native` | A | stub | pending | pending |
-| `native-hunt prepare/run` | `native_hunt.*` | `native_session::prepare`, `run_native` | A | stub | pending | pending |
-| `managed-state preview/accept/recover-acceptance` | `acceptance.*` | `acceptance::*` | C | stub | pending | pending |
-
-Global options: `--store` (default `$LOCALAPPDATA` or `~/.local/share`, then
-`carnivores-lodge`, as the reference) and `--probe` (explicit codec helper;
-otherwise `C2_PROFILE_PROBE`; never auto-discovered, as the reference).
+| Command | Native implementation | CLI diff | Module diff | E2E |
+| --- | --- | --- | --- | --- |
+| `status`, `hunter list`, `expedition list`, `host-settings` | `Manifest::export_json` | yes | yes | yes |
+| `managed-state inspect` | `resolve_generation` | yes (refusal) | yes | yes |
+| `profiles`, `catalog`, `refresh-state`, `simulate-return`, `launch-dry-run` | existing libraries | yes | yes | yes (not simulate-return) |
+| `genesis-observer-plan`, `native-hunt plan` | `planning_store` | yes (real refusal + double) | yes | yes (plan) |
+| `hunter create/select/rename/archive`, `host-settings --json`, `recover-backup` | `store_ops` | yes | yes | yes (not recover-backup) |
+| `expedition register/relocate/refresh/discover [--register-managed]` | `store_ops` | yes | yes | register/refresh/discover |
+| `associate [--import-copy]`, `managed-state upgrade` | `store_ops` | yes | yes | yes |
+| `session prepare-synthetic/run/reconcile/recover/inspect` | `sessions`, `session_runner`, `reconciliation` | inspect only | yes | yes |
+| `native-observer prepare/run` | `native_session`, `session_runner` | no | yes | yes |
+| `native-hunt prepare/run/inspect` | same | no | yes | yes |
+| `managed-state preview/accept/recover-acceptance` | `acceptance` | no | yes (+fault matrix) | yes |
 
 ## Open findings and decisions
 
@@ -111,7 +94,21 @@ otherwise `C2_PROFILE_PROBE`; never auto-discovered, as the reference).
 | --- | --- | --- | --- |
 | R1 (separate context) | dispatcher `cli.cpp`/`main.cpp` at `1f7a059` | repeated-option checks, `Path('')`, discover positional, `--version`, unconsumed `--` | fixed `21969c9`, regression steps in `test_cli.py` |
 | R2 (separate context) | workstream B `store_ops.cpp` at `fc78714` | B1 POSIX Path spelling (`./C:x` accepted), B2 `--json` duplicate keys | fixed `276bed2` (dispatcher normalization, `parse_last_wins`), parity steps added |
-| R3 (separate context) | workstream C supervisor + acceptance at `4216a4d` | pending | pending |
+| R3 (separate context) | workstream C supervisor + acceptance at `4216a4d` | B1 spawn-failed text, B2 log error text, B3 Windows unsigned exit codes (+N4 post-exec failure) | fixed `fcb121f`, integrated `468679d` |
+| R4 (separate context) | workstream A lifecycle at `9631d66` | B1 capability query ran in caller cwd (reference: fresh temp dir), B2 CLI Ctrl-C before launch still launched | fixes on A branch, **not yet integrated** |
+
+Accepted deviations from R3/R4 (nonblocking): native keeps draining and
+counting after a log open/write failure (reference stops reading, its child
+may stall); one 2 s log-finish bound for both pipes (reference 2 s each);
+Windows terminates the job (descendants) after the run and uses
+`CREATE_NO_WINDOW` like the probe runner; only SIGPIPE is reset in the child;
+preview with `reconciliation: null` fails closed (reference AttributeError);
+OSError texts in preview/diagnostics use native `filesystem_error` wording;
+journal duplicate-key message lacks the key; NT overlap check uses
+`fs::path` iteration (believed unreachable with canonical paths; not compiled
+locally). Accepted helper restrictions from planning (explicit-path helper
+lookup, 16 MiB helper output bound, Linux `close_range`/Windows only,
+direct-child POSIX termination) carry into the CLI unchanged.
 
 Accepted, documented differences from R2 (nonblocking):
 - `recover-backup` reads manifests through the safe-path policy: a
@@ -129,7 +126,53 @@ Accepted, documented differences from R2 (nonblocking):
 - `hunter archive` on a manifest without `active_hunter`: reference KeyError
   traceback (exit 1); native error envelope (exit 2).
 
+## Verification evidence (exact SHAs)
+
+- `9631d66` local: Debug 43/43; Release 43/43; Clang ASan/UBSan 13/13
+  focused (sessions, session-process, session-journal, acceptance, store-ops,
+  native-cli, native-workflow, probe); logs `~/.local/state/c2-runtime-completion/{asan,release}-9631d66.log`.
+- `9631d66` native-only Release build (`BUILD_TESTING=OFF`,
+  `CMAKE_DISABLE_FIND_PACKAGE_Python3=TRUE`), staged with `cmake --install`:
+  `test_native_workflow.py <stage>/bin ... --sandbox` passed in a bubblewrap
+  namespace containing only the staged binaries, their libraries, the engine
+  fixture and the test directory; negative control confirms the host Python
+  and `/bin/sh` cannot execute there.
+- `9631d66` CI run 36206718668: Linux success; Windows 55/58 — native
+  workflow CTest **passed**, staged-Release Python-free workflow step
+  **passed**, CLI/acceptance/reconcile passed. Failures (harness only):
+  `frontend-native-sessions-prepare` / `-run` expect `python3.exe` where CI's
+  interpreter is `python.exe` (A's harness builds the reference synthetic spec);
+  `frontend-native-workflow-reference` exits `3221225786` (0xC000013A): the
+  **Python reference** CLI is killed by CTRL_BREAK in the cancellation step
+  (CPython turns only Ctrl-C into KeyboardInterrupt).
+- `a080c7f` CI run 36206160098: Linux and Windows success (store ops +
+  supervisor; before A/C merges).
+- `468679d` local Debug 44/44; CI pending at handoff.
+- Actual engine (compiled fixture results are separate): engine built from this
+  branch (`/tmp/c2-runtime-engine/bin/Carnivores1_GL`, Linux SDL3/GL Release)
+  answers the session contract. Against a disposable copy of the local Genesis
+  Redux 1.1 install (revision = pinned `GENESIS_REVISION`) and a disposable
+  store, the staged production binary performed register, import-copy,
+  upgrade, **production-policy** `native-hunt plan` and `prepare` (real
+  capability query), and a headless launch (`SDL_VIDEODRIVER=offscreen`, no
+  display/audio): the engine loaded content, ran 30 s, was stopped by the
+  owned-child timeout, exited 0, and the session was quarantined; preview
+  refused it; authority stayed G0; the real install was never written.
+  Evidence: `~/.local/state/c2-runtime-completion/genesis-smoke/`.
+  **Not done (manual validation):** an interactive hunt that returns a clean
+  candidate and its explicit acceptance with real Genesis gameplay.
+
 ## Next actionable task
 
-Workers A/B/C implement their streams; coordinator wires the existing
-library-complete commands into the native dispatcher.
+1. Integrate worker A's R4 fixes (B1 capability query in a fresh temp cwd;
+   B2 pre-launch interrupt leaves `prepared`/`launching`; test-strength N1/N2;
+   Windows `python.exe` harness) after checking the pushed head; wire
+   `interrupt` in `cli.cpp` (cancel=nullptr, interrupt=&flag, exit 130) if A
+   did not.
+2. Fix `frontend-native-workflow-reference` on Windows (send the reference a
+   Ctrl-C it can handle, or run the cancellation step natively only in
+   `--reference` mode) without weakening the native assertions.
+3. Push, obtain green Linux+Windows CI at an exact code SHA, rerun ASan/UBSan
+   and Release locally at that SHA.
+4. Final separate review of the integrated session + acceptance + CLI/cutover;
+   then record the final verdict.
