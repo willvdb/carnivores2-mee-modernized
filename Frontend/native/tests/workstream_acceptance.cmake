@@ -10,3 +10,10 @@ c2_frontend_test_driver(c2-frontend-session-process-tests native/tests/session_p
 add_test(NAME frontend-native-session-process COMMAND "${Python3_EXECUTABLE}"
   "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_session_process.py"
   "$<TARGET_FILE:c2-frontend-session-process-tests>" "$<TARGET_FILE:c2-frontend-session-process-child>")
+# Acceptance (6A-6C): driver over the private acceptance API with fault
+# injection, compared against unchanged lodge.acceptance by the Python harness
+# over reference-built candidates and the compiled engine fixture.
+c2_frontend_test_driver(c2-frontend-acceptance-tests native/tests/acceptance_tests.cpp)
+add_test(NAME frontend-native-acceptance COMMAND "${Python3_EXECUTABLE}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_acceptance.py"
+  "$<TARGET_FILE:c2-frontend-acceptance-tests>" "$<TARGET_FILE:c2-profile-probe>" "$<TARGET_FILE:c2-native-session-fixture>")
