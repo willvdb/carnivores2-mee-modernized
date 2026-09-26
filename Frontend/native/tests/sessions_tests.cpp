@@ -126,7 +126,29 @@ int main(int argc, char** argv) {
                 if (phase == store_write::WritePhase::replace && target.filename() == "journal.json" && ++replacements == 2)
                     throw fs::filesystem_error("simulated disk failure", target, std::make_error_code(std::errc::io_error));
             };
-            ok(session_runner::run_session(Store(fs::u8path(args[0])), wide(args[1]), optional_path(args[2]), nullptr, std::nullopt, {}, hook));
+            ok(session_runner::run_session(Store(fs::u8path(args[0])), wide(args[1]), optional_path(args[2]), nullptr, std::nullopt, {}, nullptr, hook));
+        } else if (command == "run-interrupt" && args.size() == 4) {
+            // run-interrupt <store> <id> <probe|-> <before-launch|before-spawn|while-running>: the CLI's
+            // SIGINT flag set before the call, from the first journal write of the run (the launching
+            // transition, so it is observed between that write and the spawn), or from the second
+            // (the running transition, so the child has already been spawned).
+            std::atomic<bool> interrupt{args[3] == "before-launch"};
+            const int at = args[3] == "before-spawn" ? 1 : args[3] == "while-running" ? 2 : 0;
+            int replacements = 0;
+            store_write::FailureHook hook;
+            if (at) hook = [&interrupt, &replacements, at](store_write::WritePhase phase, const fs::path& target) {
+                if (phase == store_write::WritePhase::replace && target.filename() == "journal.json" && ++replacements == at)
+                    interrupt.store(true);
+            };
+            ok(session_runner::run_session(Store(fs::u8path(args[0])), wide(args[1]), optional_path(args[2]), nullptr, std::nullopt, {}, &interrupt, hook));
+        } else if (command == "run-native-interrupt" && args.size() == 5) {
+            // run-native-interrupt <store> <observer|hunt> <id> <probe|-> <policy>: pre-set interrupt; stdin {"engine", "digest"}
+            const Value in = compat::parse(input());
+            std::atomic<bool> interrupt{true};
+            ok(session_runner::run_native(args[1] == "observer" ? std::optional<native_session::Adapter>(native_session::Adapter::observer) : std::nullopt,
+                                          args[1] == "hunt", Store(fs::u8path(args[0])), wide(args[2]),
+                                          content_internal::native_units(in.at(U"engine").string), in.at(U"digest"),
+                                          true, optional_path(args[3]), nullptr, policies(args[4]), &interrupt));
         } else if (command == "run-cancel" && args.size() == 4) {
             // run-cancel <store> <id> <probe|-> <cancel-after-ms>: synthetic run cancelled by the flag.
             std::atomic<bool> cancel{false};
@@ -155,6 +177,7 @@ int main(int argc, char** argv) {
         } else if (command == "recover" && args.size() == 4) {
             ok(session_runner::recover_session(Store(fs::u8path(args[0])), wide(args[1]), optional_path(args[2]), policies(args[3])));
         } else return 2;
+    } catch (const session_runner::Interrupted& e) { std::cout << "interrupted " << e.what() << '\n';
     } catch (const ResourceExhausted& e) { std::cout << "resource " << e.what() << '\n';
     } catch (const StoreError& e) { std::cout << "frontend " << e.what() << '\n';
     } catch (const probe_process::ProbeError& e) { std::cout << "frontend " << e.what() << '\n';
