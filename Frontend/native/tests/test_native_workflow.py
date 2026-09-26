@@ -433,8 +433,12 @@ class Workflow(unittest.TestCase):
         process.kill()
         process.communicate(timeout=30)
         child = running['process']['pid']
-        if os.name != 'nt':
-            os.kill(child, signal.SIGKILL)  # harness cleanup of the orphaned test child
+        # Harness cleanup of the orphaned test child. On Windows the native supervisor's
+        # kill-on-close job usually took it already; the reference has no job object.
+        if os.name == 'nt':
+            self.reap_windows_child(child)
+        else:
+            os.kill(child, signal.SIGKILL)
         lock = self.store / 'lodge.lock'
         self.assertTrue(lock.exists(), 'a killed supervisor leaves its writer lock for manual review')
         self.cli('status', stale_lock=True)  # reads stay available
