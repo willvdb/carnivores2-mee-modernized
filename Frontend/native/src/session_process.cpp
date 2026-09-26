@@ -71,6 +71,30 @@ std::u32string os_error_text(int code, const fs::path& path) {
     text.push_back(quote);
     return text;
 }
+// str(OSError) without a filename, as Python reports pipe/fork/write failures.
+std::u32string os_error_text(int code) {
+    return points("[Errno " + std::to_string(code) + "] " + std::strerror(code));
+}
+#ifdef _WIN32
+// str(OSError) from a Windows error: "[WinError N] message" with the trailing
+// CR/LF and period removed, as PyErr_SetFromWindowsErr formats it.
+std::u32string win_error_text(DWORD code) {
+    wchar_t* buffer = nullptr;
+    const DWORD n = ::FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                                     nullptr, code, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), reinterpret_cast<wchar_t*>(&buffer), 0, nullptr);
+    std::wstring message = n && buffer ? std::wstring(buffer, n) : L"Windows Error 0x" + std::to_wstring(code);
+    if (buffer) ::LocalFree(buffer);
+    while (!message.empty() && (message.back() == L'\r' || message.back() == L'\n' || message.back() == L'.')) message.pop_back();
+    std::u32string text = points("[WinError " + std::to_string(code) + "] ");
+    for (std::size_t i = 0; i < message.size(); ++i) {
+        char32_t c = message[i];
+        if (c >= 0xd800 && c < 0xdc00 && i + 1 < message.size() && message[i + 1] >= 0xdc00 && message[i + 1] < 0xe000)
+            c = 0x10000 + ((c - 0xd800) << 10) + (message[++i] - 0xdc00);
+        text.push_back(c);
+    }
+    return text;
+}
+#endif
 std::string narrow(const std::u32string& text) {
     std::string out;
     for (const char32_t c : text) {
@@ -100,7 +124,9 @@ struct Sink {
     Sink(const Sink&) = delete;
     Sink& operator=(const Sink&) = delete;
     ~Sink() { close(); }
-    void fail(int code) { if (!error) error = narrow(os_error_text(code, path)); close(); }
+    // Python names the file only in the exclusive-open error; write and fsync
+    // failures on the open file object carry no filename.
+    void fail(int code, bool named) { if (!error) error = narrow(named ? os_error_text(code, path) : os_error_text(code)); close(); }
     void close() {
         if (fd < 0) return;
 #ifdef _WIN32
@@ -116,7 +142,7 @@ struct Sink {
 #else
         fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0666);
 #endif
-        if (fd < 0) fail(errno);
+        if (fd < 0) fail(errno, true);
     }
     void consume(const char* data, std::size_t size) {
         pending.append(data, size);
@@ -133,7 +159,7 @@ struct Sink {
 #else
             const ssize_t put = ::write(fd, data + done, static_cast<std::size_t>(keep - done));
 #endif
-            if (put < 0) { if (errno == EINTR) continue; fail(errno); break; }
+            if (put < 0) { if (errno == EINTR) continue; fail(errno, false); break; }
             done += static_cast<std::uint64_t>(put);
         }
     }
@@ -142,9 +168,9 @@ struct Sink {
         if (!pending.empty()) { account(pending.data(), pending.size()); pending.clear(); }
         if (fd < 0) return;
 #ifdef _WIN32
-        if (::_commit(fd) != 0) fail(errno);
+        if (::_commit(fd) != 0) fail(errno, false);
 #else
-        if (::fsync(fd) != 0) fail(errno);
+        if (::fsync(fd) != 0) fail(errno, false);
 #endif
         close();
     }
@@ -183,10 +209,15 @@ compat::Value LogResult::value() const {
 #ifndef _WIN32
 namespace {
 using process_internal::Fd;
+// Popen's OSError before the child is running: no log, no on_started.
+[[noreturn]] void spawn_failure(const char* what, const fs::path& path, int code, bool named) {
+    throw SpawnError(narrow(named ? os_error_text(code, path) : os_error_text(code)), what, path,
+                     std::error_code(code, std::generic_category()));
+}
 void above_stdio(Fd& fd, const fs::path& executable) {
     if (fd.fd >= 3) return;
     const int moved = ::fcntl(fd.fd, F_DUPFD_CLOEXEC, 3);
-    if (moved < 0) os_failure("session stdin descriptor", executable, errno);
+    if (moved < 0) spawn_failure("session stdin descriptor", executable, errno, false);
     fd.reset();
     fd.fd = moved;
 }
@@ -250,11 +281,18 @@ Outcome run(const Spec& spec, const fs::path& stdout_log, const fs::path& stderr
     const fs::path& executable = spec.executable;
     Supervisor s(spec, stdout_log, stderr_log);
     Fd out_w, err_w, fail_r, fail_w, null_r;
-    process_internal::make_pipe(s.out_r, out_w, executable, SUBJECT);
-    process_internal::make_pipe(s.err_r, err_w, executable, SUBJECT);
-    process_internal::make_pipe(fail_r, fail_w, executable, SUBJECT);
+    try {
+        process_internal::make_pipe(s.out_r, out_w, executable, SUBJECT);
+        process_internal::make_pipe(s.err_r, err_w, executable, SUBJECT);
+        process_internal::make_pipe(fail_r, fail_w, executable, SUBJECT);
+        // The parent's read ends are nonblocking before fork (a separate open
+        // file description from the child's write ends), so nothing after a
+        // successful exec can be mistaken for a spawn failure.
+        process_internal::nonblocking(s.out_r.fd, executable, SUBJECT);
+        process_internal::nonblocking(s.err_r.fd, executable, SUBJECT);
+    } catch (const fs::filesystem_error& e) { spawn_failure("session pipe", executable, e.code().value(), false); }
     null_r.fd = ::open("/dev/null", O_RDONLY | O_CLOEXEC);
-    if (null_r.fd < 0) os_failure("session stdin", executable, errno);
+    if (null_r.fd < 0) spawn_failure("session stdin", fs::path("/dev/null"), errno, true);
     above_stdio(null_r, executable);
     // Everything the child needs is built before fork; only async-signal-safe
     // calls run between fork and exec.
@@ -265,14 +303,15 @@ Outcome run(const Spec& spec, const fs::path& stdout_log, const fs::path& stderr
     for (const auto& a : arguments) argv.push_back(const_cast<char*>(a.c_str()));
     argv.push_back(nullptr);
 #if !defined(__linux__) || !defined(SYS_close_range)
-    os_failure("session requires close_range descriptor isolation", executable, ENOTSUP);
+    spawn_failure("session requires close_range descriptor isolation", executable, ENOTSUP, false);
 #endif
     process_internal::SigpipeGuard sigpipe;
     s.child.pid = ::fork();
-    if (s.child.pid < 0) { s.child.pid = -1; os_failure("session fork", executable, errno); }
+    if (s.child.pid < 0) { s.child.pid = -1; spawn_failure("session fork", executable, errno, false); }
     if (s.child.pid == 0) {
-        // Failure report: {stage, errno}; stage 1 is chdir (reported against
-        // cwd, as Popen does), everything else against the executable.
+        // Failure report: {stage, errno}; stage 0 is exec (reported against the
+        // executable), stage 1 chdir (against cwd), and the dup2/setsid/
+        // close_range stages carry no filename, exactly as Popen's noexec cases.
         auto fail = [&](int stage) {
             const int report[2] = {stage, errno};
             (void)!::write(fail_w.fd, report, sizeof report);
@@ -303,7 +342,7 @@ Outcome run(const Spec& spec, const fs::path& stdout_log, const fs::path& stderr
         const ssize_t got = ::read(fail_r.fd, bytes, sizeof bytes);
         if (got > 0) { report.append(bytes, static_cast<std::size_t>(got)); continue; }
         if (got == 0) break;
-        if (errno != EINTR) os_failure("session exec handshake", executable, errno);
+        if (errno != EINTR) spawn_failure("session exec handshake", executable, errno, false);
     }
     fail_r.reset();
     if (!report.empty()) {
@@ -311,14 +350,14 @@ Outcome run(const Spec& spec, const fs::path& stdout_log, const fs::path& stderr
         pid_t got;
         do { got = ::waitpid(s.child.pid, &status, 0); } while (got < 0 && errno == EINTR);
         s.child.reaped = true;
-        if (report.size() != 2 * sizeof(int)) os_failure("session exec handshake", executable, EIO);
+        if (report.size() != 2 * sizeof(int)) spawn_failure("session exec handshake", executable, EIO, false);
         int stage, code;
         std::memcpy(&stage, report.data(), sizeof stage);
         std::memcpy(&code, report.data() + sizeof stage, sizeof code);
-        os_failure(stage == 1 ? "session cwd" : "session exec", stage == 1 ? spec.cwd : executable, code);
+        if (stage == 0) spawn_failure("session exec", executable, code, true);
+        if (stage == 1) spawn_failure("session cwd", spec.cwd, code, true);
+        spawn_failure("session child setup", executable, code, false);
     }
-    process_internal::nonblocking(s.out_r.fd, executable, SUBJECT);
-    process_internal::nonblocking(s.err_r.fd, executable, SUBJECT);
     Outcome outcome;
     outcome.pid = s.child.pid;
     outcome.started_at = store_write::now();
@@ -349,6 +388,11 @@ Outcome run(const Spec& spec, const fs::path& stdout_log, const fs::path& stderr
 #else
 namespace {
 using process_internal::Handle;
+// Popen's OSError before the child is running (CreateProcess and its setup
+// report a WinError without a filename).
+[[noreturn]] void spawn_failure(const char* what, const fs::path& path, DWORD code) {
+    throw SpawnError(narrow(win_error_text(code)), what, path, std::error_code(static_cast<int>(code), std::system_category()));
+}
 struct Supervisor {
     const Spec& spec;
     Handle out_r, err_r, process, job;
@@ -415,11 +459,13 @@ Outcome run(const Spec& spec, const fs::path& stdout_log, const fs::path& stderr
     const fs::path& executable = spec.executable;
     Supervisor s(spec, stdout_log, stderr_log);
     Handle out_w, err_w, null_r;
-    process_internal::make_pipe(s.out_r, out_w, false, executable, SUBJECT);
-    process_internal::make_pipe(s.err_r, err_w, false, executable, SUBJECT);
+    try {
+        process_internal::make_pipe(s.out_r, out_w, false, executable, SUBJECT);
+        process_internal::make_pipe(s.err_r, err_w, false, executable, SUBJECT);
+    } catch (const fs::filesystem_error& e) { spawn_failure("session pipe", executable, static_cast<DWORD>(e.code().value())); }
     SECURITY_ATTRIBUTES inheritable{sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
     null_r.h = ::CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &inheritable, OPEN_EXISTING, 0, nullptr);
-    if (null_r.h == INVALID_HANDLE_VALUE) { null_r.h = nullptr; os_failure("session stdin", executable, static_cast<int>(::GetLastError())); }
+    if (null_r.h == INVALID_HANDLE_VALUE) { null_r.h = nullptr; spawn_failure("session stdin", executable, ::GetLastError()); }
     // list2cmdline over spec argv (argv[0] included); the executable is the
     // application name, exactly as Popen(argv, executable=path) passes them.
     std::wstring line;
@@ -428,13 +474,13 @@ Outcome run(const Spec& spec, const fs::path& stdout_log, const fs::path& stderr
     HANDLE inherited[3] = {null_r.h, out_w.h, err_w.h};
     SIZE_T size = 0;
     if (::InitializeProcThreadAttributeList(nullptr, 1, 0, &size) || ::GetLastError() != ERROR_INSUFFICIENT_BUFFER)
-        os_failure("session spawn attributes", executable, static_cast<int>(::GetLastError()));
+        spawn_failure("session spawn attributes", executable, ::GetLastError());
     std::vector<char> storage(size);
     auto list = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(storage.data());
-    if (!::InitializeProcThreadAttributeList(list, 1, 0, &size)) os_failure("session spawn", executable, static_cast<int>(::GetLastError()));
+    if (!::InitializeProcThreadAttributeList(list, 1, 0, &size)) spawn_failure("session spawn", executable, ::GetLastError());
     struct ListGuard { LPPROC_THREAD_ATTRIBUTE_LIST l; ~ListGuard() { ::DeleteProcThreadAttributeList(l); } } list_guard{list};
     if (!::UpdateProcThreadAttribute(list, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inherited, sizeof inherited, nullptr, nullptr))
-        os_failure("session spawn", executable, static_cast<int>(::GetLastError()));
+        spawn_failure("session spawn", executable, ::GetLastError());
     STARTUPINFOEXW startup{};
     startup.StartupInfo.cb = sizeof startup;
     startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
@@ -444,17 +490,17 @@ Outcome run(const Spec& spec, const fs::path& stdout_log, const fs::path& stderr
     startup.lpAttributeList = list;
     // The job kills the child if this process dies or any path leaves early.
     s.job.h = ::CreateJobObjectW(nullptr, nullptr);
-    if (!s.job.h) os_failure("session job", executable, static_cast<int>(::GetLastError()));
+    if (!s.job.h) spawn_failure("session job", executable, ::GetLastError());
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
     limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
     if (!::SetInformationJobObject(s.job.h, JobObjectExtendedLimitInformation, &limits, sizeof limits))
-        os_failure("session job", executable, static_cast<int>(::GetLastError()));
+        spawn_failure("session job", executable, ::GetLastError());
     PROCESS_INFORMATION info{};
     const std::wstring application = fs::absolute(executable).wstring(), directory = spec.cwd.wstring();
     if (!::CreateProcessW(application.c_str(), line.data(), nullptr, nullptr, TRUE,
                           CREATE_SUSPENDED | CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT, nullptr,
                           directory.empty() ? nullptr : directory.c_str(), &startup.StartupInfo, &info))
-        os_failure("session spawn", executable, static_cast<int>(::GetLastError()));
+        spawn_failure("session spawn", executable, ::GetLastError());
     Handle thread;
     s.process.h = info.hProcess;
     thread.h = info.hThread;
@@ -468,9 +514,9 @@ Outcome run(const Spec& spec, const fs::path& stdout_log, const fs::path& stderr
             }
         }
     } kill{s.process.h, s.job.h};
-    if (!::AssignProcessToJobObject(s.job.h, s.process.h)) os_failure("session job", executable, static_cast<int>(::GetLastError()));
+    if (!::AssignProcessToJobObject(s.job.h, s.process.h)) spawn_failure("session job", executable, ::GetLastError());
     kill.assigned = true;
-    if (::ResumeThread(thread.h) == static_cast<DWORD>(-1)) os_failure("session resume", executable, static_cast<int>(::GetLastError()));
+    if (::ResumeThread(thread.h) == static_cast<DWORD>(-1)) spawn_failure("session resume", executable, ::GetLastError());
     null_r.reset(); out_w.reset(); err_w.reset();
     Outcome outcome;
     outcome.pid = static_cast<long long>(info.dwProcessId);
@@ -498,7 +544,7 @@ Outcome run(const Spec& spec, const fs::path& stdout_log, const fs::path& stderr
     // Descendants holding the pipes past the log bound die with the job.
     if (!::TerminateJobObject(s.job.h, 1)) os_failure("session job cleanup", executable, static_cast<int>(::GetLastError()));
     kill.armed = false;
-    outcome.exit_code = static_cast<int>(code);
+    outcome.exit_code = static_cast<long long>(code); // the unsigned DWORD, as Popen.returncode records it
     outcome.out = s.out.result();
     outcome.err = s.err.result();
     return outcome;
