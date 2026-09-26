@@ -160,11 +160,12 @@ class Workflow(unittest.TestCase):
             wrap += ['--ro-bind', str(library), str(library)]
         return wrap + argv
 
-    def spawn(self, args, fixture=False, env=None):
+    def spawn(self, args, fixture=False, env=None, new_session=False):
         environment = {**self.env, **(env or {})}
         flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
         return subprocess.Popen(self.command(args, fixture), cwd=self.work, env=environment,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=flags)
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=flags,
+                                start_new_session=new_session)
 
     def cli(self, *args, fixture=False, env=None, expect=0, error=None, stale_lock=False):
         process = self.spawn(args, fixture, env)
@@ -379,6 +380,37 @@ class Workflow(unittest.TestCase):
         return self.cli('native-hunt', 'run', identity, *self.trust('--experimental-native-hunt'),
                         fixture=True, env=env, expect=expect)
 
+    def group_interrupt_during_preflight(self):
+        """SIGINT to the process group while the capability query runs: the run is interrupted
+        before launch (exit 130; the reference's KeyboardInterrupt), nothing is written, and
+        the session stays prepared and launchable."""
+        identity, _ = self.prepare_hunt()
+        root = self.store / 'sessions' / identity
+        marker = self.base / 'engine-query-marker'
+        marker.unlink(missing_ok=True)
+        env = {'C2_NATIVE_FIXTURE_BEHAVIOR': 'slow-contract', 'C2_NATIVE_FIXTURE_MARKER': str(marker)}
+        process = self.spawn(['native-hunt', 'run', identity, *self.trust('--experimental-native-hunt')],
+                             fixture=True, env=env, new_session=True)
+        deadline = time.monotonic() + 60
+        while not marker.exists():  # the engine's capability query has started (and now sleeps)
+            self.assertIsNone(process.poll(), 'the run ended before its capability query')
+            self.assertLess(time.monotonic(), deadline, 'the capability query never started')
+            time.sleep(0.02)
+        os.killpg(process.pid, signal.SIGINT)
+        out, err = process.communicate(timeout=60)
+        self.assertEqual(out, b'', err)
+        if REFERENCE:
+            self.assertEqual(process.returncode, -signal.SIGINT, err)  # KeyboardInterrupt, re-raised
+        else:
+            self.assertEqual(process.returncode, 130, err)
+            self.assertEqual(json.loads(err), {'error': 'interrupted before launch; session remains prepared'})
+        self.assertEqual(marker.read_text().splitlines(), ['invoked'], 'the engine was launched')
+        journal = self.journal(identity)
+        self.assertEqual((journal['state'], [e['state'] for e in journal['transitions']]), ('prepared', ['prepared']))
+        self.assertEqual(list((root / 'logs').iterdir()), [])
+        self.assertFalse((self.store / 'lodge.lock').exists())
+        self.assertEqual(self.run_hunt(identity, 'nonzero')['state'], 'quarantined')
+
     def checkpoint_2_managed_failures(self):
         manifest = (self.store / 'lodge.json').read_bytes()
         identity, journal = self.prepare_hunt()
@@ -425,6 +457,11 @@ class Workflow(unittest.TestCase):
             self.assertEqual(process.returncode, 0, err)
             cancelled = json.loads(out)
             self.assertEqual((cancelled['state'], cancelled['process']['stop_reason']), ('quarantined', 'cancelled'))
+        # A terminal Ctrl-C reaches the whole foreground process group, including the trusted
+        # engine's capability query during preflight (final review B1). POSIX process groups
+        # only; inside the sandbox the signal would also terminate bwrap itself.
+        if os.name == 'posix' and not SANDBOX:
+            self.group_interrupt_during_preflight()
         # Interrupted supervisor: the journal stays running; recovery never signals it.
         identity, _ = self.prepare_hunt()
         process = self.spawn(['native-hunt', 'run', identity, *self.trust('--experimental-native-hunt')],

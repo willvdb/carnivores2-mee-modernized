@@ -171,6 +171,10 @@ Value run_session(const Store& store, std::u32string_view identity, const std::o
         if (schema >= 2) native_preflight(store, root, journal, probe, authorization, native_session::adapter_for(journal), policies);
         else synthetic_preflight(store, root, journal, probe);
     })) {
+        // A terminal Ctrl-C reaches the whole foreground process group, so it can be what
+        // failed the preflight (a killed capability query or codec probe). The reference's
+        // KeyboardInterrupt escapes preflight without a journal write; so does the interrupt.
+        if (set(interrupt)) throw Interrupted("interrupted before launch; session remains prepared");
         member(journal, U"diagnostics")->array.push_back(diagnostic("preflight-failed", *failure));
         session_journal::transition(root, journal, "failed", {{U"failed_at", ascii_value(store_write::now())}}, hook);
         lock.release();

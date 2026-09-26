@@ -22,6 +22,9 @@ int main(int argc, char** argv) {
     const auto* behavior = std::getenv("C2_NATIVE_FIXTURE_BEHAVIOR");
     const std::string scenario = behavior ? behavior : "";
     if (result == EngineSession::Startup::Query) {
+        // Test-only: a slow capability answer, so a harness can interrupt the query (the
+        // invocation marker above is written first and serves as the readiness signal).
+        if (scenario == "slow-contract") std::this_thread::sleep_for(std::chrono::seconds(20));
         std::puts(scenario == "bad-contract" ? "{\"version\":99}" : EngineSession::Capability); return 0;
     }
     if (result != EngineSession::Startup::Ready) { std::fprintf(stderr,"%s\n",error.c_str()); return 2; }
