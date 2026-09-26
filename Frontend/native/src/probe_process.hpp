@@ -39,9 +39,12 @@ constexpr std::size_t default_output_limit = 16u * 1024u * 1024u;
 // resolves against the working directory, not PATH (documented divergence;
 // session callers always pass the resolved executable_evidence path).
 using FailureHook = std::function<void()>; // tests only: throw after successful spawn
+// cwd: the child's working directory (Popen cwd=); when omitted it inherits
+// this process's. A directory that cannot be entered is a spawn failure.
 Result run(const std::filesystem::path& executable, const std::vector<std::string>& arguments,
            std::string_view input, std::chrono::milliseconds timeout,
-           std::size_t output_limit = default_output_limit, const FailureHook& hook = {});
+           std::size_t output_limit = default_output_limit, const FailureHook& hook = {},
+           const std::optional<std::filesystem::path>& cwd = std::nullopt);
 // sessions.executable_evidence: expanduser + strict resolve, regular file,
 // {'path', 'sha256'} in that order.
 compat::Value executable_evidence(const std::filesystem::path&);
