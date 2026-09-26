@@ -4,6 +4,7 @@
 // BUILD_TESTING; it is never staged or installed. It certifies nothing about
 // Genesis content; real policy refusals are exercised through c2-frontend-native.
 #include "cli.hpp"
+#include "interrupt.hpp"
 #include "planning_internal.hpp"
 #include <iostream>
 namespace {
@@ -30,6 +31,7 @@ int wmain(int argc, wchar_t** argv_) {
 #else
 int main(int argc, char** argv_) {
 #endif
+    cli_main::install_interrupt_handler();
     cli::Seams seams;
     seams.policies.observer = [](const Value&, const catalog::Projection&, const Value& slot, const Value& selection,
                                  const Value&) {

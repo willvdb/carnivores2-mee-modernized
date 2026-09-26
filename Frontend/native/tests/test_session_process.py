@@ -33,6 +33,7 @@ def reference(argv, executable, cwd, timeout, logs, cancel_after=None):
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True,
                     start_new_session=(os.name == 'posix'))
     streams = [BoundedLog(process.stdout, logs / 'stdout.log'), BoundedLog(process.stderr, logs / 'stderr.log')]
+    REFERENCE_READERS.extend(log.thread for log in streams)
     cancel = threading.Event()
     if cancel_after is not None:
         threading.Timer(cancel_after, cancel.set).start()
@@ -58,6 +59,11 @@ def reference(argv, executable, cwd, timeout, logs, cancel_after=None):
     return {'exit_code': code, 'reason': reason, 'logs': output}
 
 
+# Reference BoundedLog daemon threads; one may outlive its run while a test
+# descendant holds the pipe, keeping its log file open (Windows cannot delete it).
+REFERENCE_READERS = []
+
+
 def pattern(stream, count):
     return bytes(((i * 7 + stream) & 255) for i in range(count))
 
@@ -73,8 +79,11 @@ class SessionProcess(unittest.TestCase):
             if marker.exists():
                 try:
                     os.kill(int(marker.read_text()), signal.SIGKILL if POSIX else signal.SIGTERM)
-                except (ProcessLookupError, PermissionError, ValueError):
-                    pass
+                except (OSError, ValueError):
+                    pass  # already gone (Windows reports WinError 87 for a reaped pid)
+        for thread in REFERENCE_READERS:
+            thread.join(timeout=10)
+        REFERENCE_READERS.clear()
         self.temp.cleanup()
 
     def marker(self, name):
@@ -217,7 +226,8 @@ class SessionProcess(unittest.TestCase):
         self.assertFalse(got['stdout_log_exists'] or got['stderr_log_exists'])
         with self.assertRaises(OSError) as caught:
             reference([CHILD, 'exit', '0'], CHILD, str(self.root / 'nowhere'), 5, self.logs('oracle-cwd'))
-        self.assertEqual(got['code'], caught.exception.errno)
+        # Native reports the OS code; on Windows that is winerror (errno is CPython's mapping).
+        self.assertEqual(got['code'], caught.exception.errno if POSIX else caught.exception.winerror)
         if POSIX:
             self.assertEqual(got['path'], str(self.root / 'nowhere'))
 
@@ -236,7 +246,7 @@ class SessionProcess(unittest.TestCase):
         with warnings.catch_warnings():
             warnings.simplefilter('ignore', ResourceWarning)  # the reference leaves that pipe open
             expected = reference([CHILD, 'flood', '100', '20'], CHILD, str(self.root), 5, oracle)
-        self.assertEqual(expected['logs']['stdout']['error'].replace(str(oracle), str(logs)),
+        self.assertEqual(expected['logs']['stdout']['error'].replace(repr(str(oracle))[1:-1], repr(str(logs))[1:-1]),
                          got['logs']['stdout']['error'])
         self.assertEqual(got['logs']['stdout']['error'], f"[Errno 17] File exists: {str(logs / 'stdout.log')!r}")
         self.assertEqual(got['logs']['stdout']['total_bytes'], 100)

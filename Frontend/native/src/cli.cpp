@@ -226,6 +226,25 @@ bool looks_like_option(const std::string& arg) {
     return arg.size() > 1 && arg[0] == '-' && !negative_number(arg) && arg.find(' ') == std::string::npos;
 }
 
+// argparse converts and checks choices for every occurrence as it consumes it,
+// before any command (and therefore any store directory, lock or write) runs.
+void check_value(const Option& option, const std::string& raw) {
+    const auto& name = option.name;
+    std::string converted = raw;
+    if (option.type == Type::integer) {
+        const auto number = python_int(raw);
+        if (!number) throw UsageError("argument " + name + ": invalid int value: " + repr(raw));
+        converted = *number;
+    } else if (option.type == Type::floating && !python_float(raw)) {
+        throw UsageError("argument " + name + ": invalid float value: " + repr(raw));
+    }
+    if (!option.choices.empty() &&
+        std::find(option.choices.begin(), option.choices.end(), converted) == option.choices.end()) {
+        std::string list;
+        for (const auto& c : option.choices) list += (list.empty() ? "" : ", ") + c;
+        throw UsageError("argument " + name + ": invalid choice: " + repr(raw) + " (choose from " + list + ")");
+    }
+}
 Parsed parse(const std::vector<fs::path>& args) {
     Parsed p;
     std::size_t i = 0;
@@ -238,7 +257,12 @@ Parsed parse(const std::vector<fs::path>& args) {
         if (token == Token::positional) break;
         if (token == Token::unknown) throw UsageError("unrecognized arguments: " + arg);
         if (name == "--help" || name == "-h") { p.help = true; return p; }
-        if (name == "--version") { p.version = true; continue; }
+        if (name == "--version") {
+            // Native-only: accepted solely as the entire command line.
+            if (args.size() != 1) throw UsageError("unrecognized arguments: " + arg);
+            p.version = true;
+            return p;
+        }
         fs::path path;
         if (value) path = fs::u8path(*value);
         else {
@@ -248,7 +272,6 @@ Parsed parse(const std::vector<fs::path>& args) {
         }
         (name == "--store" ? p.store : p.probe) = std::move(path);
     }
-    if (p.version && i == args.size()) return p;
     if (i == args.size()) throw UsageError("the following arguments are required: command");
     static const auto table = commands();
     std::vector<std::string> words;
@@ -280,13 +303,26 @@ Parsed parse(const std::vector<fs::path>& args) {
     for (const auto& o : p.command->options) names.push_back(o.name);
     std::vector<std::string> unrecognized;
     bool only_positionals = false;
+    // Python 3.12 drops the first '--' only when a positional consumes an
+    // argument after it; otherwise it is reported as unrecognized.
+    std::optional<std::size_t> separator; // index into unrecognized
+    bool separator_used = false;
     for (; i < args.size(); ++i) {
         const auto arg = utf8(args[i]);
-        if (!only_positionals && arg == "--") { only_positionals = true; continue; }
+        if (!only_positionals && arg == "--") {
+            only_positionals = true;
+            separator = unrecognized.size();
+            unrecognized.push_back("--");
+            continue;
+        }
         std::string name;
         std::optional<std::string> value;
         const auto token = only_positionals ? Token::positional : classify(arg, names, name, value);
-        if (token == Token::positional) { p.positionals.push_back(args[i]); continue; }
+        if (token == Token::positional) {
+            p.positionals.push_back(args[i]);
+            if (separator && p.positionals.size() <= p.command->positionals.size()) separator_used = true;
+            continue;
+        }
         if (token == Token::unknown) { unrecognized.push_back(arg); continue; }
         if (name == "--help" || name == "-h") { p.help = true; return p; }
         const auto& option = *std::find_if(p.command->options.begin(), p.command->options.end(),
@@ -303,10 +339,12 @@ Parsed parse(const std::vector<fs::path>& args) {
                 throw UsageError("argument " + name + ": expected one argument");
             path = args[++i];
         }
+        check_value(option, utf8(path));
         auto& slot = p.values[name];
         if (!option.append) slot.clear();
         slot.push_back(std::move(path));
     }
+    if (separator && separator_used) unrecognized.erase(unrecognized.begin() + static_cast<std::ptrdiff_t>(*separator));
     if (!p.command->exclusive_required.empty()) {
         const auto& group = p.command->exclusive_required;
         std::vector<std::string> present;
@@ -331,30 +369,6 @@ Parsed parse(const std::vector<fs::path>& args) {
     }
     for (std::size_t k = p.command->positionals.size(); k < p.positionals.size(); ++k)
         unrecognized.push_back(utf8(p.positionals[k]));
-    // argparse converts and checks choices while parsing, before any command
-    // (and therefore before any store directory, lock or write) runs.
-    for (const auto& [name, values] : p.values) {
-        const auto& option = *std::find_if(p.command->options.begin(), p.command->options.end(),
-                                           [&](const Option& o) { return o.name == name; });
-        for (const auto& value : values) {
-            const auto raw = utf8(value);
-            std::string converted = raw;
-            const auto shown = repr(raw);
-            if (option.type == Type::integer) {
-                const auto number = python_int(raw);
-                if (!number) throw UsageError("argument " + name + ": invalid int value: " + repr(raw));
-                converted = *number;
-            } else if (option.type == Type::floating && !python_float(raw)) {
-                throw UsageError("argument " + name + ": invalid float value: " + repr(raw));
-            }
-            if (!option.choices.empty() &&
-                std::find(option.choices.begin(), option.choices.end(), converted) == option.choices.end()) {
-                std::string list;
-                for (const auto& c : option.choices) list += (list.empty() ? "" : ", ") + c;
-                throw UsageError("argument " + name + ": invalid choice: " + shown + " (choose from " + list + ")");
-            }
-        }
-    }
     if (!unrecognized.empty()) {
         std::string list;
         for (const auto& u : unrecognized) list += (list.empty() ? "" : " ") + u;
@@ -370,11 +384,13 @@ Value boolean(bool b) { Value v; v.kind = compat::Kind::boolean; v.boolean = b; 
 Value array() { Value v; v.kind = compat::Kind::array; return v; }
 Value object() { Value v; v.kind = compat::Kind::object; return v; }
 
+fs::path dot(const fs::path& p) { return p.empty() ? fs::path(".") : p; }
 struct Arguments {
     const Parsed& p;
     bool has(const std::string& name) const { return p.values.count(name) > 0; }
     bool flag(const std::string& name) const { return p.flags.count(name) > 0; }
-    const fs::path& path(const std::string& name) const { return p.values.at(name).back(); }
+    // type=Path: Path('') is '.', never an absent value.
+    fs::path path(const std::string& name) const { return dot(p.values.at(name).back()); }
     std::u32string string(const std::string& name, std::string_view fallback) const {
         if (!has(name)) return std::u32string(fallback.begin(), fallback.end());
         return store_paths::native_points(path(name));
@@ -452,7 +468,8 @@ Value after_run(const Store& store, const Value& result, std::u32string_view ide
 std::string execute(const Parsed& parsed, const Seams& seams) {
     const Arguments a{parsed};
     const auto& words = parsed.command->words;
-    const auto& probe = parsed.probe;
+    std::optional<fs::path> probe;
+    if (parsed.probe) probe = dot(*parsed.probe);
     auto is = [&](std::initializer_list<const char*> w) {
         return words == std::vector<std::string>(w.begin(), w.end());
     };
@@ -545,7 +562,7 @@ std::string execute(const Parsed& parsed, const Seams& seams) {
     }
     if (is({"host-settings"}) && !a.has("--json")) return manifest.export_json(ManifestView::host_settings);
     if (is({"expedition", "discover"}) && !a.flag("--register-managed"))
-        return emit(store_ops::discover_view(manifest, a.path("path")));
+        return emit(store_ops::discover_view(manifest, dot(parsed.positionals[0])));
     if (is({"refresh-state"})) return emit(planning_store::refresh_state(store, a.positional(0), probe));
     if (is({"launch-dry-run"})) {
         planning::LaunchSelection selection;
@@ -568,14 +585,14 @@ std::string execute(const Parsed& parsed, const Seams& seams) {
             if (words[1] == "rename") name = a.positional(1);
             result = store_ops::hunter(data, std::u32string(words[1].begin(), words[1].end()), id, name);
         } else if (is({"expedition", "register"})) {
-            result = store_ops::register_instance(data, parsed.positionals[0], U"registered",
+            result = store_ops::register_instance(data, dot(parsed.positionals[0]), U"registered",
                 a.string("--dialect", "unknown"), a.optional_string("--family"), a.optional_string("--release"), std::nullopt);
         } else if (is({"expedition", "relocate"})) {
-            result = store_ops::relocate(data, a.positional(0), parsed.positionals[1]);
+            result = store_ops::relocate(data, a.positional(0), dot(parsed.positionals[1]));
         } else if (is({"expedition", "refresh"})) {
             result = store_ops::refresh_instance(data, a.positional(0));
         } else if (is({"expedition", "discover"})) {
-            result = store_ops::discover_register(data, parsed.positionals[0]);
+            result = store_ops::discover_register(data, dot(parsed.positionals[0]));
         } else if (is({"associate"})) {
             const auto ownership = a.optional_string("--ownership");
             const bool import_copy = a.flag("--import-copy");
@@ -662,7 +679,9 @@ int run(const std::vector<fs::path>& args, std::ostream& out, std::ostream& err,
         const auto output = execute(parsed, seams);
         out << output;
         out.flush();
-        return 0;
+        // Like CPython's failed stdout flush at exit: the operation (and any
+        // commit) already happened, but the result was not delivered.
+        return out.fail() ? 120 : 0;
     } catch (const ResourceExhausted& e) {
         diagnostic(err, e.what()); return 3;
     } catch (const std::exception& e) {
