@@ -11,6 +11,10 @@
 #include <string>
 #include <vector>
 int main(int argc, char** argv) {
+    // Test-only invocation marker: proves whether a frontend path executed the engine.
+    if (const auto* marker = std::getenv("C2_NATIVE_FIXTURE_MARKER")) {
+        if (FILE* file = std::fopen(marker, "ab")) { std::fputs("invoked\n", file); std::fclose(file); }
+    }
     std::vector<std::string> args(argv, argv+argc), legacy;
     std::string error;
     const auto result = EngineSession::Initialize(args, std::filesystem::current_path().string(),

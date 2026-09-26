@@ -27,7 +27,8 @@ using process_internal::Clock;
 using process_internal::os_failure;
 #ifndef _WIN32
 Result run(const fs::path& executable, const std::vector<std::string>& arguments,
-           std::string_view input, std::chrono::milliseconds timeout, std::size_t output_limit, const FailureHook& hook) {
+           std::string_view input, std::chrono::milliseconds timeout, std::size_t output_limit, const FailureHook& hook,
+           const std::optional<fs::path>& cwd) {
     const auto deadline = Clock::now() + timeout;
     process_internal::Fd in_r, in_w, out_r, out_w, err_r, err_w, fail_r, fail_w;
     process_internal::make_pipe(in_r, in_w, executable, "probe");
@@ -36,7 +37,7 @@ Result run(const fs::path& executable, const std::vector<std::string>& arguments
     process_internal::make_pipe(fail_r, fail_w, executable, "probe");
     // Everything the child needs is built before fork; only async-signal-safe
     // calls run between fork and exec.
-    const std::string program = executable.string();
+    const std::string program = executable.string(), directory = cwd ? cwd->string() : std::string();
     std::vector<char*> argv;
     argv.push_back(const_cast<char*>(program.c_str()));
     for (const auto& a : arguments) argv.push_back(const_cast<char*>(a.c_str()));
@@ -53,7 +54,8 @@ Result run(const fs::path& executable, const std::vector<std::string>& arguments
     if (child.pid < 0) { child.pid = -1; os_failure("probe fork", executable, errno); }
     if (child.pid == 0) {
         // dup2 clears CLOEXEC on the standard descriptors; all others close on exec.
-        if (::dup2(in_r.fd, 0) < 0 || ::dup2(out_w.fd, 1) < 0 || ::dup2(err_w.fd, 2) < 0) {
+        if (::dup2(in_r.fd, 0) < 0 || ::dup2(out_w.fd, 1) < 0 || ::dup2(err_w.fd, 2) < 0
+            || (cwd && ::chdir(directory.c_str()) != 0)) {
             const int code = errno;
             (void)!::write(fail_w.fd, &code, sizeof code);
             ::_exit(127);
@@ -153,7 +155,8 @@ Result run(const fs::path& executable, const std::vector<std::string>& arguments
 using process_internal::Handle;
 using process_internal::append_argument;
 Result run(const fs::path& executable, const std::vector<std::string>& arguments,
-           std::string_view input, std::chrono::milliseconds timeout, std::size_t output_limit, const FailureHook& hook) {
+           std::string_view input, std::chrono::milliseconds timeout, std::size_t output_limit, const FailureHook& hook,
+           const std::optional<fs::path>& cwd) {
     const auto deadline = Clock::now() + timeout;
     Handle in_r, in_w, out_r, out_w, err_r, err_w;
     process_internal::make_pipe(in_r, in_w, true, executable, "probe");
@@ -189,10 +192,10 @@ Result run(const fs::path& executable, const std::vector<std::string>& arguments
     if (!::SetInformationJobObject(job.h, JobObjectExtendedLimitInformation, &limits, sizeof limits))
         os_failure("probe job", executable, static_cast<int>(::GetLastError()));
     PROCESS_INFORMATION info{};
-    const std::wstring application = fs::absolute(executable).wstring();
+    const std::wstring application = fs::absolute(executable).wstring(), directory = cwd ? cwd->wstring() : std::wstring();
     if (!::CreateProcessW(application.c_str(), line.data(), nullptr, nullptr, TRUE,
-                          CREATE_SUSPENDED | CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT, nullptr, nullptr,
-                          &startup.StartupInfo, &info))
+                          CREATE_SUSPENDED | CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT, nullptr,
+                          cwd ? directory.c_str() : nullptr, &startup.StartupInfo, &info))
         os_failure("probe spawn", executable, static_cast<int>(::GetLastError()));
     Handle process, thread;
     process.h = info.hProcess;

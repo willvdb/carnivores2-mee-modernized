@@ -45,11 +45,12 @@ from test_genesis_hunt import selection as hunt_selection  # noqa: E402
 from test_launch import SCRIPT  # noqa: E402
 from test_profiles import room_bytes, save_bytes  # noqa: E402
 
-DRIVER, PROBE, ENGINE, CHILD, HELPER = sys.argv[1:6]
+DRIVER, PROBE, ENGINE, CHILD, HELPER = (str(Path(a).resolve()) for a in sys.argv[1:6])
 MODE = sys.argv[6] if len(sys.argv) > 6 else 'prepare'
 SMOD = 'smod=0.85,0.70,0.80,1.0,1.25,1.0'
 DEFAULT = object()
 BEHAVIOR = 'C2_NATIVE_FIXTURE_BEHAVIOR'
+ENGINE_MARKER = 'C2_NATIVE_FIXTURE_MARKER'
 
 
 def observer_double(revision, catalog, slot, selection, score):
@@ -87,11 +88,11 @@ def tree(root):
     return out
 
 
-def native(command, *args, stdin=None, env=None):
-    environment = {k: v for k, v in os.environ.items() if k not in ('C2_PROFILE_PROBE', BEHAVIOR)}
+def native(command, *args, stdin=None, env=None, cwd=None):
+    environment = {k: v for k, v in os.environ.items() if k not in ('C2_PROFILE_PROBE', BEHAVIOR, ENGINE_MARKER)}
     environment.update(env or {})
     done = subprocess.run([DRIVER, command, *args], input=json.dumps(stdin).encode() if stdin is not None else b'',
-                          capture_output=True, timeout=120, env=environment)
+                          capture_output=True, timeout=120, env=environment, cwd=cwd)
     if done.returncode != 0:
         raise AssertionError(f'driver failed: {done}')
     kind, _, rest = done.stdout.decode().rstrip('\n').partition(' ')
@@ -100,19 +101,22 @@ def native(command, *args, stdin=None, env=None):
     return kind, rest
 
 
-def child_running(marker):
-    """Linux: whether any live process command line contains the marker (/proc scan)."""
+def child_running(work):
+    """Linux /proc scan: a live process whose cwd is the session's work directory (the
+    synthetic child) or whose command line names it (the engine's --session-root)."""
     if not Path('/proc').is_dir():
         return None
+    work = str(work)
     for entry in Path('/proc').iterdir():
         if not entry.name.isdigit():
             continue
         try:
-            command = (entry / 'cmdline').read_bytes()
+            if os.readlink(entry / 'cwd') == work:
+                return True
+            if work.encode() in (entry / 'cmdline').read_bytes():
+                return True
         except OSError:
             continue
-        if marker.encode() in command:
-            return True
     return False
 
 
@@ -137,6 +141,7 @@ class Base(unittest.TestCase):
         self.digest = hashlib.sha256(self.engine.read_bytes()).hexdigest()
         self.game_before = tree(self.game)
         self.addCleanup(lambda: self.assertEqual(tree(self.game), self.game_before))
+        self.engine_marker = self.base / 'engine-invocations'
         # The labelled doubles stay active for every direct reference call.
         self.patchers = [patch(target, side_effect=double) for target, double in PATCHES.items()]
         for patcher in self.patchers:
@@ -226,7 +231,9 @@ class Base(unittest.TestCase):
             self.assertEqual(a['fixture'], a['executable'])
             child = Path(CHILD).resolve()
             self.assertEqual(a['executable'], {'path': str(child), 'sha256': hashlib.sha256(child.read_bytes()).hexdigest()})
-            self.assertEqual(e['argv'][:2], [sys.executable, '-I'])
+            # The reference resolves its interpreter (python.exe versus python3.exe on Windows).
+            self.assertEqual(e['executable'], native_session.executable_evidence(sys.executable))
+            self.assertEqual(e['argv'][:2], [e['executable']['path'], '-I'])
             for key in ('kind', 'cwd', 'timeout_seconds', 'scenario', 'shell'):
                 self.assertEqual(a[key], e[key], key)
         if synthetic and 'logs' in actual and 'logs' in expected:
@@ -273,6 +280,17 @@ class Base(unittest.TestCase):
         self.assertEqual(strip(tree(actual_store), actual['id']), strip(tree(expected_store), expected['id']))
         self.assertFalse((actual_store / 'lodge.lock').exists())
         return actual
+
+    def marker_env(self):
+        self.engine_marker.unlink(missing_ok=True)
+        return {ENGINE_MARKER: str(self.engine_marker)}
+
+    def assert_engine_queried(self, queried):
+        """Both sides share the marker file: neither implementation may have executed the engine."""
+        if queried:
+            self.assertEqual(self.engine_marker.read_text().splitlines(), ['invoked', 'invoked'])
+        else:
+            self.assertFalse(self.engine_marker.exists(), 'the engine was executed')
 
     def assert_refused(self, expected, actual, expected_store, actual_store, message=None):
         self.assertEqual(actual[0], expected[0], (expected, actual))
@@ -519,37 +537,44 @@ class Prepare(Base):
         ]
         for kwargs, message in cases:
             with self.subTest(kwargs=kwargs):
-                expected, actual, result = self.native_prepare(**kwargs)
+                env = {**kwargs.pop('env', {}), **self.marker_env()}
+                expected, actual, result = self.native_prepare(env=env, **kwargs)
                 if message is None:
                     self.assertEqual(expected[0], 'oserror')
                 self.assert_refused(expected, actual, self.store.directory, result, message)
+                # The capability query precedes only the execution-spec (timeout) check.
+                self.assert_engine_queried(message is not None and ('timeout' in message or 'contract' in message))
 
     def test_native_prepare_overlap_pair_and_lock_refusals(self):
         inside = self.store.directory / 'engine'
         inside.mkdir()
         shutil.copy2(self.engine, inside / 'engine')
-        expected, actual, result = self.native_prepare(engine=inside / 'engine')
+        expected, actual, result = self.native_prepare(engine=inside / 'engine', env=self.marker_env())
         self.assert_refused(expected, actual, self.store.directory, result,
                             'native workspace overlaps protected source/content/engine')
+        self.assert_engine_queried(False)
         shutil.rmtree(inside)
         lock = self.store.directory / 'lodge.lock'
         lock.write_bytes(b'foreign-lock')
-        expected, actual, result = self.native_prepare()
+        expected, actual, result = self.native_prepare(env=self.marker_env())
         self.assertEqual(actual[0], 'frontend')
         self.assertTrue(actual[1].startswith('frontend writer lock exists: '), actual)
         self.assertEqual(actual[1], expected[1])
         self.assertEqual((result / 'lodge.lock').read_bytes(), b'foreign-lock')
+        self.assert_engine_queried(False)
         lock.unlink()
         (self.source / 'trophy00.sab').unlink()
         with self.store.transaction() as data:
             a = data['associations'][self.association]
             a['files'] = [f for f in a['files'] if f['kind'] == 'sav']
-        expected, actual, result = self.native_prepare()
+        expected, actual, result = self.native_prepare(env=self.marker_env())
         self.assert_refused(expected, actual, self.store.directory, result,
                             'engine contract v1 requires an existing complete SAV/SAB pair')
-        expected, actual, result = self.native_prepare(adapter='hunt')
+        self.assert_engine_queried(False)
+        expected, actual, result = self.native_prepare(adapter='hunt', env=self.marker_env())
         self.assert_refused(expected, actual, self.store.directory, result,
                             'hunt contract requires an existing complete SAV/SAB pair')
+        self.assert_engine_queried(False)
         expected, actual, result = self.synthetic()
         self.assert_same_store(expected, actual, self.store.directory, result, synthetic=True)
 
@@ -570,6 +595,38 @@ class Prepare(Base):
         # The codec helper answers the query with unrelated JSON; the refusal must match the reference.
         self.assertEqual(native('query-contract', str(PROBE)),
                          self.python(lambda: native_session.query_contract(native_session.executable_evidence(PROBE))))
+        # A successful query invokes the engine exactly once per side; a refused trust never does.
+        env = self.marker_env()
+        self.assertEqual(native('query-contract', str(self.engine), env=env)[0], 'ok')
+        with patch.dict(os.environ, env):
+            native_session.query_contract(evidence)
+        self.assert_engine_queried(True)
+
+    def test_capability_query_runs_in_a_fresh_temporary_directory(self):
+        """The trusted engine must never see the caller's working directory (review B1)."""
+        if os.name != 'posix':
+            self.assertTrue(True, 'the authored shell engine needs a POSIX shebang; Windows keeps the CreateProcess cwd path')
+            return
+        engine = self.base / 'engine.sh'
+        engine.write_text('#!/bin/sh\necho touched > "$PWD/ENGINE_WROTE_HERE"\n'
+                          "printf '%s' '" + json.dumps(CAPABILITY, separators=(',', ':')) + "'\n")
+        engine.chmod(0o755)
+        caller = self.base / 'caller-cwd'
+        caller.mkdir()
+        temp = Path(tempfile.gettempdir())
+        leftovers = lambda: sorted(p.name for p in temp.iterdir() if p.name.startswith('c2-contract-'))
+        before = leftovers()
+        self.assertEqual(native('query-contract', str(engine), cwd=caller), ('ok', CAPABILITY))
+        self.assertEqual(list(caller.iterdir()), [], 'the engine wrote into the caller working directory')
+        self.assertEqual(leftovers(), before, 'the temporary query directory leaked')
+        previous = os.getcwd()
+        os.chdir(caller)
+        try:
+            self.assertEqual(native_session.query_contract(native_session.executable_evidence(str(engine))), CAPABILITY)
+        finally:
+            os.chdir(previous)
+        self.assertEqual(list(caller.iterdir()), [])
+        self.assertEqual(leftovers(), before)
 
     def test_workspace_findings_match_reference(self):
         expected, actual, result = self.native_prepare()
@@ -787,9 +844,7 @@ class Run(Base):
             with self.subTest(target=target):
                 if target == 'link' and os.name != 'posix':
                     continue
-                marker = self.base / 'codec-invocations'
-                marker.unlink(missing_ok=True)
-                env = {'C2_TEST_PROBE_MARKER': str(marker)}
+                env = {}
                 journals = []
 
                 def reference():
@@ -865,6 +920,77 @@ class Run(Base):
         self.assertEqual(recovered[1]['diagnostics'][-1]['code'], 'process-ownership-lost')
         self.assertEqual(recover_session(self.store, prepared['id'], PROBE), recovered[1])
 
+    def test_child_detection_sees_a_live_synthetic_child(self):
+        """The /proc probe used by the other tests must actually detect a hanging child."""
+        if child_running('/nonexistent') is None:
+            self.assertTrue(True, 'no /proc on this host; the detection helper reports None')
+            return
+        work = self.base / 'detect' / 'work'
+        (work / 'state').mkdir(parents=True)
+        (work / 'state/trophy00.sav').write_bytes(save_bytes())
+        (work / 'state/trophy00.sab').write_bytes(room_bytes())
+        child = subprocess.Popen([CHILD, '--scenario', 'hang', '--slot', '0', '--literal', 'x'], cwd=work,
+                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        try:
+            child.stdout.readline()
+            self.assertTrue(child_running(work))
+        finally:
+            child.kill()
+            child.wait(timeout=10)
+        self.assertFalse(child_running(work))
+
+    def test_interrupt_before_launch_before_spawn_and_while_running(self):
+        """The KeyboardInterrupt analogue of the reference CLI (review B2)."""
+        kind, prepared = self.nt_prepare_synthetic(scenario='hang', timeout=20)
+        self.assertEqual(kind, 'ok', prepared)
+        root = self.root(prepared)
+        self.assertEqual(native('run-interrupt', str(self.store.directory), prepared['id'], PROBE, 'before-launch'),
+                         ('interrupted', 'interrupted before launch; session remains prepared'))
+        self.assertEqual(read_journal(self.store, prepared['id']), prepared)
+        self.assertEqual(list((root / 'logs').iterdir()), [])
+        self.assertFalse((self.store.directory / 'lodge.lock').exists())
+        self.assertFalse(child_running(root / 'work'))
+        # A session interrupted before launch launches normally afterwards.
+        kind, returned = native('run-cancel', str(self.store.directory), prepared['id'], PROBE, '150')
+        self.assertEqual((kind, returned['state'], returned['process']['stop_reason']), ('ok', 'returned', 'cancelled'))
+        kind, prepared = self.nt_prepare_synthetic(scenario='hang', timeout=20)
+        root = self.root(prepared)
+        kind, message = native('run-interrupt', str(self.store.directory), prepared['id'], PROBE, 'before-spawn')
+        self.assertEqual(kind, 'interrupted', message)
+        self.assertTrue(message.startswith('interrupted before spawn; session left launching'), message)
+        journal = read_journal(self.store, prepared['id'])
+        self.assertEqual(journal['state'], 'launching')
+        self.assertEqual([e['state'] for e in journal['transitions']], ['prepared', 'launching'])
+        self.assertIsNone(journal['process'])
+        self.assertEqual(list((root / 'logs').iterdir()), [])
+        self.assertFalse(child_running(root / 'work'))
+        recovered = native('recover', str(self.store.directory), prepared['id'], PROBE, 'fixture-policy')
+        self.assertEqual((recovered[0], recovered[1]['state'], recovered[1]['diagnostics'][-1]['code']),
+                         ('ok', 'interrupted', 'process-ownership-lost'))
+        self.assertEqual(recover_session(self.store, prepared['id'], PROBE), recovered[1])
+        kind, prepared = self.nt_prepare_synthetic(scenario='hang', timeout=20)
+        root = self.root(prepared)
+        kind, journal = native('run-interrupt', str(self.store.directory), prepared['id'], PROBE, 'while-running')
+        self.assertEqual(kind, 'ok', journal)
+        self.assertEqual((journal['state'], journal['process']['stop_reason']), ('returned', 'cancelled'))
+        self.assertEqual([e['state'] for e in journal['transitions']], ['prepared', 'launching', 'running', 'returned'])
+        self.assertNotEqual(journal['process']['exit_code'], 0)
+        self.assertFalse(child_running(root / 'work'))
+        # A pre-set cancel flag still launches and then stops the child (reference Event semantics).
+        kind, prepared = self.nt_prepare_synthetic(scenario='hang', timeout=20)
+        kind, journal = native('run-cancel', str(self.store.directory), prepared['id'], PROBE, '0')
+        self.assertEqual(kind, 'ok', journal)
+        self.assertEqual((journal['state'], journal['process']['stop_reason']), ('returned', 'cancelled'))
+        self.assertEqual([e['state'] for e in journal['transitions']], ['prepared', 'launching', 'running', 'returned'])
+        # A pre-set interrupt on a native run never queries the engine and leaves the journal prepared.
+        j = self.py_prepare_native('observer')
+        env = self.marker_env()
+        self.assertEqual(native('run-native-interrupt', str(self.store.directory), 'observer', j['id'], PROBE, 'fixture-policy',
+                                stdin={'engine': str(self.engine), 'digest': self.digest}, env=env),
+                         ('interrupted', 'interrupted before launch; session remains prepared'))
+        self.assertFalse(self.engine_marker.exists())
+        self.assertEqual(read_journal(self.store, j['id']), j)
+
     def native_pipeline(self, adapter='observer', behavior='', cancel_after=None, prepare_kwargs=None, run_kwargs=None):
         env = {BEHAVIOR: behavior} if behavior else {}
         prepare_kwargs, run_kwargs = prepare_kwargs or {}, run_kwargs or {}
@@ -915,11 +1041,13 @@ class Run(Base):
         ]
         for adapter, identity, kwargs, message in cases:
             with self.subTest(adapter=adapter, kwargs=kwargs, message=message):
+                env = self.marker_env()
                 expected, actual, result = self.both(lambda: self.py_run_native(adapter, identity, **kwargs),
-                                                     lambda: self.nt_run_native(adapter, identity, **kwargs))
+                                                     lambda: self.nt_run_native(adapter, identity, env=env, **kwargs), env=env)
                 if message is None:
                     self.assertEqual(expected[0], 'oserror')
                 self.assert_refused(expected, actual, self.store.directory, result, message)
+                self.assert_engine_queried(False)
         expected, actual, result = self.both(lambda: run_session(self.store, observer['id'], PROBE),
                                              lambda: native('run', str(self.store.directory), observer['id'], PROBE))
         self.assert_refused(expected, actual, self.store.directory, result,
@@ -964,8 +1092,11 @@ class Run(Base):
                         first = self.candidate_journal()
                         accept_candidate(self.store, first['id'], first['pins']['generation_id'], candidate_digest(first), PROBE)
                 digest = hashlib.sha256(Path(engine).read_bytes()).hexdigest() if mutation == 'engine-changed' else DEFAULT
+                env = {**env, **self.marker_env()}
                 expected, actual, result = self.both(lambda: self.py_run_native('hunt', j['id'], engine=engine, digest=digest),
                                                      lambda: self.nt_run_native('hunt', j['id'], engine=engine, digest=digest, env=env), env=env)
+                # Trust, evidence and pin checks precede the capability query; the rest follow it.
+                self.assert_engine_queried(mutation not in ('engine-changed', 'tampered-selection', 'stale-generation'))
                 journal = self.assert_same_store(expected, actual, self.store.directory, result)
                 self.assertEqual(journal['state'], 'failed')
                 self.assertIsNone(journal['process'])
