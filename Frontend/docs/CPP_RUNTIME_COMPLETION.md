@@ -162,13 +162,32 @@ Accepted, documented differences from R2 (nonblocking):
 
 ## Next actionable task
 
-1. Check CI at the latest code SHA. The `python.exe` harness fix is included;
-   fix `frontend-native-workflow-reference` on Windows (the Python reference
-   dies of CTRL_BREAK 0xC000013A in the cancellation step) without weakening
-   native assertions.
-2. Freeze a code SHA; obtain green Linux+Windows CI and local ASan/UBSan +
-   Release at that exact SHA.
-3. Final separate review of the integrated session + acceptance + CLI/cutover
-   paths (including the unre-reviewed R4 fixes and `cli.cpp` interrupt wiring).
-4. Record the final verdict; interactive real-Genesis hunt + acceptance
+Frontend CI at `7071068` (run 36208984040): Linux green; Windows 56/59 with
+three failures. `2b2ea4c` fixes the first; the other two are still open.
+
+1. **Fixed in `2b2ea4c` (harness only):** `frontend-native-workflow-reference`
+   now accepts CPython's CTRL_BREAK exit 0xC000013A on Windows, then recovers
+   the session. The native workflow still asserts cancellation on every platform.
+2. **Open, fails the same way every run:** `frontend-native-sessions-prepare`
+   `test_workspace_findings_match_reference`. On Windows, the native finding for
+   a missing directory says `directory_iterator::directory_iterator: ...`, but the
+   reference says `[WinError 3] The system cannot find the ...`. This is a
+   difference in diagnostic text. Decide whether it is a production parity
+   defect (format native OS errors like the reference) or an accepted
+   platform-text difference (compare code/path only on Windows).
+3. **Open, seen once (run 36208984040):**
+   `frontend-native-sessions-run` `test_synthetic_cancellation_stops_the_owned_child`.
+   The log `total_bytes` differ by 243 against a tolerance of 4. The likely
+   cause is the 150 ms cancel racing child startup on Windows. Confirm by
+   rerunning, then fix the harness timing without weakening the
+   cancellation assertions.
+4. Freeze a code SHA. At that exact SHA, get green Linux and Windows CI, a
+   Python-disabled build, the staged Python-free workflow, a Release build and
+   local ASan/UBSan, and the native G0->G1->G2 E2E.
+5. Run one final separate review of the integrated path: CLI -> prepare ->
+   trust/capability -> owned run/cancel -> reconcile -> candidate ->
+   accept/recover -> G0/G1/G2 -> Python-free cutover. Include the R4 fixes: the
+   capability query uses a fresh temporary cwd, and a pre-launch interrupt
+   exits 130 without launching.
+6. Record the verdict. An interactive real-Genesis hunt plus acceptance
    remains manual validation.
