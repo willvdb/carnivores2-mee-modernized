@@ -36,6 +36,7 @@ import unittest
 BIN, FIXTURE_CLI, ENGINE = (Path(a).resolve() for a in sys.argv[1:4])
 SANDBOX = '--sandbox' in sys.argv[4:]
 REFERENCE = '--reference' in sys.argv[4:]
+BWRAP = shutil.which('bwrap')  # resolved before PATH is reduced to the shims
 del sys.argv[1:]
 EXE = '.exe' if os.name == 'nt' else ''
 NATIVE, PROBE = BIN / ('c2-frontend-native' + EXE), BIN / ('c2-profile-probe' + EXE)
@@ -109,7 +110,7 @@ class Workflow(unittest.TestCase):
         if REFERENCE:
             cls.env = {k: v for k, v in os.environ.items() if k != 'C2_PROFILE_PROBE'}
         if SANDBOX:
-            if not shutil.which('bwrap'):
+            if not BWRAP:
                 raise SystemExit('--sandbox requires bubblewrap')
             cls.libraries = shared_libraries([NATIVE, PROBE, BIN / 'c2-frontend-synthetic-child', FIXTURE_CLI, ENGINE])
         cls.game = cls.author_game(cls.base / 'Game')
@@ -146,7 +147,10 @@ class Workflow(unittest.TestCase):
         argv = [str(program), '--store', str(self.store), '--probe', str(PROBE), *map(str, args)]
         if not SANDBOX:
             return argv
-        wrap = ['bwrap', '--die-with-parent', '--unshare-pid', '--dev', '/dev', '--proc', '/proc',
+        # No pid namespace: journal PIDs stay host PIDs (the harness reaps an
+        # orphaned test child by that PID). --die-with-parent keeps a killed
+        # sandbox equivalent to a killed frontend.
+        wrap = [BWRAP, '--die-with-parent', '--dev', '/dev', '--proc', '/proc',
                 '--tmpfs', '/tmp', '--bind', str(self.base), str(self.base),
                 '--ro-bind', str(BIN), str(BIN), '--ro-bind', str(FIXTURE_CLI), str(FIXTURE_CLI),
                 '--ro-bind', str(ENGINE), str(ENGINE), '--chdir', str(self.work)]
@@ -191,6 +195,18 @@ class Workflow(unittest.TestCase):
     def hunt(self, *extra):
         return ['--area', 'areas:0', '--license', 'licenses:0', '--weapon', 'weapons:0', *extra]
 
+    def interrupt(self, process):
+        """Ctrl-C to the frontend itself (inside the sandbox, bwrap's child)."""
+        if os.name == 'nt':
+            return process.send_signal(signal.CTRL_BREAK_EVENT)
+        target = process.pid
+        if SANDBOX:
+            children = Path(f'/proc/{process.pid}/task/{process.pid}/children').read_text().split()
+            self.assertEqual(len(children), 1, children)
+            target = int(children[0])
+            self.assertTrue(Path(f'/proc/{target}/exe').resolve().name.startswith('c2-frontend-native'))
+        os.kill(target, signal.SIGINT)
+
     def wait_state(self, identity, state, timeout=60):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -210,6 +226,20 @@ class Workflow(unittest.TestCase):
     def sessions(self):
         root = self.store / 'sessions'
         return set(p.name for p in root.iterdir()) if root.exists() else set()
+
+    @unittest.skipUnless(SANDBOX, 'sandbox negative control')
+    def test_sandbox_contains_no_python(self):
+        # The host interpreter exists outside, yet cannot be executed inside the
+        # identical namespace the product runs in.
+        host = Path(sys.executable).resolve()
+        self.assertTrue(host.is_file())
+        wrap = self.command([], False)[:-len([str(NATIVE), '--store', str(self.store), '--probe', str(PROBE)])]
+        for interpreter in (str(host), '/usr/bin/python3', '/bin/sh'):
+            done = subprocess.run([*wrap, interpreter, '-c', 'print(1)'], capture_output=True, timeout=30)
+            self.assertNotEqual(done.returncode, 0, interpreter)
+            self.assertIn(b'No such file', done.stderr, interpreter)
+        done = subprocess.run([*wrap, str(NATIVE), '--version'], capture_output=True, timeout=30)
+        self.assertEqual(done.returncode, 0, done.stderr)
 
     # The checkpoints are one continuing workflow over a single store.
     def test_workflow(self):
@@ -349,7 +379,7 @@ class Workflow(unittest.TestCase):
         process = self.spawn(['native-hunt', 'run', identity, *self.trust('--experimental-native-hunt')],
                              fixture=True, env={'C2_NATIVE_FIXTURE_BEHAVIOR': 'hang'})
         self.wait_state(identity, 'running')
-        process.send_signal(signal.CTRL_BREAK_EVENT if os.name == 'nt' else signal.SIGINT)
+        self.interrupt(process)
         out, err = process.communicate(timeout=60)
         self.assertEqual(process.returncode, 0, err)
         cancelled = json.loads(out)
