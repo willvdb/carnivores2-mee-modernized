@@ -57,7 +57,9 @@ ENGINE_MARKER = 'C2_NATIVE_FIXTURE_MARKER'
 # CPython str(OSError): "[Errno N] text" or "[WinError N] text", then ": 'filename'" when named.
 OS_ERROR = re.compile(r"\[(Errno|WinError) (-?\d+)\] (.+?)(?:: ('.*'|\".*\"))?\Z", re.S)
 # The synthetic child's hang is reached once both lines are out (lodge/synthetic_child.py).
-READY_MARKERS = {'stdout.log': b'\n', 'stderr.log': b'synthetic fixture stderr\n'}
+# Both children write through text-mode stdio, so each line ends in os.linesep (CRLF on NT).
+EOL = os.linesep.encode()
+READY_MARKERS = {'stdout.log': EOL, 'stderr.log': b'synthetic fixture stderr' + EOL}
 
 
 def os_error_semantics(message):
