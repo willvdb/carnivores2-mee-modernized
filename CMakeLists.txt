@@ -393,6 +393,12 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     endif()
 
 
+    add_executable(Carnivores2CommandLineContractTests tests/test_command_line_entry.cpp
+        Hunt/Game/CommandLine.cpp Hunt/Core/StateDefs.cpp)
+    target_include_directories(Carnivores2CommandLineContractTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Hunt)
+    target_link_libraries(Carnivores2CommandLineContractTests PRIVATE gtest_main CarnivoresPlatformMemory)
+    add_test(NAME Carnivores2Tests.CommandLineContracts COMMAND Carnivores2CommandLineContractTests)
+
     include(tests/extract_menu_config.cmake)
     add_executable(Carnivores2MenuConfigTests tests/test_menu_config_preservation.cpp)
     target_include_directories(Carnivores2MenuConfigTests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
@@ -478,6 +484,10 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     endif()
 
     add_executable(Carnivores2Tests
+        tests/test_command_line_parse.cpp
+        tests/test_config_parse.cpp
+        tests/test_config_text.cpp
+        tests/test_score_mod.cpp
         tests/test_platform_files.cpp
         tests/test_platform_system.cpp
         tests/test_billboard_math.cpp
