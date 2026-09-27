@@ -436,3 +436,14 @@ TEST(AIBehaviorMathTest, StuckFleeReaimsSweepSidesWithoutTurningBack)
         EXPECT_GE(magnitude, 1e-4f);
     }
 }
+
+TEST(HunterAwarenessBoundaries, TinySpeedCapsBeforeIntegerConversion)
+{
+    EXPECT_EQ(ShotInvestigationTimeForTravel(10000, 100000.0f, 1.0e-30f),
+              kShotInvestigationTravelCap);
+}
+TEST(HunterAwarenessBoundaries, PackAnchorAgeSurvivesClockWrap)
+{
+    EXPECT_TRUE(IsPackHuntAnchorFresh(INT32_MIN + 10, INT32_MAX - 10, 100));
+    EXPECT_FALSE(IsPackHuntAnchorFresh(100, 200, 100));
+}

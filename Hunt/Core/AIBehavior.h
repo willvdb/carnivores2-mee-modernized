@@ -149,7 +149,9 @@ inline int EffectiveAggressMulti(int speciesOverride, int cloneDefault)
 // member has reported since the pack was created.
 inline bool IsPackHuntAnchorFresh(int now, int reportedAt, int maxAge)
 {
-    return reportedAt != 0 && now - reportedAt < maxAge;
+    return reportedAt != 0 && maxAge > 0
+        && static_cast<std::uint32_t>(now) - static_cast<std::uint32_t>(reportedAt)
+            < static_cast<std::uint32_t>(maxAge);
 }
 
 // The pack follows a fresh hunt anchor -- the position of the member that

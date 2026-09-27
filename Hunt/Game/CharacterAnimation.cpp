@@ -238,27 +238,7 @@ void AnimateCharacters()
 			ApplyHunterStimulus(*cptr, contact);
 		}
 
-		if (IsTimedHunterReaction(cptr)) {
-			cptr->tgtime = 0;
-			cptr->AfraidTime -= TimeDt;
-			if (cptr->AfraidTime <= 0) {
-				if (IsAILoggingEnabled()) {
-					char buf[256];
-					snprintf(buf, sizeof(buf),
-						"[AI] expired clone=%d ctype=%d species=%s state=%s pos=(%.0f,%.0f)\n",
-						cptr->Clone, cptr->CType, DinoInfo[cptr->CType].Name,
-						HunterAwarenessStateName(cptr->hunterAwareness),
-						cptr->pos.x, cptr->pos.z);
-					PrintLogAI(buf);
-				}
-				ClearHunterReaction(cptr);
-			}
-		}
-
-		if (cptr->AfraidTime <= 0 && !IsTimedHunterReaction(cptr)) {
-			if (cptr->hunterAwareness == HunterAwarenessState::TrackingHunter)
-				cptr->hunterAwareness = HunterAwarenessState::None;
-		}
+		TickHunterAwareness(*cptr);
 
 		// The awareness core owns hunter-directed destinations: fixed flee
 		// extension and the local search after a fixed pursuit reaches its

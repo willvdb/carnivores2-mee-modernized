@@ -156,7 +156,14 @@ inline int ShotInvestigationTimeForTravel(int baseTime, float distance,
     if (travelSpeed <= 0.0f)
         return baseTime;
 
-    const int travelTime = static_cast<int>(distance / travelSpeed);
+    // Clamp before narrowing: an authored near-zero speed can make the
+    // quotient exceed int even though the final reaction is capped.
+    const float travel = distance / travelSpeed;
+    if (travel >= static_cast<float>(kShotInvestigationTravelCap - kShotInvestigationMinTime))
+        return kShotInvestigationTravelCap;
+    if (!(travel >= 0.0f))
+        return baseTime;
+    const int travelTime = static_cast<int>(travel);
     const int needed = travelTime + kShotInvestigationMinTime;
     int result = baseTime > needed ? baseTime : needed;
     if (result > kShotInvestigationTravelCap)

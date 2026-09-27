@@ -79,11 +79,14 @@ bool CanKillHunter(const TCharacter& character, const THunterGeometry& hunter);
 bool ShouldFleeHunter(const TCharacter& character, float hunterDistanceSquared,
                       bool hunterAttackable);
 
-// The single owner of hunter-directed navigation and reaction time. Called
+// Advance every hunter reaction exactly once, before navigation/animation.
+// Preserve tgtime: it measures progress along a fixed flee leg.
+void TickHunterAwareness(TCharacter& character);
+
+// The single owner of hunter-directed navigation. Called
 // once per creature per frame after the reaction timers have been applied. It
 // owns the fixed flee legs (each new leg re-aimed away from the hunter through
 // the placement check), the local search after a fixed pursuit, the live
-// tracking / live flee destinations, and the untimed reaction timer (exact
-// tracking and morale); wandering and pack movement stay with the animators,
+// tracking / live flee destinations, while reaction timers are owned by TickHunterAwareness; wandering and pack movement stay with the animators,
 // which only read the response.
 void UpdateHunterNavigation(TCharacter& character);

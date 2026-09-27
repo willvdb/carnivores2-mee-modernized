@@ -505,7 +505,7 @@ bool CanKillHunter(const TCharacter& character, const THunterGeometry& hunter)
 	const TCharacter* cptr = &character;
 	if (!MyHealth || !cptr->Health || cptr->StateF == 0xFF || ObservMode)
 		return false;
-	if (!HunterAwarenessAllowsKill(cptr->hunterAwareness))
+	if (cptr->AfraidTime <= 0 || !HunterAwarenessAllowsKill(cptr->hunterAwareness))
 		return false;
 
 	const TDinoInfo& dino = DinoInfo[cptr->CType];
@@ -579,6 +579,37 @@ bool ShouldFleeHunter(const TCharacter& character, float hunterDistanceSquared,
 	return flee;
 }
 
+void TickHunterAwareness(TCharacter& character)
+{
+	if (!character.Health || character.StateF == 0xFF) return;
+	TCharacter* cptr = &character;
+	if (IsTimedHunterReaction(cptr)) {
+		cptr->AfraidTime = TickUntimedReaction(cptr->AfraidTime, TimeDt);
+		if (cptr->AfraidTime <= 0) {
+			if (IsAILoggingEnabled()) {
+				char buf[256];
+				snprintf(buf, sizeof(buf),
+					"[AI] expired clone=%d ctype=%d species=%s state=%s pos=(%.0f,%.0f)\n",
+					cptr->Clone, cptr->CType, DinoInfo[cptr->CType].Name,
+					HunterAwarenessStateName(cptr->hunterAwareness),
+					cptr->pos.x, cptr->pos.z);
+				PrintLogAI(buf);
+			}
+			ClearHunterReaction(cptr);
+		}
+	}
+
+	else {
+		cptr->AfraidTime = TickUntimedReaction(cptr->AfraidTime, TimeDt);
+	}
+
+	if (cptr->AfraidTime <= 0 && !IsTimedHunterReaction(cptr)) {
+		if (cptr->hunterAwareness == HunterAwarenessState::TrackingHunter)
+			cptr->hunterAwareness = HunterAwarenessState::None;
+	}
+
+}
+
 void UpdateHunterNavigation(TCharacter& character)
 {
 	if (!character.Health)
@@ -609,14 +640,6 @@ void UpdateHunterNavigation(TCharacter& character)
 	if (cptr->packId >= 0 && ShouldAlarmPack(cptr->hunterAwareness))
 		Packs[cptr->packId].alert = true;
 
-	// Single timer owner: the timed fixed reactions were already decremented
-	// and cleared by the central tick; every other reaction timer (exact
-	// tracking and morale) ticks here, exactly once per frame. This replaces
-	// the per-animator decrements, including the special tick that contact
-	// promotion used to need, and guarantees that a tracking lock expires.
-	if (!IsTimedHunterReaction(cptr))
-		cptr->AfraidTime = TickUntimedReaction(cptr->AfraidTime, TimeDt);
-
 	// Fixed flee: once the stored point is reached, re-aim the next leg
 	// directly away from the live hunter through the placement check. The
 	// creature's own heading cannot be trusted here: after an overshoot it
@@ -636,13 +659,15 @@ void UpdateHunterNavigation(TCharacter& character)
 			SetHunterFleeTarget(cptr, hunter.dx, hunter.dz);
 		}
 		else {
+			const int previousAttempt = cptr->tgtime / kFleeLegStuckMs;
 			cptr->tgtime += TimeDt;
-			if (cptr->tgtime >= kFleeLegStuckMs) {
-				const int attempt = cptr->tgtime / kFleeLegStuckMs;
+			const int attempt = cptr->tgtime / kFleeLegStuckMs;
+			if (attempt > previousAttempt) {
+				const int elapsed = cptr->tgtime;
 				const THunterGeometry hunter = GetHunterGeometry(cptr);
 				SetHunterFleeTarget(cptr, hunter.dx, hunter.dz,
 					FleeLegStuckRotationAngle(attempt));
-				cptr->tgtime = attempt * kFleeLegStuckMs;
+				cptr->tgtime = elapsed;
 			}
 		}
 		return;
