@@ -136,16 +136,11 @@ void GLRenderer::RenderProjectedShadows()
     const float visibilityRadiusSq = visibilityRadius * visibilityRadius;
     const float shadowCullRadiusSq = shadowCullRadius * shadowCullRadius;
 
-        float r = static_cast<float>((std::max)(fabs(character.rpos.x), fabs(character.rpos.z)));
-        int ri = -1 + static_cast<int>(r / 256.0f + 0.5f);
-        if (ri < 0) ri = 0;
-        if (ri > ctViewR) continue;
-
-        float br = BackViewR + DinoInfo[character.CType].Radius;
-        if (character.rpos.z > br) continue;
-        if (fabs(character.rpos.x) > -character.rpos.z + br) continue;
-        if (fabs(character.rpos.y) > -character.rpos.z + br) continue;
         if (distanceSq > visibilityRadiusSq || distanceSq > shadowCullRadiusSq) continue;
+        // Render3DHardwarePosts has rotated every character inside this distance.
+        // Use the same extent-aware planes so a visible body does not lose its
+        // projected shadow as its origin crosses the edge of the viewport.
+        if (SphereOutsideView(character.rpos, CharacterCullRadius(character))) continue;
 
         float alpha = 0x60 / 255.0f;
         if (character.Health == 0) {

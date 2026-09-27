@@ -491,6 +491,8 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     endif()
 
     add_executable(Carnivores2Tests
+        tests/test_sky_fog_projection.cpp
+        tests/test_water_color.cpp
         tests/test_ai_behavior_math.cpp
         tests/test_game_mode.cpp
         tests/test_load_diagnostics.cpp

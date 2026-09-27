@@ -11,12 +11,12 @@ in float vViewDistance;
 in float vRadialDist;      // radial camera distance (see terrain.vert)
 in float vWaterAlphaFade;
 in vec3 vViewPos;            // view-space position (camera at origin)
-uniform vec3 uSunDirection;     // sun direction in view space (§3.5)
-uniform float uSunVisibility;    // 0..1 sun visibility (§3.5)
-uniform float uFogScatter;       // master scatter strength (§3.5)
+uniform vec3 uSunDirection;     // sun direction in view space
+uniform float uSunVisibility;    // 0..1 sun visibility
+uniform float uFogScatter;       // master scatter strength
 uniform float uNightStrength;     // world-only night lighting (0=day, 1=night)
-uniform vec3 uCamFogColor;       // §3.10 camera-in-fog envelope colour
-uniform float uCamFogAmount;     // §3.10 camera-in-fog envelope strength (0 = off)
+uniform vec3 uCamFogColor;       // camera-in-fog envelope colour
+uniform float uCamFogAmount;     // camera-in-fog envelope strength (0 = off)
 uniform PerFrame {
    mat4 uProjection;
    vec2 uFogRange;          // (fadeStart, distance)
@@ -25,8 +25,8 @@ uniform PerFrame {
    vec3 uFogColor;
    mat4 uView;
    vec4 uWaterAlphaFade;    // x=start, y=end, z=enabled, w=fade step
-   float uWaterDepthFactor; // 0 at surface, 1 at max depth (§3.4)
-   float uCloudCover;       // §3.7: 0=clear sun, 1=overcast (cloud colour temp)
+   float uWaterDepthFactor; // 0 at surface, 1 at max depth
+   float uCloudCover;       // 0=clear sun, 1=overcast (cloud colour temp)
 };
 uniform sampler2DArray uTerrainArray;
 void main() {

@@ -18,8 +18,8 @@ uniform PerFrame {
 uniform sampler2D uModelTexture;
 uniform float uTintByFogColor;
 uniform float uNightStrength;    // world-only night lighting (0=day, 1=night)
-uniform vec3 uCamFogColor;       // §3.10 camera-in-fog envelope colour
-uniform float uCamFogAmount;     // §3.10 camera-in-fog envelope strength (0 = off)
+uniform vec3 uCamFogColor;       // camera-in-fog envelope colour
+uniform float uCamFogAmount;     // camera-in-fog envelope strength (0 = off)
 void main() {
    vec4 texColor = texture(uModelTexture, vTexCoord);
    if (vCutout > 0.5 && texColor.a <= 0.5) discard;
@@ -42,7 +42,18 @@ void main() {
        // far objects still reach the full envelope amount.
        const float kNearFog = 0.25f;
        float camEnvDist = kNearFog + (1.0f - kNearFog) * (1.0f - exp(-2.5f * vViewZ / max(uFogRange.y, 1.0f)));
-       finalColor = mix(finalColor, uCamFogColor, uCamFogAmount * camEnvDist);
+       float camFog = uCamFogAmount * camEnvDist;
+       // Weapon phong/env-map overlays are additive passes drawn over a body
+       // that already carries the envelope's fog-colour blend.  Adding the
+       // fog colour a second time tinted the highlights twice as strongly as
+       // the rest of the viewmodel (visible colour seam between specular and
+       // diffuse weapon sections).  They attenuate toward black instead,
+       // leaving the fog colour to the base pass -- mirroring why GLSky.cpp
+       // zeroes the envelope for the sun, which is likewise added over an
+       // already-fogged layer.  Base draws (uTintByFogColor=0) keep the
+       // regular fog-colour blend.
+       vec3 envelopeColor = mix(uCamFogColor, vec3(0.0f), uTintByFogColor);
+       finalColor = finalColor * (1.0f - camFog) + envelopeColor * camFog;
    }
 
    // Apply night lighting to world models only. Sky and moon use their own
