@@ -95,13 +95,16 @@ class Startup(unittest.TestCase):
         self.assertEqual(list((self.root / 'work/config').iterdir()), [])
 
     def test_production_exit_closes_logs_and_preserves_failures_without_destructors(self):
-        for mode, expected in (('clean', 0), ('io', 3), ('fatal', 1), ('early', 1)):
+        for mode, expected in (('clean', 0), ('io', 3), ('fatal', 1), ('early', 1), ('quit', 0), ('quit-io', 3)):
             with self.subTest(mode=mode):
                 for log in (self.root / 'work/output').iterdir():
                     log.unlink()
                 result = subprocess.run([str(self.exit_probe), *self.args, mode],
                                         cwd=self.content, capture_output=True, timeout=10)
                 self.assertEqual(result.returncode, expected, result.stderr)
+                if mode.startswith('quit'):
+                    self.assertIn(b'SESSION_EXIT', (self.root / 'work/output/carnivor.log').read_bytes())
+                    self.assertNotIn(b'ABNORMAL_HALT', (self.root / 'work/output/carnivor.log').read_bytes())
                 self.assertIn(b'Log closed', (self.root / 'work/output/carnivor.log').read_bytes())
 
     @unittest.skipUnless(os.name == 'nt', 'Windows junction regression')

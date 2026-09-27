@@ -68,34 +68,58 @@ TBEGIN:
 
 		cptr->currentIdleGroup = -1;
 
-		float aDist;
-		aDist = ctViewR * DinoInfo[cptr->CType].aggress + OptAgres / AIInfo[cptr->Clone].agressMulti;
-		if (cptr->gliding) aDist *= 2;
+		const bool fixedPursuit = IsFixedHunterPursuit(cptr);
+		const bool fixedFlee = IsFixedHunterFlee(cptr);
+		const bool fixedReaction = fixedPursuit || fixedFlee;
+		const bool tracksHunter = TracksHunterExactly(cptr);
+		if (fixedPursuit) {
+			cptr->tgtime = 0;
+			if (ShotInvestigationComplete(cptr->AfraidTime, tdist * tdist)) {
+				if (cptr->AfraidTime > 0) {
+					// Stay alert and search the area around the event instead
+					// of running past it or dropping to normal wander.
+					SetNewTargetPlace(cptr, kShotSearchRadius);
+				} else {
+					ClearHunterReaction(cptr);
+					SetNewTargetPlace(cptr, AIInfo[cptr->Clone].targetDistance);
+				}
+				goto TBEGIN;
+			}
+		}
+
+		const float aDist = GetCharacterAggressionRange(cptr);
 
 		if (g_GameMode != GameMode::SurvivalMode) {
-			if (pdist > aDist || ((PlayerY - cptr->pos.y > pdist) && cptr->gliding) ||
-				DinoInfo[cptr->CType].aggress <= 0 || !cptr->awareHunter) {
+			const bool recentlyDamaged = cptr->BloodTTime > 0;
+			if ((!fixedPursuit
+				&& (OutsideNormalAggressionRange(pdist, aDist, recentlyDamaged)
+					|| ((PlayerY - cptr->pos.y > pdist) && cptr->gliding)))
+				|| DinoInfo[cptr->CType].aggress <= 0 || !IsHunterAware(cptr)) {
 				fleeMode = true;
 			}
 			else if (DinoInfo[cptr->CType].defensive && cptr->Health == DinoInfo[cptr->CType].Health0) fleeMode = true;
 			else if (DinoInfo[cptr->CType].fearShot && cptr->Health < DinoInfo[cptr->CType].Health0) fleeMode = true;
-			else if (DinoInfo[cptr->CType].fearHearShot && cptr->heardShot) fleeMode = true;
-			else if (cptr->packId >= 0) Packs[cptr->packId].attack = true;
+			else if (cptr->hunterAwareness == HunterAwarenessState::FleeingFromShot) fleeMode = true;
+			else if (!fixedReaction && tracksHunter && cptr->packId >= 0)
+				Packs[cptr->packId].attack = true;
 		}
+		if (fixedFlee) fleeMode = true;
 
 		if (cptr->packId >= 0) {
-			if (Packs[cptr->packId]._attack) fleeMode = false;
+			if (Packs[cptr->packId]._attack && !fixedReaction) fleeMode = false;
 		}
 
 		if (fleeMode) {
-			nv.x = playerdx;
-			nv.z = playerdz;
-			nv.y = 0;
-			NormVector(nv, 2048.f);
-			cptr->tgx = cptr->pos.x - nv.x;
-			cptr->tgz = cptr->pos.z - nv.z;
+			if (!fixedFlee && (tracksHunter || cptr->packId < 0)) {
+				nv.x = playerdx;
+				nv.z = playerdz;
+				nv.y = 0;
+				NormVector(nv, 2048.f);
+				cptr->tgx = cptr->pos.x - nv.x;
+				cptr->tgz = cptr->pos.z - nv.z;
+			}
+			else if (!fixedFlee) SetPackLeaderTarget(cptr, true);
 			cptr->tgtime = 0;
-			cptr->AfraidTime -= TimeDt;
 
 			if (cptr->packId >= 0) {
 				if (cptr->AfraidTime <= 0)
@@ -105,7 +129,7 @@ TBEGIN:
 						cptr->State = 0;
 					}
 				}
-				else Packs[cptr->packId].alert = true;
+				else if (!fixedReaction) Packs[cptr->packId].alert = true;
 			}
 			else if (cptr->AfraidTime <= 0) {
 				cptr->AfraidTime = 0;
@@ -115,15 +139,20 @@ TBEGIN:
 		}
 		else
 		{
-			cptr->tgx = PlayerX;
-			cptr->tgz = PlayerZ;
-			cptr->tgtime = 0;
-			if (cptr->packId >= 0) {
+			if (!fixedPursuit && (tracksHunter || cptr->packId < 0)) {
+				cptr->tgx = PlayerX;
+				cptr->tgz = PlayerZ;
+				cptr->tgtime = 0;
+			}
+			else if (!fixedPursuit) SetPackLeaderTarget(cptr, false);
+			if (!fixedReaction && tracksHunter && cptr->packId >= 0) {
 				Packs[cptr->packId].alert = true;
 			}
 		}
 
-		if (pdist < DinoInfo[cptr->CType].killDist && DinoInfo[cptr->CType].killDist > 0) {
+		if (!fixedReaction && (tracksHunter || cptr->packId < 0)
+			&& pdist < DinoInfo[cptr->CType].killDist
+			&& DinoInfo[cptr->CType].killDist > 0) {
 			int killAlt = DinoInfo[cptr->CType].waterLevel;
 			if (killAlt < 256) killAlt = 256;
 			if (fabs(PlayerY - cptr->pos.y) < killAlt + 20)
@@ -254,7 +283,8 @@ NOTHINK:
 
 	if (cptr->Phase == DinoInfo[cptr->CType].killType[cptr->killType].anim && DinoInfo[cptr->CType].killTypeCount)  goto ENDPSELECT;
 
-	FlDst = ctViewR * DinoInfo[cptr->CType].flyDist + OptAgres / AIInfo[cptr->Clone].agressMulti;
+	FlDst = GameplayViewRadiusCells(ctViewR) * DinoInfo[cptr->CType].flyDist
+		+ OptAgres / AIInfo[cptr->Clone].agressMulti;
 	if (!alertInit) FlDst *= 1.5;
 	if (!cptr->gliding && cptr->State && pdist > FlDst) cptr->gliding = true;
     else if (cptr->pos.y < landUpH + 50

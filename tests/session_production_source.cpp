@@ -4,6 +4,7 @@
 #include "Platform/Screenshot.h"
 #include "Game/ProfileSerialization.h"
 #include "Core/ConfigText.h"
+#include "Core/ConfigParse.h"
 #include "Loaders/LoadDiagnostics.h"
 #include "Game/RefreshPreference.h"
 #include "Game/ResolutionSelection.h"

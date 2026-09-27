@@ -1286,6 +1286,11 @@ void PrintLogVerbose(const char* l)
   PrintLog(l);
 }
 
+bool IsAILoggingEnabled() { return g_AILogging || g_VerboseLogging; }
+void PrintLogAI(const char* message) {
+  if (IsAILoggingEnabled()) PrintLog(message);
+}
+
 void CloseLog()
 {
   Platform::CloseFile(hlog);

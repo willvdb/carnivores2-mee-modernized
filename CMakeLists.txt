@@ -203,6 +203,7 @@ set(CORE_FILES
     Hunt/Game/CharacterMovement.cpp
     Hunt/Game/CharacterMorph.cpp
     Hunt/Game/CharacterSpawn.cpp
+    Hunt/Game/CharacterAwareness.cpp
     Hunt/Game/CharacterAI.cpp
     Hunt/Game/CharacterTracking.cpp
     Hunt/Game/CharacterAnimation.cpp
@@ -490,6 +491,8 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     endif()
 
     add_executable(Carnivores2Tests
+        tests/test_ai_behavior_math.cpp
+        tests/test_game_mode.cpp
         tests/test_load_diagnostics.cpp
         tests/test_script_value_parse.cpp
         tests/test_legacy_scalar_differential.cpp

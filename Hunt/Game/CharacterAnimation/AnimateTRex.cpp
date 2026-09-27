@@ -4,6 +4,7 @@
 // ==========================================================================
 
 #include "Hunt.h"
+#include "../CharacterAwareness.h"
 #include "../CharacterInternal.h"
 
 // Global state imported from StateDefs.cpp
@@ -28,10 +29,12 @@ TBEGIN:
 
 	float tdistSq = targetdx * targetdx + targetdz * targetdz;
 
-	float playerdx = PlayerX - cptr->pos.x - cptr->lookx * 108;
-	float playerdz = PlayerZ - cptr->pos.z - cptr->lookz * 108;
-	float pdistSq = playerdx * playerdx + playerdz * playerdz;
-	float palpha = FindVectorAlpha(playerdx, playerdz);
+	const THunterGeometry hunter = GetHunterGeometry(cptr);
+	const bool fixedPursuit = IsFixedHunterPursuit(cptr);
+	const bool tracksHunter = TracksHunterExactly(cptr);
+	float responseAlpha = fixedPursuit || !tracksHunter
+		? FindVectorAlpha(targetdx, targetdz)
+		: FindVectorAlpha(hunter.dx, hunter.dz);
 	//if (cptr->State==2) { NewPhase=true; cptr->State=1; }
 
 
@@ -47,12 +50,16 @@ TBEGIN:
 		cptr->State = 1;
 		cptr->Phase = DinoInfo[cptr->CType].walkAnim;
 		cptr->FTime = 0;
-		cptr->tgx = PlayerX;
-		cptr->tgz = PlayerZ;
+		// The navigator owns the live tracking / pack-leader target; the
+		// wake-up itself only arms the reaction timer.
+		if (!fixedPursuit && !tracksHunter) {
+			cptr->AfraidTime = 1024;
+		}
 		goto TBEGIN;
 	}
 
-	if (cptr->State) Packs[cptr->packId].alert = true;
+	if (cptr->State && !fixedPursuit && tracksHunter && cptr->packId >= 0)
+		Packs[cptr->packId].alert = true;
 
 
 
@@ -71,11 +78,16 @@ TBEGIN:
 
 		cptr->currentIdleGroup = -1;
 
-		cptr->tgx = PlayerX;
-		cptr->tgz = PlayerZ;
-		cptr->tgtime = 0;
+		if (!fixedPursuit) {
+			// The navigator owns the live tracking / pack-leader target.
+			if (!IsHunterAware(cptr) && cptr->AfraidTime <= 0) {
+				cptr->State = 0;
+				SetNewTargetPlace(cptr, 8048.0f);
+				goto TBEGIN;
+			}
+		}
 		if (cptr->State > 1)
-			if (AngleDifference(cptr->alpha, palpha) < 0.4f)
+			if (AngleDifference(cptr->alpha, responseAlpha) < 0.4f)
 			{
 				if (cptr->State == 2) {
 					if (DinoInfo[cptr->CType].lookCount) {
@@ -109,32 +121,25 @@ TBEGIN:
 
 
 
-		if (pdistSq < DinoInfo[cptr->CType].killDist * DinoInfo[cptr->CType].killDist && DinoInfo[cptr->CType].killDist > 0 && MyHealth)
-		{
-			int killAlt = DinoInfo[cptr->CType].waterLevel;
-			if (killAlt < 256) killAlt = 256;
-			if (fabs(PlayerY - cptr->pos.y) < killAlt + 20)
-			{
-				if (DinoInfo[cptr->CType].killTypeCount > 0) {
+		if (CanKillHunter(*cptr, hunter)) {
+			if (DinoInfo[cptr->CType].killTypeCount > 0) {
 
-					if (!(cptr->StateF & csONWATER))
-					{
-						cptr->vspeed /= 8.0f;
-						cptr->State = 1;
-						cptr->Phase = DinoInfo[cptr->CType].killType[cptr->killType].anim;
-						if (DinoInfo[cptr->CType].killType[cptr->killType].dontloop) cptr->FTime = 0;
-						AddDeadBody(cptr,
-							DinoInfo[cptr->CType].killType[cptr->killType].hunteranim,
-							DinoInfo[cptr->CType].killType[cptr->killType].scream);
-					}
-					else AddDeadBody(cptr, HUNT_EAT, true);
-
+				if (!(cptr->StateF & csONWATER))
+				{
+					cptr->vspeed /= 8.0f;
+					cptr->State = 1;
+					cptr->Phase = DinoInfo[cptr->CType].killType[cptr->killType].anim;
+					if (DinoInfo[cptr->CType].killType[cptr->killType].dontloop) cptr->FTime = 0;
+					AddDeadBody(cptr,
+						DinoInfo[cptr->CType].killType[cptr->killType].hunteranim,
+						DinoInfo[cptr->CType].killType[cptr->killType].scream);
 				}
-				else {
-					AddDeadBody(cptr, HUNT_EAT, true);
-					cptr->State = 0;
-				}
+				else AddDeadBody(cptr, HUNT_EAT, true);
 
+			}
+			else {
+				AddDeadBody(cptr, HUNT_EAT, true);
+				cptr->State = 0;
 			}
 		}
 
@@ -144,7 +149,7 @@ TBEGIN:
 
 	// Step 4: Extend culling distance by 4 units (~1024 world units)
 	// to allow smoothstep fade-out to complete
-	if (pdistSq > ((charViewR + 20 + 4) * 256) * ((charViewR + 20 + 4) * 256))
+	if (hunter.distanceSquared > ((charViewR + 20 + 4) * 256) * ((charViewR + 20 + 4) * 256))
 		if (ReplaceCharacterForward(cptr)) goto TBEGIN;
 
 	if (!cptr->State) {
@@ -185,13 +190,13 @@ TBEGIN:
 
 
 NOTHINK:
-	if (pdistSq < 2048 * 2048) cptr->NoFindCnt = 0;
+	if (hunter.distanceSquared < 2048 * 2048) cptr->NoFindCnt = 0;
 	if (cptr->NoFindCnt) cptr->NoFindCnt--;
 	else
 	{
 		cptr->tgalpha = CorrectedAlpha(FindVectorAlpha(targetdx, targetdz), cptr->alpha);//FindVectorAlpha(targetdx, targetdz);
 
-		if (cptr->State && pdistSq > DinoInfo[cptr->CType].weaveRange * DinoInfo[cptr->CType].weaveRange && !DinoInfo[cptr->CType].dontWeave)
+		if (cptr->State && hunter.distanceSquared > DinoInfo[cptr->CType].weaveRange * DinoInfo[cptr->CType].weaveRange && !DinoInfo[cptr->CType].dontWeave)
 		{
 			cptr->tgalpha += static_cast<float>(sin(RealTime / 824.f)) / 6.f;
 			if (cptr->tgalpha < 0) cptr->tgalpha += 2 * pi;

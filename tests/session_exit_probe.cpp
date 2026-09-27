@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 std::int32_t Multiplayer = 0, Host = 0;
-bool g_VerboseLogging = false;
+bool g_VerboseLogging = false, g_AILogging = false;
 Platform::FileHandle hlog = Platform::InvalidFile;
 #ifdef _WIN32
 HWND hwndMain = nullptr;
@@ -33,7 +33,8 @@ int main(int argc, char** argv) {
     // A regression to that path is observable, without manufacturing a deadlock.
     std::atexit([] { std::_Exit(99); });
     const auto mode = args.back();
-    if (mode == "io") EngineSession::Fail();
+    if (mode == "io" || mode == "quit-io") EngineSession::Fail();
     if (mode == "early") DoHalt2("startup failure");
+    if (mode == "quit" || mode == "quit-io") DoQuit("test normal exit");
     DoHalt(mode == "fatal" ? "fatal failure" : "");
 }

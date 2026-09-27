@@ -26,13 +26,17 @@ void AddWCircle(float x, float z, float scale)
   // circle when full is O(1) and visually harmless: the array is only
   // reached at all in the extreme view-distance + many-swimmer case,
   // and the dropped ripples are far/short-lived anyway.
-  if (WCCount >= 2096) {
+  // Derived from the array rather than repeating its size, so the guard and
+  // the declaration cannot drift apart.
+  static const int kWCircleCapacity =
+      static_cast<int>(sizeof(WCircles) / sizeof(WCircles[0]));
+  if (WCCount >= kWCircleCapacity) {
     static int hitCount = 0;
     ++hitCount;
     if (hitCount <= 20 || hitCount % 100 == 0) {
       char buf[128];
-      sprintf(buf, "WARNING: WCircles hit 2096 cap (ctViewR=%d); water circle dropped (hit #%d)\n",
-              ctViewR, hitCount);
+      sprintf(buf, "WARNING: WCircles hit %d cap (ctViewR=%d); water circle dropped (hit #%d)\n",
+              kWCircleCapacity, ctViewR, hitCount);
       PrintLogVerbose(buf);
     }
     return;

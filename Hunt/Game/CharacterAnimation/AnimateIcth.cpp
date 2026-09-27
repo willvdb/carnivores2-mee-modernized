@@ -16,8 +16,6 @@ void AnimateIcth(TCharacter *cptr)
 	int _Phase = cptr->Phase;
 	int _FTime = cptr->FTime;
 	float _tgalpha = cptr->tgalpha;
-	if (cptr->AfraidTime) cptr->AfraidTime = MAX(0, cptr->AfraidTime - TimeDt);
-
 
 	bool alertInit = false;
 	if (cptr->State == 2) alertInit = true;

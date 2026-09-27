@@ -4,39 +4,29 @@
 // Extracted from Characters.cpp.
 
 #include "Hunt.h"
+#include "Game/CharacterAwareness.h"
 #include "Game/CharacterInternal.h"
 
 void MakeNoise(Vector3d pos, float range)
 {
+	THunterStimulus stimulus;
+	stimulus.kind = HunterStimulusKind::GunshotHeard;
+	stimulus.position = pos;
+	stimulus.soundRange = range;
 	for (int c = 0; c < ChCount; c++)
-	{
-		TCharacter *cptr = &Characters[c];
-		if (!cptr->Health) continue;
-		float l = VectorLength(SubVectors(cptr->pos, pos));
-		float r = range * (DinoInfo[cptr->CType].HearK * 2);
-		if (l > r) continue;
+		ApplyHunterStimulus(Characters[c], stimulus);
+}
 
+void ReactToHunterCall(Vector3d pos, int callIndex)
+{
+	if (callIndex < 0 || callIndex >= 64) return;
 
-		if (cptr->Clone == AI_TREX) {  //===== T-Rex
-			if (!cptr->State) {
-				cptr->State = 2;
-				cptr->awareHunter = true;
-				cptr->heardShot = true;
-			}
-		}
-
-		if (cptr->Clone != AI_TREX && !DinoInfo[cptr->CType].Aquatic && cptr->Clone != AI_HUNTDOG)
-		{
-			cptr->AfraidTime = static_cast<int>((10.f + (range - l) / 256.f)) * 1024;
-			if (cptr->State == 0) {
-				cptr->State = 2;
-			}
-			cptr->NoFindCnt = 0;
-
-			cptr->awareHunter = true;
-			cptr->heardShot = true;
-		}
-	}
+	THunterStimulus stimulus;
+	stimulus.kind = HunterStimulusKind::HunterCall;
+	stimulus.position = pos;
+	stimulus.callIndex = callIndex;
+	for (int c = 0; c < ChCount; c++)
+		ApplyHunterStimulus(Characters[c], stimulus);
 }
 
 
@@ -56,7 +46,7 @@ void CheckAfraid()
 
 	wlook = Wind.nv;
 
-	float kR, kwind, klook, kstand;
+	float kR = 1.0f, kwind = 0.0f, klook = 0.0f, kstand = 1.0f;
 
 	float kmask = 1.0f;
 	float kskill = 1.0f;
@@ -68,17 +58,34 @@ void CheckAfraid()
 	for (int c = 0; c < ChCount; c++)
 	{
 		TCharacter *cptr = &Characters[c];
+		// Trophy mounts use State as their persistent exhibit slot. The room
+		// normally runs in GameMode::Normal, so CheckAfraid still executes;
+		// allowing a mount through perception can rewrite slot 0 to AI state 2
+		// and disconnect the first plaque from TrophyRoom2.Body[0].
+		if (cptr->StateF == 0xFF) continue;
 		if (!cptr->Health) continue;
-		if (!AIInfo[cptr->Clone].sniffer) continue;
+		if (!GetHunterCapabilities(*cptr).sniffs) continue;
 		//if (cptr->AfraidTime || cptr->State == 1) continue;
 
-		if (cptr->Clone == AI_TREX && (cptr->AfraidTime || cptr->State == 1)) continue; //here to check if hunter detected once it starts running from fear call, trex doesn't like it tho
+		// Perception keeps running for every creature, including the T-Rex
+		// mid-pursuit: a successful check refreshes the tracking lock, which is
+		// the documented "expires unless sight or scent keeps working" rule.
+		// The notice animation is separately gated below so the refresh never
+		// replays the look/roar sequence of an active chase.
 
-		float kALook, kASmell, kRes; // Declarations precede the legacy jump for standard C++.
+		// The neutral values cover the survival path, which jumps straight to
+		// the reaction with no perception math (waves always detect the
+		// hunter). They also keep the goto from skipping the initializers of
+		// the locals declared below it.
+		float kALook = 1.0f;
+		float kASmell = 1.0f;
+		float kRes = 1.0f;
+
 		if (g_GameMode == GameMode::SurvivalMode) goto isAfraid;
 
 		rlook = SubVectors(ppos, cptr->pos);
-		kR = VectorLength(rlook) / 256.f / (32.f + charViewR / 2);
+		kR = VectorLength(rlook) / 256.f
+			/ (32.f + GameplayViewRadiusCells(ctViewR) / 2.f);
 		NormVector(rlook, 1.0f);
 
 		kR *= 2.5f / static_cast<float>((1.5 + OptSens / 128.f));
@@ -142,12 +149,27 @@ void CheckAfraid()
 			//MESSAGE REMOVED
 
 			kRes = MIN(kRes, kR);
+			const HunterAwarenessState priorAwareness = cptr->hunterAwareness;
 			cptr->AfraidTime = static_cast<int>((1.0 / (kRes + 0.1) * 10.f * 1000.f));
 			if (cptr->State==0) {
 				cptr->State = 2;
 			}
-			cptr->awareHunter = true;
-			if (cptr->Clone == AI_TREX) //===== T-Rex
+			cptr->hunterAwareness = HunterAwarenessState::TrackingHunter;
+			// Sight and scent acquisitions are awareness events as well: the
+			// trace shows the spark, not only the reaction. Re-perception
+			// refreshes stay silent; a fresh acquisition or promotion logs.
+			if (priorAwareness != HunterAwarenessState::TrackingHunter) {
+				const float senseDx = cptr->pos.x - PlayerX;
+				const float senseDz = cptr->pos.z - PlayerZ;
+				TraceHunterEvent(cptr, kALook < kASmell ? "sight" : "scent",
+					static_cast<float>(sqrt(senseDx * senseDx + senseDz * senseDz)),
+					0.0f, 0.0f);
+			}
+			// A T-Rex with any active reaction keeps charging. Its awareness
+			// still refreshes or upgrades above; only a brand-new detection
+			// plays the look/smell notice.
+			if (cptr->Clone == AI_TREX //===== T-Rex
+				&& ShouldScheduleNoticeAnimation(priorAwareness))
 				if (kALook > kASmell) cptr->State = 3;
 			cptr->NoFindCnt = 0;
 		}

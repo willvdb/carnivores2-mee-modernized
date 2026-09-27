@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Core/AudioTypes.h"
+#include "Core/AIBehavior.h"
 #include "Core/ModelTypes.h"
 #include "Core/RenderTypes.h"
 #include <cstdint>
@@ -152,8 +153,8 @@ struct TCharacter
 
   int dogPrey; // used by dog only. The dino currently being tracked
 
-  bool awareHunter;
-  bool heardShot;
+  // Fixed reactions retain the event-time target in tgx/tgz.
+  HunterAwarenessState hunterAwareness = HunterAwarenessState::None;
 
   bool aquaticIdle;
 

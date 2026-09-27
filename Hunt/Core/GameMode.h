@@ -8,15 +8,15 @@ enum class GameMode : unsigned int {
     Normal          = 0,
     Swimming        = 1,
     Underwater      = 2,
-    Flying          = 3,
+    Flying          = 3,    // reserved: takes over the FLY bool when it moves
     Paused          = 4,
     Binocular       = 5,
     OpticScope      = 6,
     MapMode         = 7,
     ExitCountdown   = 8,
     TrophyMode      = 9,
-    Dead            = 10,
-    Falling         = 11,
+    Dead            = 10,   // reserved
+    Falling         = 11,   // reserved
     Crouching       = 12,
     NightVision     = 13,
     DogMode         = 14,
@@ -44,6 +44,30 @@ inline void EnterExitCountdownNoStash() {
 // Full-screen aiming views that survive a menu round-trip via the stash above.
 inline bool IsOverlayMode(GameMode m) {
   return m == GameMode::OpticScope || m == GameMode::Binocular || m == GameMode::MapMode;
+}
+// Pure state transitions used by the Escape/Pause menu paths. Keeping the
+// stash rules separate from mouse/window side effects makes the restoration
+// contract testable without a running Win32 game window.
+inline GameMode EnterMenuState(GameMode current, GameMode& saved) {
+  saved = current;
+  return GameMode::ExitCountdown;
+}
+inline GameMode RestoreMenuState(GameMode saved) {
+  return IsOverlayMode(saved) ? saved : GameMode::Normal;
+}
+// The only modes an underwater transition may silently overwrite. Every other
+// mode is an overlay the player opened deliberately (Tab -> map, Escape ->
+// exit prompt, Pause), and stomping on it every frame would make that overlay
+// unreachable while the camera is submerged. The side effects of the
+// transition (camera tweak, splash sound, water circle) still apply either
+// way; see the swim branch in Hunt/Game/Controls.cpp.
+//
+// Crouching is kept in the set for symmetry with the original list, but it is
+// vestigial: stance moved to the CrouchMode flag above, and nothing assigns
+// GameMode::Crouching any more.
+inline bool IsInWorldMovementMode(GameMode m) {
+  return m == GameMode::Normal || m == GameMode::Swimming ||
+         m == GameMode::Crouching;
 }
 // Rendering view: the exit menu (ExitCountdown) and Pause borrow the mode
 // slot but must not change what the player SEES of an underlying magnifier.
@@ -120,4 +144,7 @@ extern char ProjectName[128]; // set once from the prj= command line (GameState.
 inline bool InTrophyRoomMap() { return strstr(ProjectName, "trophy") != nullptr; }
 // Session semantics must survive movement and overlay changes to the mode slot.
 inline bool InTrophyRoom() { return IsTrophyMode() || InTrophyRoomMap(); }
+// The trophy room has no usable hunting map. Base this on session identity,
+// not only TrophyMode, because movement and overlays can replace that mode.
+inline bool CanUseMap() { return !InTrophyRoom(); }
 inline bool IsSurvivalMode()  { return g_GameMode == GameMode::SurvivalMode; }

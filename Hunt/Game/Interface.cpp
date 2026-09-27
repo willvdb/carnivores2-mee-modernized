@@ -78,18 +78,10 @@ void PrintText(const char* s, int x, int y, int rgb)
   }
 }
 
-void DoHalt(const char* Mess)
+// Teardown shared by the fault path (DoHalt) and normal session exits
+// (DoQuit), which differ only in what they log.
+[[noreturn]] static void ShutdownSession(int status)
 {
-
-	LOG_ERROR("ABNORMAL_HALT: %s", Mess ? Mess : "");
-	if (strlen(Mess))
-	{
-		PrintLog("ABNORMAL_HALT: ");
-		PrintLog(Mess);
-		PrintLog("\n");
-		Platform::ShowMessage("Carnivores Termination", Mess);
-	}
-
 	if (Multiplayer) {
 		if (Host) {
 			ShutDownServer();
@@ -110,7 +102,7 @@ void DoHalt(const char* Mess)
 
   CloseLog();
   LogClose();
-  if (EngineSession::Active()) std::_Exit(EngineSession::ExitStatus(Mess && *Mess ? 1 : 0));
+  if (EngineSession::Active()) std::_Exit(EngineSession::ExitStatus(status));
 #ifdef _WIN32
   TerminateProcess(GetCurrentProcess(), 0);
 #else
@@ -118,10 +110,45 @@ void DoHalt(const char* Mess)
 #endif
 }
 
+void DoHalt(const char* Mess)
+{
+
+	// A halt with no text is a call-site mistake, not an empty message: say so
+	// instead of emitting a bare "ABNORMAL_HALT:" line that reads as a crash.
+	bool hasMessage = Mess && *Mess;
+	LOG_ERROR("ABNORMAL_HALT: %s", hasMessage ? Mess : "(no message)");
+	if (hasMessage)
+	{
+		PrintLog("ABNORMAL_HALT: ");
+		PrintLog(Mess);
+		PrintLog("\n");
+		Platform::ShowMessage("Carnivores Termination", Mess);
+	}
+
+	ShutdownSession(hasMessage ? 1 : 0);
+}
+
+// Normal end of a session: leaving the trophy room, quitting a hunt with F9,
+// or the end-of-hunt exit that follows the death cinematic. Nothing went
+// wrong, so it must not be logged as a fault -- but it does name the path,
+// which is what makes a session log readable when a player reports "it just
+// closed".
+void DoQuit(const char* Reason)
+{
+	bool hasReason = Reason && *Reason;
+	LOG_INFO("SESSION_EXIT: %s", hasReason ? Reason : "(unspecified)");
+	PrintLog("SESSION_EXIT: ");
+	if (hasReason)
+		PrintLog(Reason);
+	PrintLog("\n");
+
+	ShutdownSession(0);
+}
+
 //For stopping the program before audio/3d hardware startup
 void DoHalt2(const char* Mess)
 {
-	LOG_ERROR("ABNORMAL_HALT: %s", Mess ? Mess : "");
+	LOG_ERROR("ABNORMAL_HALT: %s", Mess ? Mess : "(no message)");
 //	AudioStop();
 //	Audio_Shutdown();
 
@@ -130,7 +157,7 @@ void DoHalt2(const char* Mess)
   EnableWindow(hwndMain, false);
 #endif
 	Platform::ShutdownApplication();
-	if (strlen(Mess))
+	if (Mess && *Mess)
 	{
 		PrintLog("ABNORMAL_HALT: ");
 		PrintLog(Mess);
@@ -285,11 +312,9 @@ void StartLoading()
 
 void EndLoading()
 {
-#ifdef _WIN32
-  memset(lpVideoBuf, 0, VideoPitchB*768);
-#else
-  memset(lpVideoBuf, 0, static_cast<size_t>(VideoPitchB)*WinH);
-#endif
+  // Clear the full runtime-sized overlay on every platform.
+  if (lpVideoBuf && VideoPitchB > 0 && WinH > 0)
+    memset(lpVideoBuf, 0, static_cast<size_t>(VideoPitchB) * WinH);
   LoadWall.lpImage.reset();
 }
 

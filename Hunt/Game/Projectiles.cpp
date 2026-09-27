@@ -5,6 +5,8 @@
 
 #include "Hunt.h"
 #include "Core/ProjectileMath.h"
+#include "Game/CharacterAwareness.h"
+#include "Game/CharacterInternal.h"
 
 std::uint32_t ColorSum(std::uint32_t C1, std::uint32_t C2)
 {
@@ -236,7 +238,7 @@ int AnimateBullet(float ax, float ay, float az,
 		  else Characters[ShotDino].Health -= WeapInfo[CurrentWeapon].Power;
 	  }
 	  if (Characters[ShotDino].Health < 0) Characters[ShotDino].Health = 0;
-	  registerDamage(ShotDino, bullet[b].enemy);
+	  registerDamage(ShotDino, bullet[b].enemy, bullet[b].orig);
   }
   
   return sres;
@@ -394,38 +396,30 @@ void AnimateBullets() {
 	}
 
 }
-void registerDamage(int Dino, bool enemyBullet) {
-
-	if (!Characters[Dino].Health)
-	{
-		if ((DinoInfo[Characters[Dino].CType].BaseScore || DinoInfo[Characters[Dino].CType].trophy) && !Multiplayer && g_GameMode != GameMode::SurvivalMode && !enemyBullet) //No trophies in multiplayer for now - update this at later date?
-		{
-			TrophyRoom.Last.success++;
-			SubmitDinoScore(Dino);
-		}
-
-		//No amb respawn in multiplayer for now - update this at later date?
-		Characters_AddSecondaryOne(&Characters[Dino]);
-
-	}
-	else
-	{
-		Characters[Dino].awareHunter = true;
-		Characters[Dino].AfraidTime = 60 * 1000;
-		if (Characters[Dino].Clone != AI_TREX || Characters[Dino].State == 0)
-			Characters[Dino].State = 2;
-
-		Characters[Dino].BloodTTime += 90000;
-
-	}
-
-	if (Characters[Dino].Clone == AI_TREX)
-		if (Characters[Dino].State)
-			Characters[Dino].State = 5;
-		else
-			Characters[Dino].State = 1;
-
-}
+void registerDamage(int Dino, bool enemyBullet, const Vector3d& hunterPosition) {
+
+	TCharacter& character = Characters[Dino];
+	const TDinoInfo& info = DinoInfo[character.CType];
+
+	if (!character.Health)
+	{
+		if ((info.BaseScore || info.trophy) && !Multiplayer
+			&& g_GameMode != GameMode::SurvivalMode && !enemyBullet)
+		{
+			TrophyRoom.Last.success++;
+			SubmitDinoScore(Dino);
+		}
+
+		Characters_AddSecondaryOne(&character);
+	}
+	else
+	{
+		THunterStimulus stimulus;
+		stimulus.kind = HunterStimulusKind::DirectHit;
+		stimulus.position = hunterPosition;
+		ApplyHunterStimulus(character, stimulus);
+	}
+}
 void RemoveCharacter(int index)
 {
   if (index==-1) return;

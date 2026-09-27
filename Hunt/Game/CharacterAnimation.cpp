@@ -4,6 +4,7 @@
 // ==========================================================================
 
 #include "Hunt.h"
+#include "CharacterAwareness.h"
 #include "CharacterInternal.h"
 
 // Forward declaration from AnimateHuntDead.cpp
@@ -75,7 +76,7 @@ void AnimateMHunters() {
 				TSFX *shotFx = &fxGunShot[WeapInfo[weapon].SFXIndex];
 				AddVoice3d(shotFx->length, shotFx->lpData.data(), pos->x, pos->y, pos->z);//TODO XYZ NEEDS TO BE PLAYER -> SOUND VECTOR
 			}
-			MakeNoise(*pos, ctViewR * 200 * WeapInfo[weapon].Loud);
+			MakeNoise(*pos, GunshotNoiseRangeWorld(ctViewR, WeapInfo[weapon].Loud));
 		}
 
 		if (mHunterCall[c] != -1) {
@@ -224,9 +225,64 @@ void AnimateCharacters()
 				}
 			}
 
-		if (cptr->AfraidTime <= 0) {
-			cptr->awareHunter = false;
-			cptr->heardShot = false;
+		// Contact-range awareness: a creature following a remembered event
+		// position still notices a hunter who physically enters its attack
+		// reach. The resolver owns the eligibility (fixed pursuit, attack reach,
+		// live player, not detached observer) and the promotion to exact
+		// tracking; the stored point alone still never authorizes a kill at a
+		// distance, and flee reactions keep their stored direction.
+		{
+			THunterStimulus contact;
+			contact.kind = HunterStimulusKind::Contact;
+			contact.position = PlayerPos;
+			ApplyHunterStimulus(*cptr, contact);
+		}
+
+		if (IsTimedHunterReaction(cptr)) {
+			cptr->tgtime = 0;
+			cptr->AfraidTime -= TimeDt;
+			if (cptr->AfraidTime <= 0) {
+				if (IsAILoggingEnabled()) {
+					char buf[256];
+					snprintf(buf, sizeof(buf),
+						"[AI] expired clone=%d ctype=%d species=%s state=%s pos=(%.0f,%.0f)\n",
+						cptr->Clone, cptr->CType, DinoInfo[cptr->CType].Name,
+						HunterAwarenessStateName(cptr->hunterAwareness),
+						cptr->pos.x, cptr->pos.z);
+					PrintLogAI(buf);
+				}
+				ClearHunterReaction(cptr);
+			}
+		}
+
+		if (cptr->AfraidTime <= 0 && !IsTimedHunterReaction(cptr)) {
+			if (cptr->hunterAwareness == HunterAwarenessState::TrackingHunter)
+				cptr->hunterAwareness = HunterAwarenessState::None;
+		}
+
+		// The awareness core owns hunter-directed destinations: fixed flee
+		// extension and the local search after a fixed pursuit reaches its
+		// stored event position. Wandering and pack movement stay with the
+		// animators.
+		UpdateHunterNavigation(*cptr);
+
+		// Opt-in AI trace (ai_logging 1 in config.cfg, or verbose_logging 1):
+		// roughly once per second, show where a reacting creature is and where it
+		// is heading, plus the live hunter distance so an escape can be told from
+		// a standstill or a return. Paired with the event lines from the
+		// awareness core this shows whether it is walking toward the stored
+		// point, searching, or blocked.
+		if (IsAILoggingEnabled() && cptr->hunterAwareness != HunterAwarenessState::None
+			&& (RealTime & 1023) < TimeDt) {
+			const THunterGeometry hunter = GetHunterGeometry(cptr);
+			char aiTrace[256];
+			snprintf(aiTrace, sizeof(aiTrace),
+				"[AI] trace clone=%d ctype=%d species=%s state=%s pos=(%.0f,%.0f) target=(%.0f,%.0f) dist=%.0f afraid=%d\n",
+				cptr->Clone, cptr->CType, DinoInfo[cptr->CType].Name,
+				HunterAwarenessStateName(cptr->hunterAwareness),
+				cptr->pos.x, cptr->pos.z, cptr->tgx, cptr->tgz,
+				hunter.distance, cptr->AfraidTime);
+			PrintLogAI(aiTrace);
 		}
 
 		

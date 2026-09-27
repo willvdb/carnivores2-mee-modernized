@@ -112,6 +112,7 @@ void PlaceTrophy();
 void AnimateCharacters();
 void AnimateMHunters(); //multiplayer
 void MakeNoise(Vector3d, float);
+void ReactToHunterCall(Vector3d, int);
 void CheckAfraid();
 void CreateChMorphedModel(TCharacter* cptr);
 void CreateMorphedObject(TModel* mptr, TVTL &vtl, int FTime);
@@ -330,7 +331,7 @@ int AnimateBullet(float ax, float ay, float az,
 	float bx, float by, float bz, int b);
 void AnimateBullets();
 void refillWeapons(bool);
-void registerDamage(int, bool);
+void registerDamage(int, bool, const Vector3d&);
 
 void AddBloodTrail(TCharacter *cptr);
 
@@ -341,10 +342,20 @@ void AddWCircle(float, float, float);
 void AnimateProcesses();
 [[noreturn]] void DoHalt(const char*);
 [[noreturn]] void DoHalt2(const char*);
+// Normal end of a session (leaving the trophy room, quitting a hunt with F9,
+// or the end-of-hunt exit after the death cinematic). Logged as SESSION_EXIT
+// at INFO level and never shows a message box; reserve DoHalt for real
+// failures so a log's ERROR lines stay meaningful.
+[[noreturn]] void DoQuit(const char*);
 
 void CreateLog();
 void PrintLog(const char* l);
 void PrintLogVerbose(const char* l);
+// AI awareness trace. Enabled by config.cfg "ai_logging 1" or, for existing
+// debug setups, by verbose_logging. The gate is checked at the call sites so
+// nothing is formatted while the trace is off.
+bool IsAILoggingEnabled();
+void PrintLogAI(const char* l);
 void CloseLog();
 
 

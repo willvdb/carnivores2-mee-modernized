@@ -61,6 +61,126 @@ inline int ViewOptToCtViewR(int opt)
     return 72 + ((opt - 127) * (kViewDistanceMax - 72)) / (kViewOptMax - 127);
 }
 
+// Extended rendering distance must not enlarge legacy gameplay perception.
+// Values below the old ceiling retain their original distance-dependent balance.
+inline int GameplayViewRadiusCells(int renderViewRadiusCells)
+{
+    if (renderViewRadiusCells > kViewDistanceDefault)
+        return kViewDistanceDefault;
+    return renderViewRadiusCells;
+}
+
+inline float GunshotNoiseRangeWorld(int renderViewRadiusCells, float weaponLoudness)
+{
+    return static_cast<float>(GameplayViewRadiusCells(renderViewRadiusCells))
+        * 200.0f * weaponLoudness;
+}
+
+inline constexpr int kShotInvestigationMinTime = 10 * 1024;
+inline constexpr int kShotInvestigationMaxTime = 30 * 1024;
+inline constexpr int kTRexShotInvestigationMaxTime = 60 * 1024;
+inline constexpr float kShotInvestigationArrivalRadius = 512.0f;
+// Once a fixed reaction reaches the stored event position, the creature keeps
+// searching the area around it (instead of running past it or dropping
+// straight to normal wander) until the reaction timer expires.
+inline constexpr float kShotSearchRadius = 2048.0f;
+
+// A flee leg is a direction, not a destination: it only has to carry the
+// creature away before the next leg is aimed. The last stretch toward a leg
+// point is often untraversable (shoreline, rocks, trees), and an escaping
+// animal that must close to the investigation radius before re-aiming ends up
+// orbiting the unreachable point for the rest of its reaction. Half a leg is
+// close enough.
+inline constexpr float kFleeLegArrivalRadius = 1024.0f;
+// Fallback clock for a leg that cannot be closed at all (for example a point
+// across an inlet): after this long without reaching it, the flee ray is
+// re-aimed with a rotated heading so the same unreachable direction is not
+// picked again. Accumulated in ms on TCharacter::tgtime, which doubles as the
+// per-leg clock (reset to 0 whenever a target is set).
+inline constexpr int kFleeLegStuckMs = 4000;
+
+// Contact-range awareness (see ShouldPromotePursuitToTracking): a creature
+// following a remembered event position notices the hunter when the hunter is
+// physically inside its attack reach, and keeps tracking for this long.
+// Matches the direct-hit reaction window so defending a contact-range
+// intrusion lasts as long as an authored hit response.
+inline constexpr int kCloseRangeAwarenessTime = 60 * 1000;
+
+// A tracking pack member republishes its own position as the pack's hunt
+// anchor every frame; the anchor expires this soon after it stops reporting,
+// so packmates do not chase a stale position once the tracker loses the
+// hunter.
+inline constexpr int kPackHuntAnchorTime = 2 * 1024;
+
+// A hunter event (heard shot or direct hit) is a stronger stimulus than
+// passive detection, so the event reaction uses the species' authored
+// aggression range multiplied by this scale. A predator with a large range
+// (Carnotaurus) covers any shot it can hear; a low-aggression herbivore
+// (Pachycephalosaurus, aggress 60) still flees from a genuinely distant event
+// instead of charging the source. Tune this single value to change how far
+// events carry: raise it for more pursuit, lower it for more flight.
+inline constexpr float kHunterEventRangeScale = 2.5f;
+
+inline int ShotInvestigationTime(float distance, float hearingRange, bool isTRex)
+{
+    if (hearingRange <= 0.0f)
+        return kShotInvestigationMinTime;
+
+    float proximity = 1.0f - distance / hearingRange;
+    if (proximity < 0.0f) proximity = 0.0f;
+    if (proximity > 1.0f) proximity = 1.0f;
+
+    const int maximum = isTRex
+        ? kTRexShotInvestigationMaxTime
+        : kShotInvestigationMaxTime;
+    return kShotInvestigationMinTime
+        + static_cast<int>((maximum - kShotInvestigationMinTime) * proximity);
+}
+
+inline bool ShotInvestigationComplete(int remainingTime, float targetDistanceSquared)
+{
+    return remainingTime <= 0
+        || targetDistanceSquared <= kShotInvestigationArrivalRadius
+            * kShotInvestigationArrivalRadius;
+}
+
+// The proximity-based reaction time gets shorter the farther the event was,
+// which can expire before a slow creature has walked to the stored position.
+// Extend it to cover the travel plus a search window, capped so no event
+// reaction outlives the longest authored investigation.
+inline constexpr int kShotInvestigationTravelCap = 60 * 1024;
+
+inline int ShotInvestigationTimeForTravel(int baseTime, float distance,
+                                          float travelSpeed)
+{
+    if (travelSpeed <= 0.0f)
+        return baseTime;
+
+    const int travelTime = static_cast<int>(distance / travelSpeed);
+    const int needed = travelTime + kShotInvestigationMinTime;
+    int result = baseTime > needed ? baseTime : needed;
+    if (result > kShotInvestigationTravelCap)
+        result = kShotInvestigationTravelCap;
+    return result;
+}
+
+// Recent direct damage is a stronger stimulus than passive detection. Species
+// fear and awareness rules are still evaluated after this range check, so a
+// wounded creature keeps engaging beyond its normal acquisition range.
+inline bool OutsideNormalAggressionRange(float distance, float aggressionRange,
+                                         bool recentlyDamaged)
+{
+    return !recentlyDamaged && distance > aggressionRange;
+}
+
+inline bool OutsideNormalAggressionRangeSquared(float distanceSquared,
+                                                float aggressionRange,
+                                                bool recentlyDamaged)
+{
+    return !recentlyDamaged
+        && distanceSquared > aggressionRange * aggressionRange;
+}
+
 // ===================== Object Detail (LOD) =====================
 
 inline constexpr int kObjectDetailMin = 24;
