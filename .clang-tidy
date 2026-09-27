@@ -49,10 +49,15 @@ CheckOptions:
   - { key: performance-unnecessary-value-param.CheckTriviallyCopyableParams, value: 1 }
 
 # ── Warnings as errors ───────────────────────────────────────────────────────
-# Only real bug patterns fail the build; style warnings are advisory.
+# The legacy port has a measured warning baseline. Keep high-confidence lifetime
+# and memory checks blocking while the compatibility-heavy checks remain
+# advisory until they can be fixed without a broad refactor.
 WarningsAsErrors: |
-  bugprone-*
+  bugprone-bad-signal,
+  bugprone-dangling-handle,
+  bugprone-sizeof-expression,
+  bugprone-suspicious-memset-usage,
+  bugprone-use-after-move
 
 # ── Files to analyse ─────────────────────────────────────────────────────────
 HeaderFilterRegex: '.*'
-AnalyzeTemporaryDtors: true

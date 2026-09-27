@@ -63,6 +63,9 @@ set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
 # SOFT builds.
 option(GL_PERF_HOOKS "Enable in-engine GL performance harness (Phase 0.1)" OFF)
 option(MEM_DEBUG "Enable game allocation tracking and leak reporting" OFF)
+option(C2_WARNINGS_AS_ERRORS "Treat project-owned MSVC warnings as errors" OFF)
+option(ENABLE_DEPLOYED_SMOKE_TEST "Register the licensed deployed game smoke test" OFF)
+set(CARNIVORES_LEGACY_DIR "" CACHE PATH "Deployed game directory for the optional smoke test")
 
 # Renderer and game-only definitions are applied to the game target below;
 # keeping them target-scoped prevents the standalone menu from inheriting
@@ -80,8 +83,6 @@ if(MSVC)
     add_definitions(-DWIN32)
     add_definitions(-DNOMINMAX)
 
-    # Fix for some legacy headers and scoping
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP /permissive")
 
     # Enable memory debugging for Debug builds by default, or explicitly for
     # any configuration through -DMEM_DEBUG=ON. Keep it game-target scoped;
@@ -282,8 +283,8 @@ set(CORE_FILES
 if(MSVC AND CMAKE_BUILD_TYPE STREQUAL "Release")
     # /GL + /LTCG = Link-Time Optimization
     # /O2 = Maximize Speed, /Oi = Intrinsics, /Ot = Favor Fast Code, /Ob2 = Aggressive Inlining
-    # /Gw = Optimize Globals, /GS- = No Buffer Checks, /fp:fast = Fast Float, /arch:SSE2 = SSE2
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /GL /O2 /Oi /Ot /Ob2 /Gw /GS- /fp:fast /Zc:inline")
+    # /Gw = Optimize Globals, /GS = Buffer Checks, /fp:fast = Fast Float, /arch:SSE2 = SSE2
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /GL /O2 /Oi /Ot /Ob2 /Gw /GS /fp:fast /Zc:inline")
     if(CMAKE_SIZEOF_VOID_P EQUAL 4)
         string(APPEND CMAKE_CXX_FLAGS_RELEASE " /arch:SSE2")
     endif()
@@ -645,12 +646,12 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     add_test(NAME Carnivores2Tests.SharedLibrary COMMAND Carnivores2LibraryTests)
 
     # SmokeTest only runs when a game executable is built (not menu-only)
-    if(WIN32 AND TARGET Carnivores1)
+    if(WIN32 AND TARGET Carnivores1 AND ENABLE_DEPLOYED_SMOKE_TEST)
         add_test(NAME SmokeTest
             COMMAND powershell -ExecutionPolicy Bypass -File
                 ${CMAKE_SOURCE_DIR}/tests/smoke_test.ps1
                 -Renderer ${RENDERER}
-                -Duration 5
+                -Duration 5 -GameDir "${CARNIVORES_LEGACY_DIR}"
         )
     endif()
 endif()
@@ -660,3 +661,17 @@ foreach(target IN ITEMS Carnivores1 Carnivores2Menu Carnivores2MenuMediaTests Ca
         target_link_libraries(${target} PRIVATE CarnivoresPlatformMemory)
     endif()
 endforeach()
+
+# Keep project warning policy off SDL, GoogleTest and other dependencies.
+if(MSVC)
+    get_property(c2_project_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+    foreach(target IN LISTS c2_project_targets)
+        get_target_property(c2_target_type ${target} TYPE)
+        if(c2_target_type MATCHES "^(EXECUTABLE|STATIC_LIBRARY|SHARED_LIBRARY|OBJECT_LIBRARY)$")
+            target_compile_options(${target} PRIVATE /MP /permissive /W4)
+            if(C2_WARNINGS_AS_ERRORS)
+                target_compile_options(${target} PRIVATE /WX)
+            endif()
+        endif()
+    endforeach()
+endif()
