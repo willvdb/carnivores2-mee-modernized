@@ -512,6 +512,7 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
         tests/test_load_validate.cpp
         tests/test_map_scaling.cpp
         tests/test_memory_arena.cpp
+        tests/test_menu_launch_args.cpp
         tests/test_menu_slider.cpp
         tests/test_serialized_layout.cpp
         tests/test_legacy_profile.cpp
@@ -592,6 +593,14 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_options(Carnivores2MenuMediaTests PRIVATE /OPT:REF /INCREMENTAL:NO)
     target_link_libraries(Carnivores2MenuMediaTests PRIVATE gtest_main)
     add_test(NAME Carnivores2Tests.MenuMedia COMMAND Carnivores2MenuMediaTests)
+    add_executable(Carnivores2MenuResourceTests tests/test_menu_resource_entry.cpp
+        tests/menu_resource_seams.cpp Menu/Resources.cpp)
+    target_include_directories(Carnivores2MenuResourceTests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/Menu ${CMAKE_CURRENT_SOURCE_DIR}/Hunt)
+    target_link_libraries(Carnivores2MenuResourceTests PRIVATE gtest_main)
+    add_test(NAME Carnivores2Tests.MenuResources COMMAND Carnivores2MenuResourceTests)
+    add_test(NAME Carnivores2Tests.HuntdatChecker COMMAND powershell -NoProfile
+        -ExecutionPolicy Bypass -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_check_huntdat.ps1)
     endif()
 
     # Exercise the production world-model sampler without a GL context.

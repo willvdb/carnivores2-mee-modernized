@@ -26,6 +26,10 @@
 #include <memory>
 #include <limits>
 #include "Core/ConfigText.h"
+#include "ListMath.h"
+#include "Loaders/LoadDiagnostics.h"
+#include "Loaders/LoadValidate.h"
+#include "Loaders/ScriptValueParse.h"
 
 
 class script_error : public std::exception
@@ -56,11 +60,124 @@ public:
 
 uint32_t g_ScriptLine = 0;
 
+static int ReadScriptIntValue(const char* value, const char* where)
+{
+	const ScriptIntResult result = ParseScriptIntStatus(value, 0);
+	if (result.status == ScriptScalarStatus::Ok)
+		return result.value;
+
+	const char* reason = ScriptScalarStatusReason(result.status);
+	LoadDiagnostics::Instance().Report("MenuResource", where, reason, nullptr);
+	if (LoadDiagnostics::Instance().Strict())
+		throw script_error("Expected a valid integer value.", where, g_ScriptLine);
+	return result.value;
+}
+
+static float ReadScriptFloatValue(const char* value, const char* where)
+{
+	const ScriptFloatResult result = ParseScriptFloatStatus(value, 0.0f);
+	if (result.status == ScriptScalarStatus::Ok)
+		return result.value;
+
+	const char* reason = ScriptScalarStatusReason(result.status);
+	LoadDiagnostics::Instance().Report("MenuResource", where, reason, nullptr);
+	if (LoadDiagnostics::Instance().Strict())
+		throw script_error("Expected a valid finite float value.", where, g_ScriptLine);
+	return result.value;
+}
+
+// Legacy integer-backed fields (health) were authored with decimal literals in
+// stock data (health = 13.5); the old atoi path truncated them, so keep that
+// behaviour here instead of rejecting the line outright.
+static int ReadScriptLegacyIntValue(const char* value, const char* where)
+{
+	const ScriptIntResult result = ParseScriptLegacyIntStatus(value, 0);
+	if (result.status == ScriptScalarStatus::Ok)
+		return result.value;
+
+	const char* reason = ScriptScalarStatusReason(result.status);
+	LoadDiagnostics::Instance().Report("MenuResource", where, reason, nullptr);
+	if (LoadDiagnostics::Instance().Strict())
+		throw script_error("Expected a valid integer value.", where, g_ScriptLine);
+	return result.value;
+}
+
+// The menu reads both _MENU.TXT and the legacy _RES.TXT, and their key
+// spellings are not consistent between the two files ("smell" vs "smellK",
+// "hear" vs "hearK"). The historical reader matched keys by substring, which
+// is why a line like `file = 'models/main_hunt/para.car'` was read as the AI
+// field. Match the whole key exactly -- only its letter case is relaxed -- so
+// a value can never select a different field.
+static bool MenuScriptKeyIs(const char* line, const char* key)
+{
+	if (!line || !key)
+		return false;
+	const char* eq = strchr(line, '=');
+	if (!eq)
+		return false;
+	const char* begin = line;
+	while (*begin == ' ' || *begin == '\t')
+		++begin;
+	if (begin[0] == '/' && begin[1] == '/')
+		return false;
+	const char* end = eq;
+	while (end > begin && (end[-1] == ' ' || end[-1] == '\t'))
+		--end;
+	const size_t length = static_cast<size_t>(end - begin);
+	return length == strlen(key) && _strnicmp(begin, key, length) == 0;
+}
+
+// One field can appear under more than one historical spelling (see above).
+static bool MenuScriptKeyIsAny(const char* line, const char* keyA, const char* keyB)
+{
+	return MenuScriptKeyIs(line, keyA) || MenuScriptKeyIs(line, keyB);
+}
+
+static std::string ReadAssignedText(const char* value, const char* where)
+{
+	const char* text = nullptr;
+	size_t length = 0;
+	if (!FindQuotedValue(value, &text, &length))
+		throw script_error("Expected a quoted text value.", where, g_ScriptLine);
+	return std::string(text, length);
+}
+
 
 void ReadWeapons(FILE*);
 void ReadCharacters(FILE*);
 void ReadAccessories(FILE*);
 void LoadC2Maps();
+
+
+/*
+ * Path of the missing half of an area's <basename>.map/.rsc pair, or an empty
+ * string when the pair is complete. The engine opens both files from the single
+ * "prj=" token the menu passes (LaunchArgs.h -> Hunt/Loaders/Resources.cpp), so
+ * a .map without its .rsc is a guaranteed halt with "Error opening resource
+ * file". Checking the pair here is therefore the same test the launch runs, not
+ * a stricter rule. The .map is reported first so callers can tell "no area at
+ * all" from "half an area".
+ */
+std::string MissingAreaFile(const std::string& base)
+{
+	if (base.empty())
+		return std::string();
+
+	std::ifstream f;
+	const std::string stem = "huntdat/areas/" + base;
+
+	f.open(stem + ".map", std::ios::binary);
+	if (!f.is_open())
+		return stem + ".map";
+	f.close();
+
+	f.open(stem + ".rsc", std::ios::binary);
+	if (!f.is_open())
+		return stem + ".rsc";
+	f.close();
+
+	return std::string();
+}
 
 
 /*
@@ -138,7 +255,25 @@ AreaInfo MakeOldAreaInfo(int index, int price)
 	// filtering (0xC0000005); ScriptParser.cpp now aliases external->area6, so the
 	// resolved basename is always launchable.
 	std::string mapName;
+
+	// A complete pair settles the sixth slot up front: the engine opens both
+	// <basename>.map and <basename>.rsc from that one name, so whichever
+	// basename has both halves is the launchable one.
+	std::string completePair;
 	if (index == 6) {
+		if (MissingAreaFile("external").empty())
+			completePair = "external";
+		else if (MissingAreaFile("area6").empty())
+			completePair = "area6";
+	}
+
+	if (!completePair.empty()) {
+		a.m_Valid = true;
+		a.m_MapFile = completePair;
+		mapName = "huntdat/areas/" + completePair + ".map";
+		std::cout << "  Map:   " << mapName << " -> OK" << std::endl;
+	}
+	else if (index == 6) {
 		mapName = "huntdat/areas/external.map";
 		std::cout << "  Map:   " << mapName;
 		f.open(mapName.c_str());
@@ -168,8 +303,17 @@ AreaInfo MakeOldAreaInfo(int index, int price)
 	}
 
 	std::cout << "  Result: " << (a.m_Valid ? "VALID" : "INVALID (will be skipped)") << std::endl;
-	if (a.m_Valid && !a.m_MapFile.empty())
+	if (a.m_Valid && !a.m_MapFile.empty()) {
+		// The menu used to validate the .map alone, so a half-copied or
+		// half-exported area looked playable and then halted the game. Name the
+		// missing half here and let the launch paths refuse with that path in
+		// the message.
+		std::string missingHalf = MissingAreaFile(a.m_MapFile);
+		if (!missingHalf.empty())
+			std::cout << "  Missing: " << missingHalf
+			          << " (incomplete area pair; the launch is refused)" << std::endl;
 		std::cout << "  Launch: huntdat/areas/" << a.m_MapFile << std::endl;
+	}
 
 	return a;
 }
@@ -238,35 +382,26 @@ void ReadWeapons(FILE* stream)
 					throw script_error("Was expecting member assignment.", "ReadWeapons()", g_ScriptLine);
 				value++;
 
-				if (strstr(line, "power"))  wi.m_Power = static_cast<float>(atof(value));
-				if (strstr(line, "prec"))   wi.m_Prec = static_cast<float>(atof(value));
-				if (strstr(line, "loud"))   wi.m_Loud = static_cast<float>(atof(value));
-				if (strstr(line, "rate"))   wi.m_Rate = static_cast<float>(atof(value));
-				if (strstr(line, "shots"))  wi.m_Shots = atoi(value);
-				if (strstr(line, "reload")) wi.m_Reload = atoi(value);
-				if (strstr(line, "trace"))  wi.m_TraceC = atoi(value) - 1;
-				if (strstr(line, "optic"))  wi.m_Optic = static_cast<float>(atof(value));
-				if (strstr(line, "fall"))   wi.m_Fall = atoi(value);
-				if (strstr(line, "price"))	wi.m_Price = atoi(value);
-				if (strstr(line, "rank"))	wi.m_Rank = atoi(value);
+				if (MenuScriptKeyIs(line, "power"))  wi.m_Power = ReadScriptFloatValue(value, "ReadWeapons power");
+				if (MenuScriptKeyIs(line, "prec"))   wi.m_Prec = ReadScriptFloatValue(value, "ReadWeapons precision");
+				if (MenuScriptKeyIs(line, "loud"))   wi.m_Loud = ReadScriptFloatValue(value, "ReadWeapons loudness");
+				if (MenuScriptKeyIs(line, "rate"))   wi.m_Rate = ReadScriptFloatValue(value, "ReadWeapons rate");
+				if (MenuScriptKeyIs(line, "shots"))  wi.m_Shots = ReadScriptIntValue(value, "ReadWeapons shots");
+				if (MenuScriptKeyIs(line, "reload")) wi.m_Reload = ReadScriptIntValue(value, "ReadWeapons reload");
+				if (MenuScriptKeyIs(line, "trace"))  wi.m_TraceC = ReadScriptIntValue(value, "ReadWeapons trace") - 1;
+				if (MenuScriptKeyIs(line, "optic"))  wi.m_Optic = ReadScriptFloatValue(value, "ReadWeapons optic");
+				if (MenuScriptKeyIs(line, "fall"))   wi.m_Fall = ReadScriptIntValue(value, "ReadWeapons fall");
+				if (MenuScriptKeyIs(line, "price"))	wi.m_Price = ReadScriptIntValue(value, "ReadWeapons price");
+				if (MenuScriptKeyIs(line, "rank"))	wi.m_Rank = ReadScriptIntValue(value, "ReadWeapons rank");
 
-				if (strstr(line, "name")) {
-					value = strstr(line, "'"); if (!value) throw std::runtime_error("Script loading error");
-					value[strlen(value) - 2] = 0;
-					wi.m_Name = &value[1];
-				}
+				if (ScriptKeyIs(line, "name"))
+					wi.m_Name = ReadAssignedText(value, "ReadWeapons()");
 
-				if (strstr(line, "file")) {
-					value = strstr(line, "'"); if (!value) throw std::runtime_error("Script loading error");
-					value[strlen(value) - 2] = 0;
-					wi.m_FilePath = &value[1];
-				}
+				if (ScriptKeyIs(line, "file"))
+					wi.m_FilePath = ReadAssignedText(value, "ReadWeapons()");
 
-				if (strstr(line, "pic")) {
-					value = strstr(line, "'"); if (!value) throw std::runtime_error("Script loading error");
-					value[strlen(value) - 2] = 0;
-					wi.m_BulletFilePath = &value[1];
-				}
+				if (ScriptKeyIs(line, "pic1"))
+					wi.m_BulletFilePath = ReadAssignedText(value, "ReadWeapons()");
 			}
 
 			spp << "huntdat/menu/pics/weapon" << (g_WeapInfo.size() + 1) << ".tga";
@@ -327,59 +462,48 @@ void ReadCharacters(FILE* stream)
 					throw script_error("Was expecting member assignment.", "ReadCharacters()", g_ScriptLine);
 				value++;
 
-				if (strstr(line, "mass")) di.m_Mass = static_cast<float>(atof(value));
-				if (strstr(line, "length")) di.m_Length = static_cast<float>(atof(value));
-				if (strstr(line, "radius")) di.m_Radius = static_cast<float>(atof(value));
-				if (strstr(line, "health")) di.m_BaseHealth = atoi(value);
-				if (strstr(line, "basescore")) di.m_BaseScore = atoi(value);
-				if (strstr(line, "ai")) di.m_AI = atoi(value);
-				if (strstr(line, "smell")) di.m_SmellK = static_cast<float>(atof(value));
-				if (strstr(line, "hear")) di.m_HearK = static_cast<float>(atof(value));
-				if (strstr(line, "look")) di.m_LookK = static_cast<float>(atof(value));
-				// -> Safety Check
-				if (strstr(line, "smellk")) di.m_SmellK = static_cast<float>(atof(value));
-				if (strstr(line, "heark")) di.m_HearK = static_cast<float>(atof(value));
-				if (strstr(line, "lookk")) di.m_LookK = static_cast<float>(atof(value));
-				// <- End
-				if (strstr(line, "shipdelta")) di.m_ShDelta = static_cast<float>(atof(value));
-				if (strstr(line, "scale0")) di.m_BaseScale = atoi(value);
-				if (strstr(line, "scaleA")) di.m_ScaleA = atoi(value);
-				if (strstr(line, "danger")) di.m_DangerCall = true;
+				if (MenuScriptKeyIs(line, "mass")) di.m_Mass = ReadScriptFloatValue(value, "ReadCharacters mass");
+				if (MenuScriptKeyIs(line, "length")) di.m_Length = ReadScriptFloatValue(value, "ReadCharacters length");
+				if (MenuScriptKeyIs(line, "radius")) di.m_Radius = ReadScriptFloatValue(value, "ReadCharacters radius");
+				if (MenuScriptKeyIs(line, "health")) di.m_BaseHealth = ReadScriptLegacyIntValue(value, "ReadCharacters health");
+				if (MenuScriptKeyIs(line, "basescore")) di.m_BaseScore = ReadScriptIntValue(value, "ReadCharacters base score");
+				if (MenuScriptKeyIs(line, "ai")) di.m_AI = ReadScriptIntValue(value, "ReadCharacters AI");
+				if (MenuScriptKeyIsAny(line, "smell", "smellK")) di.m_SmellK = ReadScriptFloatValue(value, "ReadCharacters smell");
+				if (MenuScriptKeyIsAny(line, "hear", "hearK")) di.m_HearK = ReadScriptFloatValue(value, "ReadCharacters hearing");
+				if (MenuScriptKeyIsAny(line, "look", "lookK")) di.m_LookK = ReadScriptFloatValue(value, "ReadCharacters sight");
+				if (MenuScriptKeyIs(line, "shipdelta")) di.m_ShDelta = ReadScriptFloatValue(value, "ReadCharacters ship delta");
+				if (MenuScriptKeyIs(line, "scale0")) di.m_BaseScale = ReadScriptIntValue(value, "ReadCharacters scale0");
+				if (MenuScriptKeyIs(line, "scaleA")) di.m_ScaleA = ReadScriptIntValue(value, "ReadCharacters scaleA");
+				if (MenuScriptKeyIs(line, "danger")) di.m_DangerCall = true;
 
-				if (strstr(line, "name"))
-				{
-					value = strstr(line, "'");
-					if (!value) throw std::runtime_error("Script loading error");
-					value[strlen(value) - 2] = 0;
-					di.m_Name = &value[1];
-				}
+				if (ScriptKeyIs(line, "name"))
+					di.m_Name = ReadAssignedText(value, "ReadCharacters()");
 
-				if (strstr(line, "file"))
-				{
-					value = strstr(line, "'");
-					if (!value) throw std::runtime_error("Script loading error");
-					value[strlen(value) - 2] = 0;
-					di.m_FilePath = &value[1];
-				}
+				if (ScriptKeyIs(line, "file"))
+					di.m_FilePath = ReadAssignedText(value, "ReadCharacters()");
 
-				if (strstr(line, "pic"))
-				{
-					value = strstr(line, "'");
-					if (!value) throw std::runtime_error("Script loading error");
-					value[strlen(value) - 2] = 0;
-					di.m_PicturePath = &value[1];
-				}
+				if (ScriptKeyIs(line, "pic"))
+					di.m_PicturePath = ReadAssignedText(value, "ReadCharacters()");
 			}
 
 			// Only add huntable dinosaurs (AI >= 10) to the menu list
 			if (di.m_AI >= 10)
 			{
-				std::stringstream spp;
-				spp << "huntdat/menu/pics/dino" << (di.m_AI - 9) << ".tga";
-				LoadPicture(di.m_Thumbnail, spp.str());
+				// Presentation assets follow the list position; an explicit
+				// `pic` line overrides the default thumbnail. The resolved
+				// path is kept on the entry so callers (and tests) can see
+				// which picture the slot actually uses.
+				const std::size_t menuSlot = HuntableMenuSlot(g_DinoInfo.size());
+				if (di.m_PicturePath.empty())
+				{
+					std::stringstream spp;
+					spp << "huntdat/menu/pics/dino" << menuSlot << ".tga";
+					di.m_PicturePath = spp.str();
+				}
+				LoadPicture(di.m_Thumbnail, di.m_PicturePath);
 
-				spp.str(""); spp.clear();
-				spp << "huntdat/menu/pics/dino" << (di.m_AI - 9) << "no.tga";
+				std::stringstream spp;
+				spp << "huntdat/menu/pics/dino" << menuSlot << "no.tga";
 				if (!LoadPicture(di.m_ThumbnailHidden, spp.str()))
 				{
 					di.m_ThumbnailHidden = di.m_Thumbnail;
@@ -415,32 +539,17 @@ void ReadAreas(FILE* stream)
 					throw std::runtime_error("Script loading error");
 				value++;
 
-				if (strstr(line, "price")) area.m_Price = atoi(value);
-				if (strstr(line, "rank"))  area.m_Rank = atoi(value);
+				if (MenuScriptKeyIs(line, "price")) area.m_Price = ReadScriptIntValue(value, "ReadAreas price");
+				if (MenuScriptKeyIs(line, "rank"))  area.m_Rank = ReadScriptIntValue(value, "ReadAreas rank");
 
-				if (strstr(line, "name"))
-				{
-					value = strstr(line, "'");
-					if (!value) throw std::runtime_error("Script loading error");
-					value[strlen(value) - 2] = 0;
-					area.m_Name = &value[1];
-				}
+				if (ScriptKeyIs(line, "name"))
+					area.m_Name = ReadAssignedText(value, "ReadAreas()");
 
-				if (strstr(line, "pname"))
-				{
-					value = strstr(line, "'"); if (!value) throw std::runtime_error("Script loading error");
-					value[strlen(value) - 2] = 0;
-					area.m_ProjectName = &value[1];
-				}
+				if (ScriptKeyIs(line, "pname"))
+					area.m_ProjectName = ReadAssignedText(value, "ReadAreas()");
 
-				if (strstr(line, "thumbnail"))
-				{
-					value = strstr(line, "'");
-					if (!value) throw std::runtime_error("Script loading error");
-					value[strlen(value) - 2] = 0;
-					///TODO: Load TPicture
-					//strcpy(area.Thumbnail, &value[1]);
-				}
+				if (ScriptKeyIs(line, "thumbnail"))
+					(void)ReadAssignedText(value, "ReadAreas()"); // TODO: Load TPicture
 			}
 
 			g_AreaInfo.push_back(area);
@@ -511,7 +620,7 @@ void ReadAccessories(FILE* stream)
 
 		if (value.empty()) continue;
 
-		float mod = static_cast<float>(atof(value.c_str()));
+		float mod = ReadScriptFloatValue(value.c_str(), "ReadAccessories value");
 		g_AccessoryScoreMods[key] = mod;
 		count++;
 		std::cout << "  accessory[" << key << "] = " << mod << std::endl;
@@ -575,26 +684,32 @@ void ReadPrices(FILE* stream)
 		// TODO: Add in error checking
 		//throw script_error("Was expecting member assignment.", "ReadPrices()", g_ScriptLine);
 
-		if (strstr(line, "start")) {
-                g_StartCredits = static_cast<int>(atoi(value));
+		if (MenuScriptKeyIs(line, "start")) {
+                g_StartCredits = ReadScriptIntValue(value, "ReadPrices start credits");
 		}
-		else if (strstr(line, "area")) {
+		else if (MenuScriptKeyIs(line, "area")) {
 			CurA++;  // Area indices start at 1
-			g_AreaInfo.push_back(MakeOldAreaInfo(CurA, static_cast<int>(atoi(value))));
+			g_AreaInfo.push_back(MakeOldAreaInfo(CurA, ReadScriptIntValue(value, "ReadPrices area price")));
 			auto a = g_AreaInfo.end() - 1;
 			if (!a->m_Valid)
 				g_AreaInfo.pop_back();
 		}
-		else if (strstr(line, "dino")) {
-			g_DinoInfo[CurD].m_Price = static_cast<int>(atoi(value));
+		else if (MenuScriptKeyIs(line, "dino")) {
+			// The prices block lists huntable dinos in roster order; more
+			// entries than the loaded roster would write past the vector.
+			if (CurD >= g_DinoInfo.size())
+				throw script_error("More dinosaur prices than loaded dinosaurs.", "ReadPrices()", g_ScriptLine);
+			g_DinoInfo[CurD].m_Price = ReadScriptIntValue(value, "ReadPrices dinosaur price");
 			CurD++;
 		}
-		else if (strstr(line, "weapon")) {
-			g_WeapInfo[CurW].m_Price = static_cast<int>(atoi(value));
+		else if (MenuScriptKeyIs(line, "weapon")) {
+			if (CurW >= g_WeapInfo.size())
+				throw script_error("More weapon prices than loaded weapons.", "ReadPrices()", g_ScriptLine);
+			g_WeapInfo[CurW].m_Price = ReadScriptIntValue(value, "ReadPrices weapon price");
 			CurW++;
 		}
-		else if (strstr(line, "acces")) {
-			g_AccessoryPrices.push_back(static_cast<int32_t>(atoi(value)));
+		else if (MenuScriptKeyIs(line, "acces")) {
+			g_AccessoryPrices.push_back(static_cast<int32_t>(ReadScriptIntValue(value, "ReadPrices accessory price")));
 			CurU++;
 		}
 	}
@@ -711,10 +826,10 @@ void LoadC2Maps()
 			}
 
 			if (key == "price") {
-				area.m_Price = std::atoi(value.c_str());
+				area.m_Price = ReadScriptIntValue(value.c_str(), "LoadC2Maps price");
 			}
 			else if (key == "rank") {
-				area.m_Rank = std::atoi(value.c_str());
+				area.m_Rank = ReadScriptIntValue(value.c_str(), "LoadC2Maps rank");
 			}
 			else if (key == "name") {
 				area.m_Name = value;
@@ -811,6 +926,12 @@ void LoadC2Maps()
 			continue;
 		}
 
+		// The launch prefixes the project stem with huntdat/areas (LaunchArgs.h),
+		// so the pair that matters is <stem>.map/.rsc. A descriptor whose files
+		// live anywhere else validates here but cannot launch; report the half
+		// that is missing instead of letting the game halt on the path.
+		std::string missingHalf = MissingAreaFile(area.m_ProjectName);
+
 		area.m_Valid = true;
 		g_AreaInfo.push_back(area);
 		loaded++;
@@ -818,6 +939,11 @@ void LoadC2Maps()
 		          << "' (map=" << usedMap
 		          << ", price=" << area.m_Price
 		          << ", rank=" << area.m_Rank << ")" << std::endl;
+		if (!missingHalf.empty())
+			std::cout << "LoadC2Maps: '" << area.m_Name
+			          << "' launches as huntdat/areas/" << area.m_ProjectName
+			          << " but " << missingHalf
+			          << " is missing (the launch is refused)" << std::endl;
 	}
 
 	std::cout << "LoadC2Maps: discovered=" << discovered
@@ -828,8 +954,28 @@ void LoadC2Maps()
 }
 
 
+static std::string GetConfigPath();
+
+// The menu parses _MENU.TXT/_RES.TXT before its own LoadConfig() runs, so the
+// load policy is applied here from config.cfg (`load_mode`) with the
+// C2_STRICT_DATA environment override. Default is lenient.
+static void InitMenuLoadPolicy()
+{
+	std::string configPath = GetConfigPath();
+	std::ifstream fs(configPath);
+	if (fs.is_open()) {
+		std::string whole;
+		size_t nulBytes = 0;
+		if (ReadConfigText(fs, whole, nulBytes))
+			InitLoadPolicyFromConfigText(whole.c_str());
+	}
+	InitLoadPolicyFromEnvironment();
+}
+
 void LoadResourcesScript()
 {
+	InitMenuLoadPolicy();
+
 	FILE* file;
 	char line[256];
 
@@ -912,6 +1058,14 @@ void LoadResourcesScript()
 	// We do this AFTER the main script load so script-defined entries
 	// take precedence on duplicate project names.
 	LoadC2Maps();
+
+	// Report values recovered by the lenient load policy (see
+	// Loaders/LoadDiagnostics.h). Strict mode throws before reaching here.
+	LoadDiagnostics& diagnostics = LoadDiagnostics::Instance();
+	if (diagnostics.Count() > 0) {
+		std::cout << diagnostics.Summary();
+		diagnostics.Clear();
+	}
 }
 
 
