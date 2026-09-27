@@ -2,15 +2,27 @@
 // Extracted from Hunt.h (Phase 0.1 -- Split god header into focused headers)
 #pragma once
 
+#include "Core/AudioTypes.h"
 #include "Core/ModelTypes.h"
 #include "Core/RenderTypes.h"
 #include <cstdint>
+
+// _RES.TXT values are copied into fixed arrays and rejected when they do not
+// fit. Display names retain their legacy capacity because several UI layouts
+// rely on it. Asset paths allow 96 bytes for mods with paths beyond the old
+// limit; this still fits logt[128] with the longest 21-byte path prefix.
+inline constexpr int SCRIPT_NAME_MAX = 48;
+inline constexpr int SCRIPT_PATH_MAX = 96;
 
 
 struct TCharacterInfo
 {
   char ModelName[32];
   int AniCount,SfxCount;
+  // Conservative origin-centred sphere enclosing every animation frame at
+  // scale 1.0. The OpenGL renderer uses this instead of gameplay collision
+  // Radius when deciding whether part of a large character can enter the view.
+  float AnimationBoundRadius = 0.0f;
   // Phase 5B.2: mptr is now unique_obj_ptr<TModel>. The model is
   // freed (via ~TModel + _HeapFree) automatically when the
   // TCharacterInfo is destroyed or when mptr is reset. TModel now
@@ -385,7 +397,8 @@ struct TDinoInfo
 {
 	int menuDino = -1;
 
-  char Name[48], FName[48], PName[48];
+  char Name[SCRIPT_NAME_MAX];
+  char FName[SCRIPT_PATH_MAX], PName[SCRIPT_PATH_MAX];
   int Health0, Clone;
   float Mass, Length, Radius,
         SmellK, HearK, LookK,
@@ -566,7 +579,9 @@ struct TWeapInfo
 {
 	bool pic2b = false;
 	bool picch = false;
-  char Name[48], FName[48], BFName[48], CFName[48], BLName[48], SFXName[48];
+  char Name[SCRIPT_NAME_MAX];
+  char FName[SCRIPT_PATH_MAX], BFName[SCRIPT_PATH_MAX], CFName[SCRIPT_PATH_MAX],
+       BLName[SCRIPT_PATH_MAX], SFXName[SCRIPT_PATH_MAX];
   bool MGSSound = false;
   bool bullet = false;
   bool retrieve;
@@ -622,9 +637,67 @@ struct TWeapInfo
   unsigned char crossRed, crossGreen, crossBlue;
   std::uint16_t crossColour565, crossColour555;
 
-  int recoil;
+  float recoil;
 
 };
+
+inline bool IsValidWeaponAnimationIndex(int index, int animationCount,
+                                        bool required)
+{
+  if (required)
+    return index >= 0 && index < animationCount;
+  return index == -1 || (index >= 0 && index < animationCount);
+}
+
+inline bool AreWeaponAnimationReferencesValid(const TWeapInfo& weapon,
+                                              int animationCount)
+{
+  if (animationCount <= 0)
+    return false;
+
+  return IsValidWeaponAnimationIndex(weapon.getAnim, animationCount, true) &&
+         IsValidWeaponAnimationIndex(weapon.shtAnim, animationCount, true) &&
+         IsValidWeaponAnimationIndex(weapon.putAnim, animationCount, true) &&
+         IsValidWeaponAnimationIndex(weapon.rldAnim, animationCount,
+                                     weapon.Reload > 0) &&
+         IsValidWeaponAnimationIndex(weapon.rldAnimPart, animationCount, false) &&
+         IsValidWeaponAnimationIndex(weapon.pmpAnim, animationCount, false) &&
+         IsValidWeaponAnimationIndex(weapon.modAnim, animationCount, false) &&
+         IsValidWeaponAnimationIndex(weapon.emptyAnim, animationCount, false) &&
+         IsValidWeaponAnimationIndex(weapon.getEmpAnim, animationCount, false) &&
+         IsValidWeaponAnimationIndex(weapon.putEmpAnim, animationCount, false);
+}
+
+inline TAni* FindWeaponAnimation(TWeapon& weapon, int weaponIndex,
+                                 int animationIndex)
+{
+  if (weaponIndex < 0 || weaponIndex >= 10)
+    return nullptr;
+  TCharacterInfo& character = weapon.chinfo[weaponIndex];
+  if (!IsValidWeaponAnimationIndex(animationIndex, character.AniCount, true))
+    return nullptr;
+  return &character.Animation[animationIndex];
+}
+
+inline int FindWeaponAnimationSound(const TWeapon& weapon, int weaponIndex,
+                                    int animationIndex)
+{
+  if (weaponIndex < 0 || weaponIndex >= 10)
+    return -1;
+  const TCharacterInfo& character = weapon.chinfo[weaponIndex];
+  if (!IsValidWeaponAnimationIndex(animationIndex, character.AniCount, true))
+    return -1;
+  const int soundIndex = character.Anifx[animationIndex];
+  return soundIndex >= 0 && soundIndex < character.SfxCount ? soundIndex : -1;
+}
+
+inline int FindWeaponSound(const TWeapon& weapon, int weaponIndex, int soundIndex)
+{
+  if (weaponIndex < 0 || weaponIndex >= 10)
+    return -1;
+  const TCharacterInfo& character = weapon.chinfo[weaponIndex];
+  return soundIndex >= 0 && soundIndex < character.SfxCount ? soundIndex : -1;
+}
 
 
 struct TWaterEntity
@@ -698,13 +771,13 @@ static_assert(sizeof(TLevelDef) == (sizeof(void*) == 8 ? 208 : 200), "TLevelDef 
 // Preserve the x86 Release baseline. TWeapon contains STL containers whose
 // sizes also depend on architecture and iterator debugging.
 #ifndef _DEBUG
-static_assert(sizeof(void*) != 4 || sizeof(TWeapon) == 88248, "TWeapon x86 runtime layout changed");
+static_assert(sizeof(void*) != 4 || sizeof(TWeapon) == 88328, "TWeapon x86 runtime layout changed");
 #endif
 
 // Pointer-free runtime sanity checks, not serialized format contracts.
 static_assert(sizeof(TBullet)        == 96,   "TBullet size changed — projectile state");
-static_assert(sizeof(TDinoInfo)      == 13800,"TDinoInfo size changed — runtime dino configuration");
-static_assert(sizeof(TWeapInfo)      == 468,  "TWeapInfo size changed — weapon configuration");
+static_assert(sizeof(TDinoInfo)      == 13896,"TDinoInfo size changed — runtime dino configuration");
+static_assert(sizeof(TWeapInfo)      == 708,  "TWeapInfo size changed — weapon configuration");
 static_assert(sizeof(TTrophyType)    == 580,  "TTrophyType size changed — trophy type data");
 static_assert(sizeof(TDinoKill)      == 32,   "TDinoKill size changed — kill tracking record");
 static_assert(sizeof(TWind)          == 20,   "TWind size changed — wind state");

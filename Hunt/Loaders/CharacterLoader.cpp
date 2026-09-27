@@ -8,6 +8,19 @@
 // Forward declarations
 void PlaceHunter();
 
+static void ValidateWeaponAnimationReferences(int weaponIndex)
+{
+  const TCharacterInfo& character = Weapon.chinfo[weaponIndex];
+  if (AreWeaponAnimationReferencesValid(WeapInfo[weaponIndex], character.AniCount))
+    return;
+
+  char message[192];
+  snprintf(message, sizeof(message),
+            "Weapon %d animation index is outside its model animation count (%d).",
+            weaponIndex, character.AniCount);
+  DoHalt(message);
+}
+
 void LoadCharacters()
 {
   std::int32_t pres[DINOINFO_MAX];
@@ -23,8 +36,10 @@ void LoadCharacters()
 
       if (!ChInfo[c].mptr)
       {
+        char src[192];
+        snprintf(src, sizeof(src), "_RES.TXT character '%s'", DinoInfo[c].Name);
         snprintf(logt, sizeof(logt), "HUNTDAT\\%s", DinoInfo[c].FName);
-        LoadCharacterInfo(ChInfo[c], logt);
+        LoadCharacterInfo(ChInfo[c], logt, MemoryTag::Global, src);
         PrintLog("Loading: ");
         PrintLog(logt);
         PrintLog("\n");
@@ -48,16 +63,22 @@ void LoadCharacters()
     {
       if (!Weapon.chinfo[c].mptr)
       {
+        char src[192];
+        snprintf(src, sizeof(src), "_RES.TXT weapon '%s'", WeapInfo[c].Name);
         snprintf(logt, sizeof(logt), "HUNTDAT\\WEAPONS\\%s", WeapInfo[c].FName);
-        LoadCharacterInfo(Weapon.chinfo[c], logt);
+        LoadCharacterInfo(Weapon.chinfo[c], logt, MemoryTag::Global, src);
         PrintLog("Loading: ");
         PrintLog(logt);
         PrintLog("\n");
       }
 
+      ValidateWeaponAnimationReferences(c);
+
 	  if (WeapInfo[c].bullet) {
+		  char src[192];
+		  snprintf(src, sizeof(src), "_RES.TXT weapon '%s' (bullet model)", WeapInfo[c].Name);
 		  snprintf(logt, sizeof(logt), "HUNTDAT\\WEAPONS\\%s", WeapInfo[c].BLName);
-		  LoadCharacterInfo(Weapon.Bullet[c], logt);
+		  LoadCharacterInfo(Weapon.Bullet[c], logt, MemoryTag::Global, src);
 		  PrintLog("Loading: ");
 		  PrintLog(logt);
 		  PrintLog("\n");

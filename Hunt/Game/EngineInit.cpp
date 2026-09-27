@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <fstream>
 #include "Core/ConfigText.h"
+#include "Loaders/LoadDiagnostics.h"
 #include "Game/DisplayModes.h"
 #include "Game/RefreshPreference.h"
 #include "Game/ResolutionSelection.h"
@@ -330,6 +331,7 @@ void InitGameInfo()
 
 static void CreateDefaultConfig();
 static void LoadConfig();
+static void LoadLoadPolicy();
 void InitEngine()
 {
   DisplayConfiguration = {};
@@ -474,6 +476,7 @@ void InitEngine()
   WeaponPres = 1;
   MessageList.timeleft = 0;
 
+  LoadLoadPolicy();
   InitGameInfo();
 
   CreateFadeTab();
@@ -761,6 +764,23 @@ static std::string GetConfigPath()
   return "config.cfg";
 }
 
+// Runs before _RES.TXT; use exactly the same session-aware resolution as the
+// later full config read, including when the private config does not yet exist.
+static void LoadLoadPolicy()
+{
+  auto& diagnostics = LoadDiagnostics::Instance();
+  diagnostics.Clear();
+  diagnostics.SetMode(LoadMode::Lenient);
+  std::ifstream input(GetConfigPath(), std::ios::binary);
+  if (input) {
+    std::string text;
+    size_t nulBytes = 0;
+    if (ReadConfigText(input, text, nulBytes))
+      InitLoadPolicyFromConfigText(text.c_str());
+  }
+  InitLoadPolicyFromEnvironment();
+}
+
 // Create a default config.cfg with all available settings documented.
 // Called when no config file exists (first launch or manual deletion).
 static void CreateDefaultConfig()
@@ -798,6 +818,9 @@ static void CreateDefaultConfig()
     "\r\n"
     "# Verbose logging: 0=off, 1=on (default: 0)\r\n"
     "verbose_logging 0\r\n"
+    "\r\n"
+    "# Data recovery policy: lenient (default) or strict for mod validation.\r\n"
+    "load_mode lenient\r\n"
     "\r\n"
     "# Nightvision key VK code (default: 78 = 'N')\r\n"
     "nightvision_key 78\r\n"

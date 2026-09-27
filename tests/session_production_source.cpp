@@ -4,6 +4,7 @@
 #include "Platform/Screenshot.h"
 #include "Game/ProfileSerialization.h"
 #include "Core/ConfigText.h"
+#include "Loaders/LoadDiagnostics.h"
 #include "Game/RefreshPreference.h"
 #include "Game/ResolutionSelection.h"
 #include <fstream>
@@ -14,3 +15,5 @@
 #include "session_output.inc"
 void SessionTestCreateConfig() { CreateDefaultConfig(); }
 void SessionTestLoadConfig() { LoadConfig(); }
+
+void SessionTestLoadPolicy() { LoadLoadPolicy(); }

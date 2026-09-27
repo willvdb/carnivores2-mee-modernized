@@ -69,6 +69,7 @@ TEST(ModelLoader, CharacterSingleFrameDuplicationAndOptionalTail)
     EXPECT_EQ(ch.Animation[0].aniData[1],32767); EXPECT_EQ(ch.Animation[0].aniData[2],-1);
     for(int value:ch.Anifx) EXPECT_EQ(value,-1);
     EXPECT_EQ(ch.mptr->gVertex[0].x,2.f); EXPECT_EQ(ch.mptr->gVertex[0].y,-5.f);
+    EXPECT_GT(ch.AnimationBoundRadius, 5700.f);
     ReleaseCharacterInfo(ch);
 }
 TEST(ModelLoader, ObjectAnimationReadsExtraStoredFrame)
@@ -188,4 +189,22 @@ TEST(ModelDither, ScaledRandomKeepsTheIntendedFractionOnLinux) {
         raised += value==16;
     }
     EXPECT_GT(raised,4000); EXPECT_LT(raised,6000);
+}
+
+TEST(ModelLoader, BlankAnimationRetainsSlotAndSubsequentPortablePayload) {
+    std::vector<std::uint8_t> b(32, 'C');
+    Word(b, 2); Word(b, 0); Word(b, 1); Word(b, 0); Word(b, 512);
+    Append(b, ModelGolden::Vertex()); b.resize(b.size()+512, 0);
+    std::array<std::uint8_t, 32> blank{};
+    std::memcpy(blank.data(), "BLANK", 5); Append(b, blank);
+    Word(b, 0); Word(b, 0);
+    b.resize(b.size()+32, 'A'); Word(b, 20); Word(b, 1);
+    b.insert(b.end(), ModelGolden::Samples.begin(), ModelGolden::Samples.begin()+6);
+    File file(b); TCharacterInfo ch{}; LoadCharacterInfo(ch, file.path);
+    EXPECT_EQ(ch.AniCount, 2); EXPECT_EQ(ch.Animation[0].FramesCount, 0);
+    EXPECT_EQ(ch.Animation[0].AniTime, 0); EXPECT_FALSE(ch.Animation[0].aniData);
+    EXPECT_EQ(ch.Animation[1].aniData[0], -32768);
+    EXPECT_GT(ch.AnimationBoundRadius, 5700.f);
+    ReleaseCharacterInfo(ch);
+    EXPECT_EQ(ch.AnimationBoundRadius, 0.f);
 }

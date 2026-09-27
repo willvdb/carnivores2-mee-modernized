@@ -253,6 +253,9 @@ GLOBAL unique_obj_ptr<TModel> Binocular;
 
 GLOBAL TDinoInfo DinoInfo[DINOINFO_MAX];
 
+// Optional per-species aggression override; zero uses the AI-family default.
+GLOBAL int DinoAggressMulti[DINOINFO_MAX];
+
 GLOBAL TMenuDinoInfo MenuDinoInfo[16];
 
 GLOBAL int sendGunShot;

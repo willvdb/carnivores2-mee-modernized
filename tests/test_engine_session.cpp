@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "Hunt.h"
+#include "Loaders/LoadDiagnostics.h"
 #include "Session/Session.h"
 #include "Platform/System.h"
 #include "Platform/Screenshot.h"
@@ -18,6 +19,7 @@ NetworkManager g_Network;
 
 void SessionTestCreateConfig();
 void SessionTestLoadConfig();
+void SessionTestLoadPolicy();
 void LoadTrophy2(int);
 // Only graphics/audio services are doubled, never filesystem, profile, config,
 // command-line, logging, screenshot or performance policy.
@@ -327,4 +329,23 @@ TEST_F(Session, AbsentModePreservesLegacyRoutingAndArguments) {
     ASSERT_NE(file,Platform::InvalidFile); EXPECT_TRUE(Platform::CloseFile(file)); EXPECT_TRUE(fs::exists(base/"legacy.log"));
     EngineSession::Check(false); EXPECT_EQ(EngineSession::ExitStatus(0),0);
 }
+}
+
+TEST_F(Session, EarlyLoadPolicyUsesOnlyPrivateConfigEvenWhenMissing) {
+    if (std::getenv("C2_STRICT_DATA")) GTEST_SKIP() << "Environment intentionally overrides config";
+    Put(content/"config.cfg", std::string("load_mode strict\n"));
+    Put(module/"config.cfg", std::string("load_mode strict\n"));
+    ASSERT_EQ(Start(), EngineSession::Startup::Ready); Logs();
+    SessionTestLoadPolicy();
+    EXPECT_EQ(LoadDiagnostics::Instance().Mode(), LoadMode::Lenient);
+    Put(work/"config/config.cfg", std::string("load_mode strict\n"));
+    SessionTestLoadPolicy();
+    EXPECT_EQ(LoadDiagnostics::Instance().Mode(), LoadMode::Strict);
+    Put(work/"config/config.cfg", std::string("load_mode lenient\n"));
+    SessionTestLoadPolicy();
+    EXPECT_EQ(LoadDiagnostics::Instance().Mode(), LoadMode::Lenient);
+    CloseLogs();
+    // These sentinels were intentionally changed for this test.
+    originals = Scan(content);
+    Put(module/"config.cfg", std::string("fov 42\n"));
 }

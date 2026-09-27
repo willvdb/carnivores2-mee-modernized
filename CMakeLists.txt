@@ -393,6 +393,12 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     endif()
 
 
+    add_executable(Carnivores2ScriptParserContractTests tests/test_script_parser_entry.cpp
+        Hunt/Loaders/ScriptParser.cpp Hunt/Core/StateDefs.cpp)
+    target_include_directories(Carnivores2ScriptParserContractTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Hunt)
+    target_link_libraries(Carnivores2ScriptParserContractTests PRIVATE gtest_main CarnivoresPlatformMemory)
+    add_test(NAME Carnivores2Tests.ScriptParserContracts COMMAND Carnivores2ScriptParserContractTests)
+
     add_executable(Carnivores2CommandLineContractTests tests/test_command_line_entry.cpp
         Hunt/Game/CommandLine.cpp Hunt/Core/StateDefs.cpp)
     target_include_directories(Carnivores2CommandLineContractTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Hunt)
@@ -484,6 +490,10 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     endif()
 
     add_executable(Carnivores2Tests
+        tests/test_load_diagnostics.cpp
+        tests/test_script_value_parse.cpp
+        tests/test_legacy_scalar_differential.cpp
+        tests/test_spawn_math.cpp
         tests/test_command_line_parse.cpp
         tests/test_config_parse.cpp
         tests/test_config_text.cpp

@@ -172,7 +172,8 @@ int  conv_xGx(int);
 void conv_pic(TPicture &pic);
 void LoadPicture(TPicture &pic, const char* pname, MemoryTag tag = MemoryTag::Global);
 void LoadPictureTGA(TPicture &pic, const char* pname, MemoryTag tag = MemoryTag::Global);
-void LoadCharacterInfo(TCharacterInfo&, char*, MemoryTag tag = MemoryTag::Global);
+void LoadCharacterInfo(TCharacterInfo&, char*, MemoryTag tag = MemoryTag::Global,
+                       const char* source = nullptr);
 void LoadModelEx(unique_obj_ptr<TModel> &mptr, char* FName, MemoryTag tag = MemoryTag::Global);
 void LoadModel(unique_obj_ptr<TModel> &mptr, MemoryTag tag = MemoryTag::Level);
 void LoadResources();
