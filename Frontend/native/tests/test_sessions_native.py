@@ -327,7 +327,15 @@ class Base(unittest.TestCase):
             a_receipt, e_receipt = actual_tree.pop('logs/stdout.log'), expected_tree.pop('logs/stdout.log')
             a_line, _, a_rest = a_receipt.partition(b'\n')
             e_line, _, e_rest = e_receipt.partition(b'\n')
-            self.assertEqual(a_rest, e_rest)
+            if expected['execution'].get('scenario') == 'logs':
+                # Each capture retains the first LOG_LIMIT bytes INCLUDING its
+                # receipt. A wider PID leaves fewer of the fixture's trailing x's.
+                # Check every retained byte and the exact cap independently.
+                for receipt, line, rest in ((a_receipt, a_line, a_rest), (e_receipt, e_line, e_rest)):
+                    self.assertEqual(len(receipt), LOG_LIMIT)
+                    self.assertEqual(rest, b'x' * (LOG_LIMIT - len(line) - 1))
+            else:
+                self.assertEqual(a_rest, e_rest)
             a_json = json.loads(a_line.decode().replace(actual['id'], expected['id']))
             e_json = json.loads(e_line)
             self.assertEqual(a_json['pid'], actual['process']['pid'])
@@ -832,6 +840,35 @@ class Run(Base):
                         self.assertTrue(log['truncated'])
                         self.assertEqual((root / log['path']).stat().st_size, LOG_LIMIT)
                 self.assertFalse(child_running(str(root / 'work')))
+
+    def test_synthetic_log_comparison_handles_pid_width_and_rejects_corruption(self):
+        # Force the PID-width boundary instead of waiting for the OS allocator
+        # to happen to give the native and reference children different widths.
+        expected_store, actual_store = self.base / 'reference', self.base / 'candidate'
+        for eol in (b'\n', b'\r\n'):
+            for expected_pid, actual_pid in ((9999, 10000), (10000, 9999), (10000, 10001)):
+                for scenario in ('logs', 'unchanged'):
+                    with self.subTest(eol=eol, pids=(expected_pid, actual_pid), scenario=scenario):
+                        journals, outputs = [], []
+                        for store, pid in ((expected_store, expected_pid), (actual_store, actual_pid)):
+                            journal = {'id': 'session', 'process': {'pid': pid}, 'logs': {},
+                                       'execution': {'scenario': scenario}}
+                            root = store / 'sessions' / journal['id']
+                            (root / 'logs').mkdir(parents=True, exist_ok=True)
+                            (root / 'journal.json').write_bytes(encode(journal))
+                            line = json.dumps({'cwd': 'work', 'argv': [], 'pid': pid}).encode() + eol
+                            payload = b'x' * 200000 if scenario == 'logs' else b'complete payload'
+                            output = (line + payload)[:LOG_LIMIT]
+                            (root / 'logs/stdout.log').write_bytes(output)
+                            journals.append(journal)
+                            outputs.append(output)
+                        self.assert_same_session_tree(*journals, expected_store, actual_store, synthetic=True)
+                        # An off-by-one capture or damaged payload must still fail.
+                        actual_log = actual_store / 'sessions/session/logs/stdout.log'
+                        for damaged in (outputs[1][:-1], outputs[1] + b'x', outputs[1][:-1] + b'y'):
+                            actual_log.write_bytes(damaged)
+                            with self.assertRaises(AssertionError):
+                                self.assert_same_session_tree(*journals, expected_store, actual_store, synthetic=True)
 
     def logs_ready(self, store, identity):
         """The synthetic child had emitted its receipt and stderr line (reached its hang)."""
