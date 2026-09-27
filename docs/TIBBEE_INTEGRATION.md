@@ -10,7 +10,7 @@
 - Branch: `integration/tibee-v1.1.9.1`, separate clean worktree based on remote main.
 - Release: https://github.com/Tibbee/carnivores2-mee-modernized/releases/tag/v1.1.9.1-modernized
 
-The fork's platform, explicit disk codecs, display configuration and managed session contract are the baseline. Upstream changes are examined as cumulative subsystem diffs at the pinned revision; intermediate strict-mod regressions are not integration targets. This document is an in-progress record until final validation is recorded.
+The fork's platform, explicit disk codecs, display configuration and managed session contract are the baseline. Upstream changes are examined as cumulative subsystem diffs at the pinned revision; intermediate strict-mod regressions are not integration targets. The implementation is ready for branch review subject to the runtime and sanitizer limits below. Final-head validation records are retained with the handoff; no merge to main is authorized.
 
 ## Upstream commit inventory
 
@@ -134,3 +134,211 @@ d6d61ce78e35900324163c650919d5e9569115be fix(loaders): name the entry behind a m
 bba3c4394e908e625cb5fa70a620a502f05f021e fix(menu): refuse areas with incomplete data
 81fe90bccc5a9071e3925902bcf6e159c009b63d chore(tools): add a HUNTDAT checker with tests
 ```
+
+
+## Integration disposition and review order
+
+The source tree after the final code checkpoint is `dab1479b62bcebc08049f4d3412c0a2966075983`.
+History was consolidated without changing that tree: launch-probe/MSVC test fixes
+belong to the launch commit, float-precision expectations to the renderer commit,
+and flee retry timing to the awareness follow-up. No merge commit, original game
+assets, or HUNTDAT files are included.
+
+| Review order | Commit | Integrated behavior and architecture retained |
+| --- | --- | --- |
+| 1 | `8768204` | Exact/bounded portable arguments, numeric/range/finite checks, shared score-mod wire order, config parsing helpers and production command-line tests. `Platform::Arguments`, monitor/refresh settings, Linux networking refusal and managed argument filtering remain. |
+| 2 | `a7c19a7` | Completed v1.1.9.1 lenient/strict recovery policy, numeric prefixes/C suffixes, safe clamps/truncation, exact assignment keys, source diagnostics, longer resource paths, missing-model context, array/index/weapon/spawn bounds, zero-weight packs, blank animation guards and animation bounds. All disk records still pass through the explicit codecs and portable file APIs. |
+| 3 | `58aef65` | Coherent hunter awareness state/resolver, shot/hit/call/contact memory, finite exact tracking, species aggression overrides, predator/aquatic/T-Rex behavior, pack alarm and hunter-finding packmate anchors, obstacle-aware fleeing, fish wander, opt-in AI trace, trophy protection/plaque links/map prohibition, overlay clearing and clean session exits. |
+| 4 | `058253d` | Extent-aware scenery/creature culling, animated bounds, terrain edges, sun/moon/shadows, authored night fog colors, optic-invariant sky fog, configurable sky mapping and matching shaders, single fog application to weapon overlays, trophy view distance. SDL display/context architecture remains unchanged. |
+| 5 | `baa16d9` | Legacy menu argument preservation, bounded launch masks, scroll indices, safe resource field dispatch/prices, incomplete MAP/RSC refusal, roster-position thumbnails/descriptions and explicit pic override. Profile/media codecs preserved. HUNTDAT checker and Windows production menu-reader tests included. |
+| 6 | `ceec171` | Additive native frontend resolved presentation API and narrowly scoped engine-compatible integer interpretation, with frozen raw projection and plan schemas unchanged. |
+| 7 | `43b71a4` | MSVC release `/GS`, project-scoped `/W4` and optional `/WX`, deployed smoke opt-in, controlled smoke fixture CI, architecture-aware optional clang-tidy tooling. Full Linux/Windows x86/x64/SDL/WGL/SOFT/menu matrix retained. |
+| 8 | `77f7452` | Review corrections: one reaction timer owner, no expired kill/anchor publication, accumulating flee progress with one re-aim per retry interval, pre-conversion travel-time cap, wrap-safe pack-anchor age. Production resolver tests supplement upstream math tests. |
+
+### Directly reused and adapted work
+
+Pure parsing, score-order, spawn/awareness math, menu launch/list, sky projection,
+and validation helpers/tests are carried from the pinned cumulative upstream
+state, with portable strings/formatting where required. AI animators, renderer
+and shader behavior are integrated as coherent groups, including their final
+v1.1.9.1 follow-ups rather than earlier strict-loader or overlapping awareness
+implementations. The complete commit inventory above is the reviewed range.
+
+Adaptation is concentrated at the architecture boundaries: command-line source,
+managed config lookup and shutdown status, platform I/O/messages/keys, explicit
+model/resource/profile codecs, x64 runtime sizes, test seams and build matrices.
+`LoadLoadPolicy()` runs before `_RES.TXT` through the same session-aware
+`GetConfigPath()` as the later full config read. A missing private config does
+not trigger an installation-global fallback. `C2_STRICT_DATA=1/0` now implements
+the documented numeric switch as well as named modes.
+
+### Already subsumed or intentionally omitted
+
+- Upstream's x86-only toolchain assertion and x86-only build selection are
+  superseded by the fork's explicit x86/x64 compiler validation, software-only
+  x86 restriction and broader platform matrix. They must not be reinstated.
+- Raw model/media/resource/profile read paths are superseded by portable explicit
+  codecs with truncated-input, layout, size, association and payload coverage.
+  Upstream `test_sound_loader_entry.cpp` and `test_picture_loader_entry.cpp`
+  overlap the fork's production `MediaLoader`/`ModelLoader` tests and were not
+  copied as duplicate Win32-only seams. New blank-animation and bounds tests
+  extend the existing production suites instead. No existing tests were removed.
+- Upstream old-menu incomplete-area behavior is integrated for Windows; the
+  native frontend already requires one unambiguous complete pair for launch.
+  That existing portable rule remains the authority for native launches.
+- The comment-accounting/hygiene tooling, repository-wide dash/comment rewrite,
+  external CarnivoresDoc path conventions, deleted historical comments and
+  changelog-only commits are not imported. They do not fix runtime behavior and
+  would obscure upstream review of the functional integration.
+- Upstream's mandatory x86 clang-tidy CI job is not copied. Its useful analyzer
+  configuration/runner is adapted to the selected ABI and remains optional;
+  broad warning cleanup is a separate task. The release stack-protection check
+  and smoke-script contracts are active CI gates.
+- Release labels/resources (`048bb53`, `603db54`), the menu's fourth version
+  component, upstream release README/CHANGELOG and release packaging changes
+  are deferred to a fork release decision. The fork is not relabeled as an
+  official Tibbee release. Packaging assumes an x86 Windows distribution and
+  sibling release-notes repository; a cross-platform fork package needs its own
+  review. Runtime defaults for sky/load/AI settings are integrated in the engine.
+- `8b291dc` moves the existing modernization-only license scope from LICENSE to
+  NOTICE. The fork already retains that limitation; both existing files remain
+  unchanged. Attribution and third-party obligations are not relaxed.
+- Intermediate strict-mod behavior is intentionally superseded by the pinned
+  final lenient-default policy. Strict mode remains opt-in.
+- The pinned upstream intentionally aims **new fixed-flee legs** away from the
+  current hunter (`a2f6f22`); this differs from its fixed *pursuit* event-memory
+  rule. The stated upstream behavior is preserved, not silently redesigned.
+
+## Conflict resolutions
+
+There was no blind merge or `theirs` resolution. Cumulative semantic patches
+were compared against the common base; these overlapping areas were reconciled:
+
+| Files/area | Resolution |
+| --- | --- |
+| `CommandLine.cpp`, CMake and CI | Reimplemented upstream validation around platform/session arguments and retained all display/network/platform branches; manually composed test/build additions into the fork matrix. |
+| `EngineAPI.h`, `GameTypes.h`, `GameState.h` | Combined awareness declarations/globals and longer runtime fields with fixed-width types, portable signatures and architecture-conditional assertions. Runtime size changes do not define serialized size. |
+| `EngineInit.cpp` | Kept platform display initialization, session path resolver, explicit config write handling and NUL-tolerant reads; added early load policy, AI/sky settings and bounded default-template creation. |
+| `CharacterLoader.cpp`, `ModelLoader.cpp` | Kept platform file handles, explicit decoding and exact-read guards; added resource identity diagnostics, blank-animation semantics and cached animation bounds. |
+| `ScriptParser.cpp` | Preserved Platform arguments and portable strings/I/O; integrated exact text-before-numeric dispatch, final recovery policy, bounds and species fields. Upper/lowercase legacy booleans are both covered. |
+| `CharacterSpawn.cpp` | Combined safe spawn/pack logic with portable keys/messages and runtime setup. |
+| `AnimateFish.cpp`, `AnimateTitan.cpp`, `CharacterAI.cpp` | Integrated final awareness behavior while preserving standard C++ declaration lifetimes across legacy goto labels; removed duplicate local declarations introduced by overlapping changes. |
+| `Hunt.cpp`, `Interface.cpp` | Kept portable keys, window/input lifecycle and session failure latch; adapted trophy map and normal-exit behavior. Overlay clear uses actual dimensions on every platform. |
+| `Resources.cpp` | Preserved explicit codecs, portable open/close and log routing; integrated trophy view distance, authored night fog colors, incomplete-pair and AI diagnostics. The night-color test expectation changed deliberately with the behavior. |
+| `Menu.cpp` | Retained the fork's legacy profile include and added upstream launch/list helpers; no portable frontend architecture replaced. |
+| `test_load_validate.cpp` and production test extraction | Combined upstream boundary tests with existing checked-size tests; adapted source extraction so full portable consumers, including helper functions, remain compiled. |
+
+Automatic merges were also reviewed. No conflict markers remain. The cumulative
+conflict audit and per-checkpoint failures are retained with the validation logs.
+The history consolidation itself applied without conflicts.
+
+## Frontend semantics
+
+See [CATALOG_PRESENTATION](../Frontend/docs/CATALOG_PRESENTATION.md).
+`resolve_huntables(root, projection)` resolves the selected script's roster in
+huntable order, including duplicate AI. Stock Iguanodon/Carnotaurus/T-Rex map to
+slots 8/9/10 despite AI 17/17/18. Both default thumbnails and descriptions use
+that position; nonempty explicit `pic` overrides only the thumbnail. The portable
+reference resolver still rejects traversal and ambiguous case matches.
+
+Regression coverage includes duplicate AI, all stock ordering positions,
+descriptions, explicit/default pictures, menu-script precedence, case resolution,
+unsafe overrides and legacy numeric suffixes. `legacy_integer(Attribute)` shares
+the engine's representable prefix interpretation for explicitly requested integer
+fields, without globally weakening raw scalar parsing or granting recovery values.
+
+The immutable v1 catalog export and native planning schema remain frozen. The
+existing launch planner still refuses non-integer raw prices/entries it cannot
+resolve; admitting those plans requires an explicit schema/policy migration.
+The new typed presentation view does not grant purchase or launch authority.
+
+## Compatibility findings and validation boundaries
+
+SAV (1660 bytes), SAB (7176 bytes), trophy/profile codecs and their byte contracts
+are unchanged. Profile/model/resource/map/image/audio layout and production-loader
+suites remain in the full engine tests, and native profile/oracle/session tests
+remain in the frontend suite. Awareness state and longer asset paths are runtime
+fields only. Existing Windows x86 and x64 coverage tests the same byte fixtures.
+
+Managed sessions retain private state/config/output, exact capability query,
+argument preservation, source/baseline independence, failure-latched exit status,
+whole-pair inspection and explicit acceptance. Tests cover early private load
+policy with a conflicting global config and no private-config fallback. Normal
+DoQuit does not erase a latched I/O failure. Native staged/sandboxed workflows
+exercise G0 -> G1 -> G2, stale-generation refusal and idempotent acceptance.
+
+Licensed Genesis Redux assets were available locally. Tests use a disposable
+copy; original content/profile hashes are checked before/after and no assets are
+committed. The real managed hunt queried capability v1, loaded private SAV/SAB
+and config, initialized SDL/OpenGL, rendered until an owned 30-second timeout and
+exited 0. Reconciliation correctly quarantined the timed-out session and left
+managed authority unchanged. Three direct managed trophy smokes cover sky modes
+0/1/2 paired with dawn/day/night, clean shutdown and exact SAV/SAB byte lengths.
+These are startup/render/shutdown probes, not interactive gameplay acceptance.
+
+The first smoke used Genesis's older installation shaders. It is superseded by
+a repeat with that directory moved aside **only in the disposable copy**, so the
+engine loads the matching built shaders via module fallback. Deploy engine and
+shaders together: existing installation shader overrides otherwise take priority.
+No global shader-resolution policy was changed.
+
+Remaining manual checks: visual edge-culling/fog/weapon-overlay quality, all stock
+licensed assets (not locally present as a separate stock installation), interactive
+calls/shots/hits/pack navigation, and an actual changed-save Genesis hunt followed
+by explicit native acceptance. Automated production-awareness tests cover the
+state transitions, expiry, kill gates and pack sharing without claiming visual or
+balancing validation. Windows runtime GL with licensed assets is also manual;
+Windows CI proves builds and asset-free behavior, not GPU visual correctness.
+
+## Validation commands and evidence
+
+Full logs, exact command/commit records and smoke harnesses are retained at
+`~/.local/state/c2-tibbee-integration-20260927/`. The final handoff records the
+final branch SHA and final-head CI run links. Earlier checkpoint results must not
+be attributed to a later SHA. The final documentation commit is followed by
+rebuilding/rerunning affected/full suites at that exact head.
+
+Fresh configurations used:
+
+```sh
+cmake --preset linux-x64-sdl-gl-debug -B build/final-debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+cmake --build build/final-debug --parallel 10
+ctest --test-dir build/final-debug --output-on-failure
+cmake --preset linux-x64-sdl-gl-release -B build/final-release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+cmake --build build/final-release --parallel 10
+ctest --test-dir build/final-release --output-on-failure
+cmake -S Frontend -B build/final-frontend-release -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DPython3_EXECUTABLE=/tmp/c2-integration-python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12
+cmake --build build/final-frontend-release --parallel 6
+ctest --test-dir build/final-frontend-release --output-on-failure --parallel 4
+```
+
+Frontend Debug uses the same pinned Python 3.12 oracle interpreter in
+`build/frontend` (45 tests). System Python 3.14 initially disagreed with the
+frozen Unicode oracle; no parser or oracle was changed to mask that difference.
+The frontend Release/native-only artifact is built with `BUILD_TESTING=OFF` and
+`CMAKE_DISABLE_FIND_PACKAGE_Python3=TRUE`, installed to `build/final-stage`, then
+run through `test_native_workflow.py ... --sandbox` without a Python runtime.
+
+Clang ASan+UBSan configurations apply
+`-fsanitize=address,undefined -fno-omit-frame-pointer` to C and C++ (engine and
+bundled SDL), with `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1` and
+`UBSAN_OPTIONS=halt_on_error=1`. The engine integration-sensitive suites pass.
+The full sanitizer CTest run reproduces the pre-existing SDL 3.2.28
+`SDL_video.c:1341` null pointer passed to zero-length memcpy in its display
+catalog test; it is not suppressed or claimed clean. The focused rerun excludes
+only the exact `Carnivores2Tests.SDL` executable. The frontend focused sanitizer
+run covers 17 catalog/presentation/probe/session/acceptance/workflow tests.
+
+Ordinary engine CTest has 27 executables, with five display-server-dependent
+executables skipped outside their dedicated harnesses. Local X11/Wayland harness
+attempts cannot start Xorg because the dummy video module is absent. The existing
+CI Linux jobs install it and run both dedicated harnesses in Debug and Release.
+No host display or system configuration is changed for the smoke tests.
+
+Windows CI (`.github/workflows/build.yml`) retains x86/x64 WGL and SDL Debug and
+Release, x86 SOFT and menu, plus release stack protection, menu-reader/HUNTDAT
+contracts and the controlled deployed-smoke fixture. Frontend CI independently
+builds/stages native Release and runs all native tests on Linux and Windows.
+Intermediate failures were resolved (probe helper extraction, MSVC macro parsing,
+and sky coefficient float precision); final-head CI status is reported separately.
