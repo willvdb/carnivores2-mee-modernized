@@ -164,7 +164,9 @@ void AnimateCharacters()
 	{
 		cptr = &Characters[CurDino];
 		if (cptr->StateF == 0xFF) continue;
-		cptr->tgtime += TimeDt;
+		// Fixed flee progress and retry boundaries belong to the navigator.
+		// Other targets retain the ordinary age clock.
+		if (!IsFixedHunterFlee(cptr)) cptr->tgtime += TimeDt;
 
 		// tracker bullets
 		if (cptr->RTime && WeapInfo[cptr->tracker].radarTime) {
@@ -181,7 +183,10 @@ void AnimateCharacters()
 			if (!Packs[cptr->packId].leader->Health) Packs[cptr->packId].leader = cptr;
 		}
 
-		if (cptr->tgtime > 30 * 1000) {
+		// A remembered pursuit or fixed flee owns its target until awareness
+		// releases it. Wandering must not replace that destination mid-reaction.
+		const bool fixedReaction = IsFixedHunterPursuit(cptr) || IsFixedHunterFlee(cptr);
+		if (!fixedReaction && cptr->tgtime > 30 * 1000) {
 
 			if (cptr->Clone == AI_BRACH || cptr->Clone == AI_BRACHDANGER || cptr->Clone == AI_LANDBRACH) SetNewTargetPlace_Brahi(cptr, 2048.f);
 			else if (cptr->Clone == AI_MOSA) SetNewTargetPlaceFish(cptr, 5048.f);
@@ -190,7 +195,7 @@ void AnimateCharacters()
 
 		}
 
-		if (cptr->tgtime > 50 * 1000 && cptr->Clone == AI_ICTH) {
+		if (!fixedReaction && cptr->tgtime > 50 * 1000 && cptr->Clone == AI_ICTH) {
 			if (cptr->Phase != DinoInfo[cptr->CType].flyAnim &&
 				cptr->Phase != DinoInfo[cptr->CType].glideAnim &&
 				cptr->Phase != DinoInfo[cptr->CType].takeoffAnim &&

@@ -155,6 +155,47 @@ assets, or HUNTDAT files are included.
 | 7 | `43b71a4` | MSVC release `/GS`, project-scoped `/W4` and optional `/WX`, deployed smoke opt-in, controlled smoke fixture CI, architecture-aware optional clang-tidy tooling. Full Linux/Windows x86/x64/SDL/WGL/SOFT/menu matrix retained. |
 | 8 | `77f7452` | Review corrections: one reaction timer owner, no expired kill/anchor publication, accumulating flee progress with one re-aim per retry interval, pre-conversion travel-time cap, wrap-safe pack-anchor age. Production resolver tests supplement upstream math tests. |
 
+### Frame-loop timer and destination ownership correction
+
+A follow-up to `cf2efe2` traced the actual `AnimateCharacters()` order: target
+aging and generic 30-second (plus Icth 50-second) timeout handling precede
+contact promotion, `TickHunterAwareness()`, `UpdateHunterNavigation()`, and
+species animation. The outer age increment doubled fixed-flee progress and
+could consume a retry boundary before the navigator saw it. Generic wandering
+could also replace a remembered shot/hit target while its reaction stayed active.
+
+`AfraidTime` remains owned by `TickHunterAwareness()`. For ordinary wandering
+and fixed pursuit/investigation, the dispatcher advances `tgtime` as target age;
+target selection resets it. Both generic timeout branches are disabled during
+fixed pursuit or fixed flee. Only awareness may replace those destinations via
+arrival search, flee extension/retry, contact promotion, or reaction release.
+Live tracking continues to refresh its target and reset target age as before.
+
+For fixed fleeing, only `UpdateHunterNavigation()` advances `tgtime`, together
+with its four-second retry-boundary check. Arrival starts a new leg at zero;
+a stuck retry preserves elapsed progress so rotation attempts accumulate and
+re-aiming occurs once per interval. Fixed-reaction expiry clears the reaction,
+destination and `tgtime`, allowing ordinary target selection to resume. Trophy
+and inert-character bypasses and pack alarm/anchor policies are unchanged.
+
+The awareness test executable now links the production frame dispatcher as well
+as the resolver, stubbing species movement/animation and world effects. The six
+existing resolver tests remain; eleven frame cases cover all three fixed-flee
+states, missed retry boundaries, remembered shot/hit timeout protection,
+arrival search, expiry and resumed wandering, contact/live tracking/pack anchors,
+and trophy/inert bypasses. Against the original `cf2efe2` production code, ten
+new cases fail; with the correction all 17 pass. These are frame-policy tests,
+not asset-dependent species animation or visual/balancing validation.
+
+Correction validation uses the existing `build/final-debug`, `final-release`
+and `final-asan` configurations below. Debug/Release engine builds and all 27
+CTest entries succeed (22 pass, the same five display-harness skips); the 17
+awareness cases also pass under Clang ASan+UBSan with leak detection enabled.
+The full sanitizer suite was not rerun for this correction; the documented SDL
+limitation below remains. Frontend Debug and Release each pass all 45 tests,
+and the native-only Release build succeeds. Before/after and suite logs are
+retained at `~/.local/state/c2-awareness-correction-20260927/`.
+
 ### Directly reused and adapted work
 
 Pure parsing, score-order, spawn/awareness math, menu launch/list, sky projection,

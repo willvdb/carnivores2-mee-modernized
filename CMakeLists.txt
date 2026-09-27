@@ -492,7 +492,8 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     endif()
 
     add_executable(Carnivores2AwarenessTests tests/test_character_awareness.cpp
-        Hunt/Game/CharacterAwareness.cpp Hunt/Core/StateDefs.cpp Hunt/Math/Vector.cpp)
+        Hunt/Game/CharacterAwareness.cpp Hunt/Game/CharacterAnimation.cpp
+        Hunt/Core/StateDefs.cpp Hunt/Math/Vector.cpp)
     target_include_directories(Carnivores2AwarenessTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Hunt ${CMAKE_CURRENT_SOURCE_DIR}/deps)
     target_compile_definitions(Carnivores2AwarenessTests PRIVATE ${RENDER_DEFINES})
     target_link_libraries(Carnivores2AwarenessTests PRIVATE gtest_main)

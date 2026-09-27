@@ -80,7 +80,9 @@ bool ShouldFleeHunter(const TCharacter& character, float hunterDistanceSquared,
                       bool hunterAttackable);
 
 // Advance every hunter reaction exactly once, before navigation/animation.
-// Preserve tgtime: it measures progress along a fixed flee leg.
+// Preserve tgtime: UpdateHunterNavigation alone advances fixed-flee progress;
+// AnimateCharacters ages other targets and gates wandering timeouts during
+// fixed reactions. Reaction expiry clears the destination and its age.
 void TickHunterAwareness(TCharacter& character);
 
 // The single owner of hunter-directed navigation. Called
