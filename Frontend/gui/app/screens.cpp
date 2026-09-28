@@ -126,16 +126,8 @@ void Screens::bind_console() {
         s.RegisterMember("selected", &HunterView::selected);
     }
     ctor.RegisterArray<std::vector<HunterView>>();
-    if (auto s = ctor.RegisterStruct<OptionView>()) {
-        s.RegisterMember("id", &OptionView::id);
-        s.RegisterMember("label", &OptionView::label);
-    }
-    ctor.RegisterArray<std::vector<OptionView>>();
     ctor.Bind("expeditions", &expeditions_);
     ctor.Bind("hunters", &hunters_);
-    ctor.Bind("areas", &areas_);
-    ctor.Bind("weapons", &weapons_);
-    ctor.Bind("times", &times_);
     ctor.BindFunc("source_line", [this](Rml::Variant& v) { v = model_.source().label(); });
     ctor.BindFunc("expedition_count", [this](Rml::Variant& v) { v = static_cast<int>(expeditions_.size()); });
     ctor.BindFunc("state_loading", [this](Rml::Variant& v) { v = model_.load_state() == LoadState::loading; });
