@@ -5,7 +5,42 @@
 
 #include "Hunt.h"
 #include "Platform/Platform.h"
+#include "Core/SpawnMath.h"
 #include "Game/CharacterInternal.h"
+
+namespace {
+constexpr int kCharacterCapacity = 256;
+constexpr int kPackCapacity = 256;
+constexpr int kPackMemberCapacity = 32;
+constexpr int kSpawnLinkCapacity = 128;
+
+void RequireSpawnCapacity(int index, int capacity, const char* what)
+{
+	if (index >= 0 && index < capacity) return;
+
+	char message[192];
+	snprintf(message, sizeof(message),
+		"Character placement error: %s index %d outside capacity %d.",
+		what, index, capacity);
+	DoHalt(message);
+}
+
+void RequireSpawnCount(int count, int capacity, const char* what)
+{
+	if (count >= 0 && count <= capacity) return;
+
+	char message[192];
+	snprintf(message, sizeof(message),
+		"Character placement error: %s count %d exceeds capacity %d.",
+		what, count, capacity);
+	DoHalt(message);
+}
+
+void RequireCharacterSlot()
+{
+	RequireSpawnCapacity(ChCount, kCharacterCapacity, "character");
+}
+}
 
 void PlaceTrophy()
 {
@@ -102,6 +137,12 @@ void PlaceTrophy()
 		// mount's display pose (tropAnim) and FTime stays frozen at 0.
 		Characters[ChCount].StateF = 0xFF;
 
+		// Mounts are inert exhibits: Health 0 keeps them out of the bullet
+		// damage path. Without it the array slot kept whatever Health the last
+		// hunt left there, so shooting a mount could damage it, rewrite its
+		// exhibit slot through registerDamage, or even submit a trophy score.
+		Characters[ChCount].Health = 0;
+
 		//DinoInfo[Characters[ChCount].CType].tCounter++;
 		ChCount++;
 	}
@@ -177,9 +218,10 @@ replace2:
 }
 */
 
-void spawnMapAmbient(int &tr, int leader, bool moveForward) {
+[[nodiscard]] bool spawnMapAmbient(int &tr, int leader, bool moveForward) {
 
-replaceSMA:
+ replaceSMA:
+	RequireCharacterSlot();
 
 	if (moveForward && tr < 1024) {
 		Characters[ChCount].pos.x = PlayerX + siRand(10040);
@@ -213,17 +255,15 @@ replaceSMA:
 	float wy = GetLandUpH(Characters[ChCount].pos.x,
 		Characters[ChCount].pos.z) - Characters[ChCount].pos.y;
 	tr++;
-	if (tr > 10240) return;
+	if (tr > 10240) return false;
 
 
 	int mindist = 40;
-	if (g_GameMode == GameMode::SurvivalMode) {
-		mindist = ctViewR + 1;
-	}
 
 	if (fabs(Characters[ChCount].pos.x - PlayerX) +
-		fabs(Characters[ChCount].pos.z - PlayerZ) < 256 * mindist)
+		fabs(Characters[ChCount].pos.z - PlayerZ) < 256 * mindist) {
 		goto replaceSMA;
+	}
 
 	if (DinoInfo[Characters[ChCount].CType].Clone == AI_BRACH ||
 		DinoInfo[Characters[ChCount].CType].Clone == AI_BRACHDANGER ||
@@ -295,8 +335,7 @@ replaceSMA:
 	}
 
 	ResetCharacter(&Characters[ChCount]);
-
-
+	return true;
 }
 
 
@@ -497,8 +536,9 @@ void dispSighting(int dii, int xx, int zz) {
 		}
 	}
 
-	sprintf(buff, "Sighting:\n%s", DinoInfo[dii].Name);
-	sprintf(buff + strlen(buff), " %s", loc);
+	snprintf(buff, sizeof(buff), "Sighting:\n%s", DinoInfo[dii].Name);
+	size_t used = strlen(buff);
+	snprintf(buff + used, sizeof(buff) - used, " %s", loc);
 	Platform::ShowMessage("TEST", buff);
 
 }
@@ -539,7 +579,8 @@ void PlaceCharactersSurvival()
 			Characters[ChCount].CType = SurvivalIndex[dinoIndex];
 			Characters[ChCount].SpawnGroupType = 0;
 			Characters[ChCount].packId = -1;
-			spawnMapAmbient(tr, -1, false);
+			if (!spawnMapAmbient(tr, -1, false))
+				DoHalt("Character placement error: survival region has no valid spawn point.");
 			Characters[ChCount].State = 2;
 			ChCount++;
 			waveTotal -= dinoCost;
@@ -557,6 +598,7 @@ void PlaceCharacters()
 		Characters[i] = {};
 	}
 	ChCount = 0;
+	PackCount = 0;
 
 	PrintLog("Placing...");
 
@@ -578,29 +620,35 @@ void PlaceCharacters()
 		for (int di = 0; di < DINOINFO_MAX; di++) {
 			if (DinoInfo[di].packMember2Ch) {
 				for (int pin = 0; pin < DinoInfo[di].packMember2Ch; pin++) {
-					packType[DinoInfo[di].packMember2[pin].packGroup]
-						.packMember[packType[DinoInfo[di].packMember2[pin].packGroup].packMemberCh]
-						.ctype = di;
-					packType[DinoInfo[di].packMember2[pin].packGroup]
-						.packMember[packType[DinoInfo[di].packMember2[pin].packGroup].packMemberCh]
-						.ratio = DinoInfo[di].packMember2[pin].ratio;
-					packType[DinoInfo[di].packMember2[pin].packGroup].packMemberCh++;
+					const int packGroup = DinoInfo[di].packMember2[pin].packGroup;
+					RequireSpawnCapacity(packGroup, packTypeCount, "pack group reference");
+					TPackType& pack = packType[packGroup];
+					RequireSpawnCapacity(pack.packMemberCh, kPackMemberCapacity,
+						"pack member");
+					pack.packMember[pack.packMemberCh].ctype = di;
+					pack.packMember[pack.packMemberCh].ratio = DinoInfo[di].packMember2[pin].ratio;
+					pack.packMemberCh++;
 				}
 			}
 		}
 
 		for (int di = 0; di < DINOINFO_MAX; di++) {
 			if (DinoInfo[di].SpawnInfoCh) {
-				
-				packType[packTypeCount].packMember[packType[packTypeCount].packMemberCh].ctype = di;
-				packType[packTypeCount].packMember[packType[packTypeCount].packMemberCh].ratio = 1;
-				packType[packTypeCount].packMax = 1;
-				packType[packTypeCount].packMin = 1;
-				packType[packTypeCount].packMemberCh++;
+				RequireSpawnCapacity(packTypeCount, 1024, "generated pack type");
+				TPackType& generatedPack = packType[packTypeCount];
+				RequireSpawnCapacity(generatedPack.packMemberCh, kPackMemberCapacity,
+					"generated pack member");
+				generatedPack.packMember[generatedPack.packMemberCh].ctype = di;
+				generatedPack.packMember[generatedPack.packMemberCh].ratio = 1;
+				generatedPack.packMax = 1;
+				generatedPack.packMin = 1;
+				generatedPack.packMemberCh++;
 				for (int si = 0; si < DinoInfo[di].SpawnInfoCh; si++) {
-					packType[packTypeCount].SpawnInfo[packType[packTypeCount].SpawnInfoCh].spawnGroup = DinoInfo[di].SpawnInfo[si].spawnGroup;
-					packType[packTypeCount].SpawnInfo[packType[packTypeCount].SpawnInfoCh].spawnRatio = DinoInfo[di].SpawnInfo[si].spawnRatio;
-					packType[packTypeCount].SpawnInfoCh++;
+					RequireSpawnCapacity(generatedPack.SpawnInfoCh, kPackMemberCapacity,
+						"generated pack spawn-info entry");
+					generatedPack.SpawnInfo[generatedPack.SpawnInfoCh].spawnGroup = DinoInfo[di].SpawnInfo[si].spawnGroup;
+					generatedPack.SpawnInfo[generatedPack.SpawnInfoCh].spawnRatio = DinoInfo[di].SpawnInfo[si].spawnRatio;
+					generatedPack.SpawnInfoCh++;
 				}
 				packTypeCount++;
 			}
@@ -608,10 +656,26 @@ void PlaceCharacters()
 
 		for (int p = 0; p < packTypeCount; p++) {
 			if (packType[p].SpawnInfoCh){
+				// A pack type with no members cannot place anything. Unused
+				// "template" pack groups in legacy mods reference spawn groups
+				// without defining members; skip them instead of aborting.
+				if (packType[p].packMemberCh <= 0) {
+					char packSkip[128];
+					snprintf(packSkip, sizeof(packSkip),
+						"Character placement: skipping pack type %d with no members.\n", p);
+					PrintLog(packSkip);
+					continue;
+				}
 				for (int si = 0; si < packType[p].SpawnInfoCh; si++) {
-					spawnGroup[packType[p].SpawnInfo[si].spawnGroup].packIndex[spawnGroup[packType[p].SpawnInfo[si].spawnGroup].packIndexCh] = p;
-					spawnGroup[packType[p].SpawnInfo[si].spawnGroup].spawnInfoIndex[spawnGroup[packType[p].SpawnInfo[si].spawnGroup].packIndexCh] = si;
-					spawnGroup[packType[p].SpawnInfo[si].spawnGroup].packIndexCh++;
+					const int spawnGroupIndex = packType[p].SpawnInfo[si].spawnGroup;
+					RequireSpawnCapacity(spawnGroupIndex, TotalSpawnGroup,
+						"spawn group reference");
+					TSpawnGroup& group = spawnGroup[spawnGroupIndex];
+					RequireSpawnCapacity(group.packIndexCh, kSpawnLinkCapacity,
+						"spawn group link");
+					group.packIndex[group.packIndexCh] = p;
+					group.spawnInfoIndex[group.packIndexCh] = si;
+					group.packIndexCh++;
 				}
 			}
 		}
@@ -624,6 +688,8 @@ void PlaceCharacters()
 		
 
 		if (spawnGroup[sg].packIndexCh) {
+			RequireSpawnCount(spawnGroup[sg].packIndexCh, kSpawnLinkCapacity,
+				"spawn group link");
 			int spawnNo = spawnGroup[sg].SpawnMin;
 			for (int i = 0; i < spawnGroup[sg].SpawnMax - spawnGroup[sg].SpawnMin; i++) {
 				if (spawnGroup[sg].SpawnRate * 30000 > rRand(30000)) spawnNo++;
@@ -635,6 +701,8 @@ void PlaceCharacters()
 				spawnNo += static_cast<int>(m);
 				if (spawnNo < 0) spawnNo = 0;
 			}
+			if (spawnNo < 0 || spawnNo > kCharacterCapacity)
+				DoHalt("Character placement error: spawn count exceeds capacity.");
 
 			float ratioScores[256];
 			float totalRatio = 0;
@@ -642,27 +710,44 @@ void PlaceCharacters()
 			for (c = 0; c < spawnGroup[sg].packIndexCh; c++) {
 				ratioScores[c] = 0.f;
 				//counter[c] = 0;
-				totalRatio += packType[spawnGroup[sg].packIndex[c]].SpawnInfo[spawnGroup[sg].spawnInfoIndex[c]].spawnRatio;
-				            //DinoInfo[spawnGroup[sg].dinoIndex[c]].SpawnInfo[spawnGroup[sg].spawnInfoIndex[c]].spawnRatio;
+				const float ratio = packType[spawnGroup[sg].packIndex[c]].SpawnInfo[spawnGroup[sg].spawnInfoIndex[c]].spawnRatio;
+				if (!IsValidSelectionRatio(ratio))
+					DoHalt("Character placement error: spawn ratios must be non-negative.");
+				totalRatio += ratio;
 			}
+			if (!std::isfinite(totalRatio))
+				DoHalt("Character placement error: spawn ratio total is invalid.");
 			int posi = 0;
 			tr = 0;
 
 			for (c = 0; c < spawnNo; c++) {
+				RequireCharacterSlot();
 
 				int packInd = -1;
 
-				// select ctype accounting for spawn ratio
-				if (spawnGroup[sg].Randomised) {
+				// select ctype accounting for spawn ratio. Zero ratios
+				// disable an entry; an all-zero group keeps the legacy
+				// first-entry fallback used by pack-member selection.
+				if (!(totalRatio > 0.0f)) {
+					packInd = spawnGroup[sg].packIndex[0];
+				}
+				else if (spawnGroup[sg].Randomised) {
 					float selector = rRand(30000);
 					selector /= 30000;
 					selector *= totalRatio;
+					int lastPositive = 0;
 					for (int ch = 0; ch < spawnGroup[sg].packIndexCh; ch++) {
-						if (selector <= packType[spawnGroup[sg].packIndex[ch]].SpawnInfo[spawnGroup[sg].spawnInfoIndex[ch]].spawnRatio) {
+						const float ratio = packType[spawnGroup[sg].packIndex[ch]].SpawnInfo[spawnGroup[sg].spawnInfoIndex[ch]].spawnRatio;
+						if (!(ratio > 0.0f)) continue;
+						lastPositive = ch;
+						if (selector <= ratio) {
 							packInd = spawnGroup[sg].packIndex[ch];
 							break;
-						} else selector -= packType[spawnGroup[sg].packIndex[ch]].SpawnInfo[spawnGroup[sg].spawnInfoIndex[ch]].spawnRatio;
+						}
+						selector -= ratio;
 					}
+					if (packInd == -1)
+						packInd = spawnGroup[sg].packIndex[lastPositive];
 				} else {
 					while (packInd == -1) {
 						int post = posi % spawnGroup[sg].packIndexCh;
@@ -676,6 +761,25 @@ void PlaceCharacters()
 						}
 					}
 				}
+				RequireSpawnCapacity(packInd, packTypeCount, "selected pack type");
+				RequireSpawnCount(packType[packInd].packMemberCh,
+					kPackMemberCapacity, "pack member");
+				// Memberless pack types are excluded when linking, so this is
+				// a defensive guard: never abort a hunt over an empty pack.
+				if (packType[packInd].packMemberCh <= 0)
+					continue;
+
+				float memberRatios[kPackMemberCapacity];
+				float memberRatio = 0.0f;
+				for (int pm = 0; pm < packType[packInd].packMemberCh; pm++) {
+					const float ratio = packType[packInd].packMember[pm].ratio;
+					if (!IsValidSelectionRatio(ratio))
+						DoHalt("Character placement error: pack member ratios must be non-negative.");
+					memberRatios[pm] = ratio;
+					memberRatio += ratio;
+				}
+				if (!std::isfinite(memberRatio))
+					DoHalt("Character placement error: pack member ratio total is invalid.");
 
 				/*
 				std::list<int> spawnList;
@@ -707,7 +811,8 @@ void PlaceCharacters()
 				
 				int leaderIndex = ChCount;
 				// pack leaders
-				spawnMapAmbient(tr, -1, spawnGroup[sg].moveForward);
+				if (!spawnMapAmbient(tr, -1, spawnGroup[sg].moveForward))
+					break;
 
 				//pack size
 				if (spawnGroup[sg].moveForward) {
@@ -724,47 +829,54 @@ void PlaceCharacters()
 							}
 						}
 					}
+					const int requiredCharacters = packNo > 1 ? packNo : 1;
+					if (packNo < 0 || requiredCharacters > kCharacterCapacity - ChCount)
+						DoHalt("Character limit exceeded while placing a pack.");
 
 					ChCount++;
 
 
 					//pack members
 					if (packNo > 1) {
+						RequireSpawnCapacity(PackCount, kPackCapacity, "pack");
 						Packs[PackCount].leader = &Characters[leaderIndex];
 						Packs[PackCount].alert = false;
 						Packs[PackCount].attack = false;
 						Packs[PackCount]._alert = false;
 						Packs[PackCount]._attack = false;
+						PackHuntTime[PackCount] = 0;
 						Characters[leaderIndex].packId = PackCount;
 
+						int placedFollowers = 0;
 						for (int packN = 0; packN < packNo - 1; packN++) {
+							RequireCharacterSlot();
 							Characters[ChCount].packId = PackCount;
 
-							Characters[ChCount].CType = packType[packInd].packMember[0].ctype; //failsafe
-
-							//recalculate every time a member is added
-							float memberRatio = 0;
-							for (int pm = 0; pm < packType[packInd].packMemberCh; pm++) {
-								memberRatio += packType[packInd].packMember[pm].ratio;
-							}
 							float memberSelector = rRand(30000);
 							memberSelector /= 30000;
 							memberSelector *= memberRatio;
-							for (int pm = 0; pm < packType[packInd].packMemberCh; pm++) {
-								if (memberSelector <= packType[packInd].packMember[pm].ratio) {
-									Characters[ChCount].CType = packType[packInd].packMember[pm].ctype;
-									break;
-								}
-								else memberSelector -= packType[packInd].packMember[pm].ratio;
-							}
+							const int memberIndex = SelectWeightedRatioIndex(
+								memberRatios, packType[packInd].packMemberCh,
+								memberSelector);
+							RequireSpawnCapacity(memberIndex,
+								packType[packInd].packMemberCh, "selected pack member");
+							Characters[ChCount].CType =
+								packType[packInd].packMember[memberIndex].ctype;
 
 							//Characters[ChCount].CType = packType[packInd].packMember[rRand(packType[packInd].packMemberCh - 1)].ctype;//Characters[leaderIndex].CType;
 							Characters[ChCount].SpawnGroupType = sg;
 							Characters[ChCount].packDensity = Characters[leaderIndex].packDensity;
-							spawnMapAmbient(tr, leaderIndex, false);
+							if (!spawnMapAmbient(tr, leaderIndex, false))
+								break;
 							ChCount++;
+							placedFollowers++;
 						}
-						PackCount++;
+						if (placedFollowers > 0) {
+							PackCount++;
+						}
+						else {
+							Characters[leaderIndex].packId = -1;
+						}
 					}
 					else Characters[leaderIndex].packId = -1;
 
@@ -916,6 +1028,7 @@ void PlaceCharacters()
 					Packs[PackCount].attack = false;
 					Packs[PackCount]._alert = false;
 					Packs[PackCount]._attack = false;
+					PackHuntTime[PackCount] = 0;
 					Characters[leaderIndex].packId = PackCount;
 					for (int packN = 0; packN < packNo - 1; packN++) {
 						Characters[ChCount].packId = PackCount;
@@ -989,6 +1102,7 @@ void PlaceCharacters()
 			Packs[PackCount].attack = false;
 			Packs[PackCount]._alert = false;
 			Packs[PackCount]._attack = false;
+			PackHuntTime[PackCount] = 0;
 			Characters[leaderIndex].packId = PackCount;
 			for (int packN = 0; packN < packNo - 1; packN++) {
 				Characters[ChCount].packId = PackCount;

@@ -63,6 +63,9 @@ set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
 # SOFT builds.
 option(GL_PERF_HOOKS "Enable in-engine GL performance harness (Phase 0.1)" OFF)
 option(MEM_DEBUG "Enable game allocation tracking and leak reporting" OFF)
+option(C2_WARNINGS_AS_ERRORS "Treat project-owned MSVC warnings as errors" OFF)
+option(ENABLE_DEPLOYED_SMOKE_TEST "Register the licensed deployed game smoke test" OFF)
+set(CARNIVORES_LEGACY_DIR "" CACHE PATH "Deployed game directory for the optional smoke test")
 
 # Renderer and game-only definitions are applied to the game target below;
 # keeping them target-scoped prevents the standalone menu from inheriting
@@ -80,8 +83,6 @@ if(MSVC)
     add_definitions(-DWIN32)
     add_definitions(-DNOMINMAX)
 
-    # Fix for some legacy headers and scoping
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP /permissive")
 
     # Enable memory debugging for Debug builds by default, or explicitly for
     # any configuration through -DMEM_DEBUG=ON. Keep it game-target scoped;
@@ -203,6 +204,7 @@ set(CORE_FILES
     Hunt/Game/CharacterMovement.cpp
     Hunt/Game/CharacterMorph.cpp
     Hunt/Game/CharacterSpawn.cpp
+    Hunt/Game/CharacterAwareness.cpp
     Hunt/Game/CharacterAI.cpp
     Hunt/Game/CharacterTracking.cpp
     Hunt/Game/CharacterAnimation.cpp
@@ -281,8 +283,8 @@ set(CORE_FILES
 if(MSVC AND CMAKE_BUILD_TYPE STREQUAL "Release")
     # /GL + /LTCG = Link-Time Optimization
     # /O2 = Maximize Speed, /Oi = Intrinsics, /Ot = Favor Fast Code, /Ob2 = Aggressive Inlining
-    # /Gw = Optimize Globals, /GS- = No Buffer Checks, /fp:fast = Fast Float, /arch:SSE2 = SSE2
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /GL /O2 /Oi /Ot /Ob2 /Gw /GS- /fp:fast /Zc:inline")
+    # /Gw = Optimize Globals, /GS = Buffer Checks, /fp:fast = Fast Float, /arch:SSE2 = SSE2
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /GL /O2 /Oi /Ot /Ob2 /Gw /GS /fp:fast /Zc:inline")
     if(CMAKE_SIZEOF_VOID_P EQUAL 4)
         string(APPEND CMAKE_CXX_FLAGS_RELEASE " /arch:SSE2")
     endif()
@@ -393,6 +395,18 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     endif()
 
 
+    add_executable(Carnivores2ScriptParserContractTests tests/test_script_parser_entry.cpp
+        Hunt/Loaders/ScriptParser.cpp Hunt/Core/StateDefs.cpp)
+    target_include_directories(Carnivores2ScriptParserContractTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Hunt)
+    target_link_libraries(Carnivores2ScriptParserContractTests PRIVATE gtest_main CarnivoresPlatformMemory)
+    add_test(NAME Carnivores2Tests.ScriptParserContracts COMMAND Carnivores2ScriptParserContractTests)
+
+    add_executable(Carnivores2CommandLineContractTests tests/test_command_line_entry.cpp
+        Hunt/Game/CommandLine.cpp Hunt/Core/StateDefs.cpp)
+    target_include_directories(Carnivores2CommandLineContractTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Hunt)
+    target_link_libraries(Carnivores2CommandLineContractTests PRIVATE gtest_main CarnivoresPlatformMemory)
+    add_test(NAME Carnivores2Tests.CommandLineContracts COMMAND Carnivores2CommandLineContractTests)
+
     include(tests/extract_menu_config.cmake)
     add_executable(Carnivores2MenuConfigTests tests/test_menu_config_preservation.cpp)
     target_include_directories(Carnivores2MenuConfigTests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
@@ -477,7 +491,27 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
         endif()
     endif()
 
+    add_executable(Carnivores2AwarenessTests tests/test_character_awareness.cpp
+        Hunt/Game/CharacterAwareness.cpp Hunt/Game/CharacterAnimation.cpp
+        Hunt/Core/StateDefs.cpp Hunt/Math/Vector.cpp)
+    target_include_directories(Carnivores2AwarenessTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Hunt ${CMAKE_CURRENT_SOURCE_DIR}/deps)
+    target_compile_definitions(Carnivores2AwarenessTests PRIVATE ${RENDER_DEFINES})
+    target_link_libraries(Carnivores2AwarenessTests PRIVATE gtest_main)
+    add_test(NAME Carnivores2Tests.CharacterAwareness COMMAND Carnivores2AwarenessTests)
+
     add_executable(Carnivores2Tests
+        tests/test_sky_fog_projection.cpp
+        tests/test_water_color.cpp
+        tests/test_ai_behavior_math.cpp
+        tests/test_game_mode.cpp
+        tests/test_load_diagnostics.cpp
+        tests/test_script_value_parse.cpp
+        tests/test_legacy_scalar_differential.cpp
+        tests/test_spawn_math.cpp
+        tests/test_command_line_parse.cpp
+        tests/test_config_parse.cpp
+        tests/test_config_text.cpp
+        tests/test_score_mod.cpp
         tests/test_platform_files.cpp
         tests/test_platform_system.cpp
         tests/test_billboard_math.cpp
@@ -487,6 +521,7 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
         tests/test_load_validate.cpp
         tests/test_map_scaling.cpp
         tests/test_memory_arena.cpp
+        tests/test_menu_launch_args.cpp
         tests/test_menu_slider.cpp
         tests/test_serialized_layout.cpp
         tests/test_legacy_profile.cpp
@@ -567,6 +602,14 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_options(Carnivores2MenuMediaTests PRIVATE /OPT:REF /INCREMENTAL:NO)
     target_link_libraries(Carnivores2MenuMediaTests PRIVATE gtest_main)
     add_test(NAME Carnivores2Tests.MenuMedia COMMAND Carnivores2MenuMediaTests)
+    add_executable(Carnivores2MenuResourceTests tests/test_menu_resource_entry.cpp
+        tests/menu_resource_seams.cpp Menu/Resources.cpp)
+    target_include_directories(Carnivores2MenuResourceTests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/Menu ${CMAKE_CURRENT_SOURCE_DIR}/Hunt)
+    target_link_libraries(Carnivores2MenuResourceTests PRIVATE gtest_main)
+    add_test(NAME Carnivores2Tests.MenuResources COMMAND Carnivores2MenuResourceTests)
+    add_test(NAME Carnivores2Tests.HuntdatChecker COMMAND powershell -NoProfile
+        -ExecutionPolicy Bypass -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_check_huntdat.ps1)
     endif()
 
     # Exercise the production world-model sampler without a GL context.
@@ -611,12 +654,12 @@ if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     add_test(NAME Carnivores2Tests.SharedLibrary COMMAND Carnivores2LibraryTests)
 
     # SmokeTest only runs when a game executable is built (not menu-only)
-    if(WIN32 AND TARGET Carnivores1)
+    if(WIN32 AND TARGET Carnivores1 AND ENABLE_DEPLOYED_SMOKE_TEST)
         add_test(NAME SmokeTest
             COMMAND powershell -ExecutionPolicy Bypass -File
                 ${CMAKE_SOURCE_DIR}/tests/smoke_test.ps1
                 -Renderer ${RENDERER}
-                -Duration 5
+                -Duration 5 -GameDir "${CARNIVORES_LEGACY_DIR}"
         )
     endif()
 endif()
@@ -626,3 +669,17 @@ foreach(target IN ITEMS Carnivores1 Carnivores2Menu Carnivores2MenuMediaTests Ca
         target_link_libraries(${target} PRIVATE CarnivoresPlatformMemory)
     endif()
 endforeach()
+
+# Keep project warning policy off SDL, GoogleTest and other dependencies.
+if(MSVC)
+    get_property(c2_project_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+    foreach(target IN LISTS c2_project_targets)
+        get_target_property(c2_target_type ${target} TYPE)
+        if(c2_target_type MATCHES "^(EXECUTABLE|STATIC_LIBRARY|SHARED_LIBRARY|OBJECT_LIBRARY)$")
+            target_compile_options(${target} PRIVATE /MP /permissive /W4)
+            if(C2_WARNINGS_AS_ERRORS)
+                target_compile_options(${target} PRIVATE /WX)
+            endif()
+        endif()
+    endforeach()
+endif()

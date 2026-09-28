@@ -8,7 +8,10 @@
 
 #include "Hunt.h"
 #include "../Shared/LegacyProfile.h"
+#include "LaunchArgs.h"
+#include "ListMath.h"
 #include "SliderMath.h"
+#include "../Hunt/Core/ScoreMod.h"
 #include <cassert>
 #include <algorithm>
 #include <cmath>
@@ -1260,15 +1263,17 @@ void MenuEventStart(int32_t menu_state)
 
 			if (dino.m_AI >= 10)//&& dino.m_Rank <= g_UserProfile.Rank)
 			{
-				// Add to a list
+				// Add to a list. Presentation assets follow the list position
+				// (see ListMath.h); compute the slot before the push so the text
+				// number matches the thumbnail loaded in ReadCharacters().
+				const std::size_t menuSlot = HuntableMenuSlot(g_DinoList.size());
 				g_DinoList.push_back(i);
 				MenuHunt[1].Item.push_back(std::make_pair(dino.m_Name, false));
 
 				std::stringstream spp;
 
 				// Load appropriate text
-
-				spp << "huntdat/menu/txt/dino" << (dino.m_AI - 9);
+				spp << "huntdat/menu/txt/dino" << menuSlot;
 				if (g_Options.OptSys)
 					spp << ".txu";
 				else
@@ -1659,9 +1664,8 @@ void DrawMenuHunt()
 
 	int32_t score = g_UserProfile.Score - g_ScoreDebit;
 
-	unsigned list_max = std::min(g_AreaInfo.size(), static_cast<size_t>(10));
-
-	for (unsigned ii = MenuHunt[0].Offset; ii < MenuHunt[0].Offset + list_max; ii++) {
+	for (unsigned ii = MenuHunt[0].Offset;
+		ii < HuntListVisibleEnd(MenuHunt[0].Offset, g_AreaInfo.size()); ii++) {
 		int i = ii - MenuHunt[0].Offset;
 		c = 0xB0B070;
 
@@ -1680,12 +1684,13 @@ void DrawMenuHunt()
 		DrawTextShadow(MenuHunt[0].Rect.right - 4, MenuHunt[0].Rect.top + (16 * i), sc.str(), c, DTA_RIGHT);
 	}
 
-	for (unsigned ii = MenuHunt[1].Offset; ii < MenuHunt[1].Offset + MenuHunt[1].Item.size(); ii++)
+	for (unsigned ii = MenuHunt[1].Offset;
+		ii < HuntListVisibleEnd(MenuHunt[1].Offset, MenuHunt[1].Item.size()); ii++)
 	{
 		int i = ii - MenuHunt[1].Offset;
 		uint32_t c = 0xB0B070;
 		try {
-			DinoInfo& di = g_DinoInfo.at(g_DinoList[i]);
+			DinoInfo& di = g_DinoInfo.at(g_DinoList[ii]);
 			std::string s = di.m_Name;
 			std::stringstream sc;
 
@@ -1704,7 +1709,7 @@ void DrawMenuHunt()
 				c = 0x707070;
 			}
 
-			if (MenuHunt[1].Item[i].second)
+			if (MenuHunt[1].Item[ii].second)
 			{
 				c = RGB(255, 255, 10);
 			}
@@ -1717,7 +1722,8 @@ void DrawMenuHunt()
 		}
 	}
 
-	for (unsigned ii = MenuHunt[2].Offset; ii < MenuHunt[2].Offset + MenuHunt[2].Item.size(); ii++)
+	for (unsigned ii = MenuHunt[2].Offset;
+		ii < HuntListVisibleEnd(MenuHunt[2].Offset, MenuHunt[2].Item.size()); ii++)
 	{
 		uint32_t c = 0xB0B070;
 		int i = ii - MenuHunt[2].Offset;
@@ -1739,7 +1745,8 @@ void DrawMenuHunt()
 		DrawTextShadow(MenuHunt[2].Rect.right - 4, MenuHunt[2].Rect.top + (16 * i), sc.str(), c, DTA_RIGHT);
 	}
 
-	for (unsigned ii = MenuHunt[3].Offset; ii < MenuHunt[3].Offset + MenuHunt[3].Item.size(); ii++)
+	for (unsigned ii = MenuHunt[3].Offset;
+		ii < HuntListVisibleEnd(MenuHunt[3].Offset, MenuHunt[3].Item.size()); ii++)
 	{
 		if (ii >= g_UtilInfo.size())
 			break;
@@ -2242,7 +2249,7 @@ void MenuEventInput(int32_t menu)
 			int32_t score = (g_UserProfile.Score - g_ScoreDebit) + scorea;
 			int yd = g_CursorPos.y - MenuHunt[0].Rect.top;
 
-			unsigned index = yd / 16;
+			unsigned index = HuntListDataIndex(yd / 16, MenuHunt[0].Offset);
 
 			if (index < g_AreaInfo.size())
 			{
@@ -2277,7 +2284,7 @@ void MenuEventInput(int32_t menu)
 			int yd = g_CursorPos.y - MenuHunt[1].Rect.top;
 
 			unsigned index = yd / 16;
-			unsigned dataIndex = index + MenuHunt[1].Offset; // Account for scroll offset
+			unsigned dataIndex = HuntListDataIndex(index, MenuHunt[1].Offset);
 
 			if (dataIndex < g_DinoList.size())
 			{
@@ -2311,7 +2318,7 @@ void MenuEventInput(int32_t menu)
 			int32_t score = g_UserProfile.Score - g_ScoreDebit;
 			int yd = g_CursorPos.y - MenuHunt[2].Rect.top;
 
-			unsigned index = yd / 16;
+			unsigned index = HuntListDataIndex(yd / 16, MenuHunt[2].Offset);
 
 			if (index < MenuHunt[2].Item.size())
 			{
@@ -2443,21 +2450,49 @@ void MenuEventInput(int32_t menu)
 						wep |= 1 << i;
 				}
 
-				// Initialise the command line parameters. For slot six, launch the
-				// basename whose files actually exist (m_MapFile): vanilla resolves
-				// external.map/.rsc, mods that ship area6.map/.rsc resolve there.
-				// m_ProjectName keeps the logical slot name "area6" for saved-hunt
-				// restore matching. The engine aliases external->area6 in its script
-				// area filtering, so either basename loads correctly.
-				std::stringstream params("");
+				// Initialise the command line parameters through the tested helper. For
+				// slot six, this uses the basename whose files actually exist.
+				if (MenuHunt[0].Selected < 0 ||
+					MenuHunt[0].Selected >= static_cast<int>(g_AreaInfo.size()))
+				{
+					ShowErrorMessage("The selected hunt is invalid.");
+					return;
+				}
 				const AreaInfo& launchArea = g_AreaInfo[MenuHunt[0].Selected];
-				const std::string& launchName =
-					(launchArea.m_MapFile == "external") ? std::string("external") : launchArea.m_ProjectName;
-				params << " reg=" << g_UserProfile.RegNumber;
-				params << " prj=huntdat/areas/" << launchName;
-				params << " din=" << din;
-				params << " wep=" << wep;
-				params << " dtm=" << g_TimeOfDay;
+				HuntLaunchRequest launchRequest;
+				launchRequest.projectName = launchArea.m_ProjectName;
+				launchRequest.mapFile = launchArea.m_MapFile;
+				launchRequest.registration = g_UserProfile.RegNumber;
+				launchRequest.dinoFlags = din;
+				launchRequest.weaponFlags = wep;
+				launchRequest.timeOfDay = g_TimeOfDay;
+
+				// The engine opens <basename>.map and <basename>.rsc from this one
+				// name, so refuse here with the missing path named rather than
+				// launching into "Error opening resource file".
+				{
+					const std::string launchBase = launchRequest.mapFile.empty()
+						? launchRequest.projectName
+						: launchRequest.mapFile;
+					const std::string missingFile = MissingAreaFile(launchBase);
+					if (!missingFile.empty())
+					{
+						ShowErrorMessage("This area cannot be played: " + missingFile +
+							" is missing.\r\n\r\nAn area loads from a pair with the same "
+							"basename: huntdat/areas/" + launchBase + ".map and .rsc.\r\n"
+							"Restore the missing file from your game data, or remove the area.");
+						return;
+					}
+				}
+				std::string launchArguments;
+				if (!BuildHuntLaunchArguments(launchRequest, launchArguments))
+				{
+					ShowErrorMessage("The selected hunt has invalid launch data.");
+					return;
+				}
+				// The base arguments must be the first write into an empty stream;
+				// MakeLaunchParamStream owns that contract.
+				std::stringstream params = MakeLaunchParamStream(launchArguments);
 
 #ifdef _iceage
 				// Ice Age resupply
@@ -2512,12 +2547,16 @@ void MenuEventInput(int32_t menu)
 				// ProcessCommandLine(): camo, radar, scent, double, tranq, observer.
 				// Values come from UtilInfo.m_ScoreMod (populated from _RES.TXT's
 				// 'accessories {}' block, falling back to legacy defaults).
-				params << " smod=" << g_UtilInfo[kAccCamo].m_ScoreMod  // camo
-				       << ","  << g_UtilInfo[kAccRadar].m_ScoreMod    // radar
-				       << ","  << g_UtilInfo[kAccScent].m_ScoreMod    // scent
-				       << ","  << g_UtilInfo[kAccDouble].m_ScoreMod    // double
-				       << ","  << g_UtilInfo[kAccTranq].m_ScoreMod    // tranq
-				       << ","  << g_ObserverInfo.m_ScoreMod;  // observer
+				float scoreMods[kScoreModSlotCount] = {};
+				scoreMods[static_cast<int>(ScoreModSlot::Camo)]     = g_UtilInfo[kAccCamo].m_ScoreMod;
+				scoreMods[static_cast<int>(ScoreModSlot::Radar)]    = g_UtilInfo[kAccRadar].m_ScoreMod;
+				scoreMods[static_cast<int>(ScoreModSlot::Scent)]    = g_UtilInfo[kAccScent].m_ScoreMod;
+				scoreMods[static_cast<int>(ScoreModSlot::Double)]   = g_UtilInfo[kAccDouble].m_ScoreMod;
+				scoreMods[static_cast<int>(ScoreModSlot::Tranq)]    = g_UtilInfo[kAccTranq].m_ScoreMod;
+				scoreMods[static_cast<int>(ScoreModSlot::Observer)] = g_ObserverInfo.m_ScoreMod;
+				char scoreModPayload[kScoreModSlotCount * 24];
+				if (BuildScoreModPayload(scoreMods, scoreModPayload, sizeof scoreModPayload) > 0)
+					params << " smod=" << scoreModPayload;
 
 #ifdef _DEBUG
 				params << " -debug";
@@ -2559,11 +2598,28 @@ void MenuEventInput(int32_t menu)
 				if (id == 1) { ChangeMenuState(MENU_HUNT); }
 				else if (id == 2) { ChangeMenuState(MENU_OPTIONS); }
 				else if (id == 3) {
-					std::stringstream params("");
-
-					params << "reg=" << g_UserProfile.RegNumber;
-					params << " prj=huntdat/areas/trophy";
-					params << " dtm=" << 1;
+					// The room is a project like any other: it opens
+					// huntdat/areas/trophy.map/.rsc, so a missing half is reported
+					// here instead of halting the game on the path.
+					const std::string trophyMissing = MissingAreaFile("trophy");
+					if (!trophyMissing.empty())
+					{
+						ShowErrorMessage("The trophy room cannot be opened: " + trophyMissing +
+							" is missing.\r\n\r\nThe room needs huntdat/areas/trophy.map "
+							"and trophy.rsc in the game folder.");
+						return;
+					}
+					HuntLaunchRequest launchRequest;
+					launchRequest.projectName = "trophy";
+					launchRequest.registration = g_UserProfile.RegNumber;
+					launchRequest.timeOfDay = 1;
+					std::string launchArguments;
+					if (!BuildHuntLaunchArguments(launchRequest, launchArguments))
+					{
+						ShowErrorMessage("The trophy room has invalid launch data.");
+						return;
+					}
+					std::stringstream params = MakeLaunchParamStream(launchArguments);
 #ifdef _DEBUG
 					params << " -debug";
 #endif //_DEBUG
@@ -2847,12 +2903,8 @@ void MenuMouseScrollEvent(int32_t menu, int32_t scroll)
 		{
 			if (IsPointInRect(g_CursorPos, MenuHunt[i].Rect) && MenuHunt[i].Item.size() > 10)
 			{
-				MenuHunt[i].Offset -= scroll;
-
-				if (MenuHunt[i].Offset < 0)
-					MenuHunt[i].Offset = 0;
-				else if (MenuHunt[i].Offset > MenuHunt[i].Item.size() - 10)
-					MenuHunt[i].Offset = MenuHunt[i].Item.size() - 10;
+				MenuHunt[i].Offset = static_cast<uint32_t>(ScrolledHuntListOffset(
+					MenuHunt[i].Offset, MenuHunt[i].Item.size(), scroll));
 			}
 		}
 	}

@@ -27,6 +27,14 @@ inline bool IsValidCount(int value, int capacity)
     return value >= 0 && value <= capacity;
 }
 
+// A configured minimum/maximum pair must fit its destination capacity and
+// retain the ordering expected by the spawning loops.
+inline bool IsValidOrderedRange(int minimum, int maximum, int capacity)
+{
+    return IsValidCount(minimum, capacity) &&
+           IsValidCount(maximum, capacity) && minimum <= maximum;
+}
+
 // File/script-derived array index must be strictly below capacity.
 inline bool IsValidIndex(int value, int capacity)
 {
@@ -177,23 +185,74 @@ inline bool ReadExact(Platform::FileHandle hfile, void* buffer, std::uint32_t by
     return got == bytes;
 }
 
-// Strip one layer of surrounding single quotes in place ('name' -> name).
-// Script lines keep their trailing newline, so the old inline idiom was
-// value[strlen(value)-2] = 0 with use of &value[1]: it dropped the closing
-// quote and relied on the newline's position. This helper makes each step
-// explicit and returns nullptr on malformed input (caller halts) instead
-// of indexing before the buffer when the value is shorter than ''.
-inline char* StripQuoted(char* value)
+// _RES.TXT assignment helpers. Script lines are `key = 'value'`, optionally
+// followed by spaces or a // comment (see CarnivoresDoc/reference/
+// res-txt-format.md). The legacy parser matched keys with strstr() over the
+// whole line and stripped the quotes in place, so a line that merely
+// contained the word "file" was read as the model-file field ("filename =
+// ...", a path like models/modname/x.car, a name value like 'Profile'), and
+// a line matching two keys broke the second one once the first had consumed
+// the closing quote. The helpers below avoid both: ScriptKeyIs checks the
+// assignment key itself, and FindQuotedValue reads the value without
+// touching the line.
+
+// True when the key before the first '=' equals `key`, ignoring spaces and
+// tabs around it. Case-sensitive, matching the script format.
+inline bool ScriptKeyIs(const char* line, const char* key)
 {
-    if (!value)
-        return nullptr;
-    size_t len = strlen(value);
-    while (len > 0 && (value[len - 1] == '\n' || value[len - 1] == '\r'))
-        value[--len] = 0;
-    if (len < 2 || value[0] != '\'' || value[len - 1] != '\'')
-        return nullptr;
-    value[len - 1] = 0;
-    return value + 1;
+    if (!line || !key)
+        return false;
+    const char* eq = strchr(line, '=');
+    if (!eq)
+        return false;
+    const char* begin = line;
+    while (*begin == ' ' || *begin == '\t')
+        ++begin;
+    if (begin[0] == '/' && begin[1] == '/')
+        return false;
+
+    const char* end = eq;
+    while (end > begin && (end[-1] == ' ' || end[-1] == '\t'))
+        --end;
+    const size_t len = static_cast<size_t>(end - begin);
+    return len == strlen(key) && strncmp(begin, key, len) == 0;
+}
+
+// Span of the first quoted value in `text`: between the first quote and the
+// next one. Anything after the closing quote (trailing spaces, a // comment)
+// is ignored, so the documented trailing-comment style parses. A value
+// cannot contain a single quote; the format has no escape for one.
+inline bool FindQuotedValue(const char* text, const char** value, size_t* length)
+{
+    if (!text)
+        return false;
+    const char* open = strchr(text, '\'');
+    if (!open)
+        return false;
+    const char* close = strchr(open + 1, '\'');
+    if (!close)
+        return false;
+    if (value)
+        *value = open + 1;
+    if (length)
+        *length = static_cast<size_t>(close - open - 1);
+    return true;
+}
+
+// Bounded copy of the first quoted value (it must fit with its terminator).
+// Returns false for a missing or unclosed quote, an overlong value, or a
+// null/zero-capacity destination; the caller halts.
+inline bool CopyQuotedValue(char* dst, size_t dstCap, const char* text)
+{
+    const char* value = nullptr;
+    size_t length = 0;
+    if (!dst || dstCap == 0 || !FindQuotedValue(text, &value, &length))
+        return false;
+    if (length >= dstCap)
+        return false;
+    memcpy(dst, value, length);
+    dst[length] = 0;
+    return true;
 }
 
 // Bounded copy into a fixed char field. Returns false (caller halts)

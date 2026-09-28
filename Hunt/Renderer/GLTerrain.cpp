@@ -393,14 +393,15 @@ void GLRenderer::RenderTerrain()
             if (m_isUnderwater || GetSunLight() < 0.1f) {
                 glUniform1f(uScatter, 0.0f);
             } else {
-                Vector3d sunDir = {-2048.0f, 4048.0f, -2048.0f};
+                // Keep fog forward-scatter aligned with the rendered celestial body.
+                Vector3d sunDir = Sun3dPos;
                 sunDir = RotateVector(sunDir);
                 const float len = std::sqrt(sunDir.x * sunDir.x + sunDir.y * sunDir.y + sunDir.z * sunDir.z);
                 if (len > 1e-3f && uSunDir >= 0 && uSunVis >= 0) {
                     glUniform3f(uSunDir, sunDir.x / len, sunDir.y / len, sunDir.z / len);
                     const float vis = std::clamp(GetSunLight() / kMaxSunLight, 0.0f, 1.0f);
                     glUniform1f(uSunVis, vis);
-                    glUniform1f(uScatter, 0.25f);  // master scatter strength (was 0.25 in §3.5)
+                    glUniform1f(uScatter, 0.25f);  // master scatter strength
                 } else {
                     glUniform1f(uScatter, 0.0f);
                 }
@@ -477,6 +478,14 @@ void GLRenderer::ClearLevelTextureCache()
     // re-uploads fresh geometry. The VBO/IBO data is orphaned but will be
     // reused when EnsureStaticMeshCapacity regrows the buffers.
     m_staticMeshCache.clear();
+
+    // OMap and MObjects are per-level. Rebuild the supplementary placement
+    // list lazily after the next level has finished loading them.
+    for (auto& block : m_oversizedObjectBlocks) {
+        block.clear();
+    }
+    m_mapObjectCullExtents.fill({});
+    m_oversizedObjectPlacementsValid = false;
 
     m_skyTextureDirty = true;
 }
@@ -875,6 +884,143 @@ void GLRenderer::CollectTerrainChunk2x2(int x, int y,
     }
 }
 
+void GLRenderer::RebuildOversizedObjectPlacements()
+{
+    for (auto& block : m_oversizedObjectBlocks) {
+        block.clear();
+    }
+    m_mapObjectCullExtents.fill({});
+    std::array<uint8_t, 256> extentReady{};
+
+    // RenderGround's row-range margin is three map cells. Placements whose
+    // horizontal or vertical extent exceeds it can reach into the viewport
+    // while their origin terrain cell remains outside the optimized sweep.
+    constexpr float kTerrainSweepMargin = 3.0f * 256.0f;
+    size_t placementCount = 0;
+    for (int y = 0; y < ctMapSize; ++y) {
+        for (int x = 0; x < ctMapSize; ++x) {
+            const int objectIndex = OMap[y][x];
+            if (objectIndex == 255 || !MObjects[objectIndex].model) {
+                continue;
+            }
+
+            const TObject& object = MObjects[objectIndex];
+            if (!extentReady[objectIndex]) {
+                MapObjectCullExtent& extent = m_mapObjectCullExtents[objectIndex];
+                extent.horizontal = object.info.BoundR;
+                extent.vertical = (std::max)(
+                    std::fabs(static_cast<float>(object.info.YLo)),
+                    std::fabs(static_cast<float>(object.info.YHi)));
+
+                // YLo/YHi is inaccurate for some shipped AREA7 models. Read
+                // each object definition once per level instead of trusting
+                // metadata that can clip several thousand units of geometry.
+                for (int vertex = 0; vertex < object.model->VCount; ++vertex) {
+                    const TPoint3d& point = object.model->gVertex[vertex];
+                    extent.horizontal = (std::max)(
+                        extent.horizontal, std::sqrt(point.x * point.x + point.z * point.z));
+                    extent.vertical = (std::max)(extent.vertical, std::fabs(point.y));
+                }
+
+                // Animated map objects replace their base vertices with VTL
+                // coordinates divided by eight. Include every stored frame so
+                // no per-frame animation scan is needed by the collector.
+                if ((object.info.flags & ofANIMATED) && object.vtl.aniData &&
+                    object.vtl.FramesCount > 0) {
+                    const size_t pointCount = static_cast<size_t>(object.model->VCount) *
+                                              object.vtl.FramesCount;
+                    const short int* coordinates = object.vtl.aniData.get();
+                    for (size_t point = 0; point < pointCount; ++point) {
+                        const float px = coordinates[point * 3 + 0] / 8.0f;
+                        const float py = coordinates[point * 3 + 1] / 8.0f;
+                        const float pz = coordinates[point * 3 + 2] / 8.0f;
+                        extent.horizontal = (std::max)(
+                            extent.horizontal, std::sqrt(px * px + pz * pz));
+                        extent.vertical = (std::max)(extent.vertical, std::fabs(py));
+                    }
+                }
+                extentReady[objectIndex] = 1;
+            }
+
+            const MapObjectCullExtent& extent = m_mapObjectCullExtents[objectIndex];
+            if ((std::max)(extent.horizontal, extent.vertical) > kTerrainSweepMargin) {
+                const int bx = x >> kOversizedObjectBlockShift;
+                const int by = y >> kOversizedObjectBlockShift;
+                m_oversizedObjectBlocks[by * kOversizedObjectBlockDim + bx].push_back({x, y});
+                ++placementCount;
+            }
+        }
+    }
+
+    m_oversizedObjectPlacementsValid = true;
+    LOG_INFO("Oversized map-object placements: %zu", placementCount);
+}
+
+void GLRenderer::CollectOversizedMapObjects()
+{
+    if (!MODELS) {
+        return;
+    }
+    if (!m_oversizedObjectPlacementsValid) {
+        RebuildOversizedObjectPlacements();
+    }
+
+    const float viewDistance = static_cast<float>(ctViewR * 256);
+    const float viewDistanceSq = viewDistance * viewDistance;
+    const int minX = (std::max)(0, CCX - ctViewR);
+    const int maxX = (std::min)(ctMapSize - 1, CCX + ctViewR);
+    const int minY = (std::max)(0, CCY - ctViewR);
+    const int maxY = (std::min)(ctMapSize - 1, CCY + ctViewR);
+    const int minBlockX = minX >> kOversizedObjectBlockShift;
+    const int maxBlockX = maxX >> kOversizedObjectBlockShift;
+    const int minBlockY = minY >> kOversizedObjectBlockShift;
+    const int maxBlockY = maxY >> kOversizedObjectBlockShift;
+
+    for (int by = minBlockY; by <= maxBlockY; ++by) {
+        for (int bx = minBlockX; bx <= maxBlockX; ++bx) {
+            const auto& placements =
+                m_oversizedObjectBlocks[by * kOversizedObjectBlockDim + bx];
+            for (const Vector2di& placement : placements) {
+                // Blocks overlap the square around the view disk; reject their
+                // slack and preserve the existing centre-distance fade limit.
+                if (placement.x < minX || placement.x > maxX ||
+                    placement.y < minY || placement.y > maxY) {
+                    continue;
+                }
+                const size_t mapIndex = static_cast<size_t>(placement.y) * ctMapSize + placement.x;
+                if (m_objectQueueMarks.size() == static_cast<size_t>(ctMapSize * ctMapSize) &&
+                    m_objectQueueMarks[mapIndex]) {
+                    continue;
+                }
+
+                Vector3d viewPosition;
+                viewPosition.x = placement.x * 256.0f + 128.0f - CameraX;
+                viewPosition.y = static_cast<float>(HMapO[placement.y][placement.x]) * ctHScale - CameraY;
+                viewPosition.z = placement.y * 256.0f + 128.0f - CameraZ;
+                if (VectorLengthSq(viewPosition) > viewDistanceSq) {
+                    continue;
+                }
+
+                const int objectIndex = OMap[placement.y][placement.x];
+                if (objectIndex == 255 || !MObjects[objectIndex].model) {
+                    continue;
+                }
+                const MapObjectCullExtent& extent = m_mapObjectCullExtents[objectIndex];
+                const float cullRadius = std::sqrt(
+                    extent.horizontal * extent.horizontal +
+                    extent.vertical * extent.vertical);
+                if (SphereOutsideView(RotateVector(viewPosition), cullRadius)) {
+                    continue;
+                }
+
+                // RenderObject's map-cell marker remains the authoritative
+                // duplicate guard if collection paths change in the future.
+                RenderObject(placement.x, placement.y);
+            }
+        }
+    }
+}
+
 void GLRenderer::RenderGround()
 {
 #ifdef GL_PERF_HOOKS
@@ -888,6 +1034,11 @@ void GLRenderer::RenderGround()
 #endif
     m_worldModelItems.clear();
     m_transparentModelItems.clear();
+    for (const Vector2di& object : m_objectList) {
+        if (m_objectQueueMarks.size() == static_cast<size_t>(ctMapSize * ctMapSize)) {
+            m_objectQueueMarks[static_cast<size_t>(object.y) * ctMapSize + object.x] = 0;
+        }
+    }
     m_objectList.clear();
     }
 
@@ -983,41 +1134,58 @@ void GLRenderer::RenderGround()
 
         const float ctViewRf = static_cast<float>(ctViewR);
         const float ctViewR2 = ctViewRf * ctViewRf;
-        // Margin: tile corners span +/-0.5 cell from the center, the
-        // sub-cell camera residual is < 1 cell, and floor/ceil rounding
-        // can eat ~1 cell.  3 cells comfortably covers all of it.
+
+        // CCX/CCY snap to even map cells, so the camera can be nearly two
+        // cells from that origin. Use the actual camera-to-tile-center
+        // residual rather than assuming the snap error is below one cell.
+        const float cameraCellX = CameraX / 256.0f;
+        const float cameraCellY = CameraZ / 256.0f;
+        const float residualX = cameraCellX - (static_cast<float>(CCX) + 0.5f);
+        const float residualY = cameraCellY - (static_cast<float>(CCY) + 0.5f);
+
+        // Apply the safety margin to each half-plane before rejection. Merely
+        // widening an accepted x interval cannot recover a wholly rejected
+        // near-parallel row. Three cells conservatively cover tile corners
+        // and floating-point/rounding slack.
         constexpr float kMargin = 3.0f;
+        const float rightSlack = kMargin * (std::fabs(Ar) + std::fabs(Br));
+        const float leftSlack = kMargin * (std::fabs(Al) + std::fabs(Bl));
 
-        const int yLo = (std::max)(0, CCY - ctViewR);
-        const int yHi = (std::min)(ctMapSize - 1, CCY + ctViewR);
+        const int yLo = (std::max)(0, static_cast<int>(std::ceil(
+            static_cast<float>(CCY) + residualY - ctViewRf)));
+        const int yHi = (std::min)(ctMapSize - 1, static_cast<int>(std::floor(
+            static_cast<float>(CCY) + residualY + ctViewRf)));
 
-        // Compute one row's frustum dx-range [lo,hi] (cells relative to
-        // CCX): view disk  ∩  right half-plane  ∩  left half-plane, expanded
-        // by kMargin and clamped to the view disk.  Returns false when the row
-        // has no visible span (so the caller can skip / union it away).
-        auto rowRange = [&](float dy, float& lo, float& hi) -> bool {
+        // Compute one row's map-relative dx range [lo,hi]: exact center
+        // distance disk intersected with conservatively expanded frustum
+        // half-planes. Returns false when the row has no candidate span.
+        auto rowRange = [&](float mapDy, float& lo, float& hi) -> bool {
+            const float dy = mapDy - residualY;
             const float d2 = ctViewR2 - dy * dy;
-            if (d2 <= 0.0f) return false;
-            const float D = std::sqrt(d2);
+            if (d2 < 0.0f) return false;
+            const float D = std::sqrt((std::max)(0.0f, d2));
             lo = -D; hi = D;
 
-            // Right half-plane: Ar*dx + Br*dy <= Cr
-            const float rhsR = Cr - Br * dy;
+            // Right half-plane: Ar*dx + Br*dy <= Cr + rightSlack
+            const float expandedCr = Cr + rightSlack;
+            const float rhsR = expandedCr - Br * dy;
             if      (Ar >  1e-12f) hi = (std::min)(hi, rhsR / Ar);
             else if (Ar < -1e-12f) lo = (std::max)(lo, rhsR / Ar);
-            else if (Br * dy > Cr)  return false;   // edge parallel to row
+            else if (Br * dy > expandedCr) return false;
 
-            // Left half-plane: Al*dx + Bl*dy >= Cl
-            const float rhsL = Cl - Bl * dy;   // Al*dx >= rhsL
+            // Left half-plane: Al*dx + Bl*dy >= Cl - leftSlack
+            const float expandedCl = Cl - leftSlack;
+            const float rhsL = expandedCl - Bl * dy;
             if      (Al >  1e-12f) lo = (std::max)(lo, rhsL / Al);
             else if (Al < -1e-12f) hi = (std::min)(hi, rhsL / Al);
-            else if (Bl * dy < Cl)  return false;
+            else if (Bl * dy < expandedCl) return false;
 
-            lo -= kMargin;
-            hi += kMargin;
-            if (lo < -ctViewRf) lo = -ctViewRf;
-            if (hi >  ctViewRf) hi =  ctViewRf;
-            return lo <= hi;
+            if (lo > hi) return false;
+            // Convert true camera-relative center offsets back to offsets
+            // from the snapped CCX origin used by the map/grid lookup.
+            lo += residualX;
+            hi += residualX;
+            return true;
         };
 
         // Phase 2: process rows two at a time so the 2x2 chunk can share
@@ -1073,6 +1241,12 @@ void GLRenderer::RenderGround()
                 }
             }
         }
+
+        // Terrain rows are bounded using ordinary tile dimensions. A large
+        // cave roof, cliff, or tall custom model can remain visible after its
+        // origin cell falls outside that range. Queue those sparse placements
+        // independently so OpenGL's clipper receives the complete model.
+        CollectOversizedMapObjects();
     }
 
     {

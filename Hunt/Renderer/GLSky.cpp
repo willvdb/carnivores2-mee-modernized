@@ -5,6 +5,7 @@
 #include "Hunt.h"
 #include "GLRenderer.h"
 #include "Renderer/GLUtils.h"
+#include "Renderer/SkyFogProjection.h"
 
 #ifdef _gl
 
@@ -31,62 +32,137 @@ void GLRenderer::RenderSkyPlane()
 
     SKYDTime = RealTime & ((1 << 16) - 1);
 
-    // §3.8: Dynamic sky pitch offset.  Replace C2's fixed -0.15 rad offset
-    // with one that follows camera altitude: in deep valleys the sky sits
-    // "higher" (larger offset), on mountain peaks it sits lower (smaller
-    // offset).  Range 0.10..0.20 rad, centred on the original 0.15 default.
-    float heightAboveTerrain = (std::max)(0.0f, -CameraY);
-    float altitudeFactor = (std::clamp)(heightAboveTerrain / (200.0f * ctHScale), 0.0f, 1.0f);
-    float pitchOffset = 0.20f - altitudeFactor * 0.10f;
+    // Sky cloud-texture placement, selected by config.cfg "sky_mode" (see
+    // SkyMappingMode in GameState.h):
+    //   0 = legacy camera-coupled pitch offset (C2 dynamic 0.10..0.20 rad).
+    //       The offset is applied after yaw, so the plane's tilt direction
+    //       followed the camera and the cloud rows leaned by up to the full
+    //       offset while turning.
+    //   1 = world-level projected plane.  Level with the world (no
+    //       camera-coupled tilt); OptSkyHorizonDrop lowers the compression
+    //       singularity to a fixed elevation below the true horizon -- the
+    //       C1 offset's effect, but as a world-elevation shift applied in
+    //       the shader, so the canopy never leans while turning.  0 gives
+    //       the plain level plane.
+    //   2 = direction-based dome sampling in sky.frag (stereographic canopy,
+    //       scaled by OptSkyDomeScale).  The plane basis below still supplies
+    //       the legacy fog-proxy metric, so fog is identical in all modes.
+    // kSkyVBias is the cloud-phase knob (texels, 256 = one wrap): in modes
+    // 0/1 it selects which cloud band sits at the skyline.
+    constexpr float kSkyVBias = 0.0f;
 
-    const float skyPitchCos = std::cos(CameraBeta - pitchOffset);
-    const float skyPitchSin = std::sin(CameraBeta - pitchOffset);
+    const int skyMode = (OptSkyMode >= kSkyModeLegacy && OptSkyMode < kSkyModeCount)
+                            ? OptSkyMode
+                            : kSkyModeLevel;
+    const float domeScale = (OptSkyDomeScale >= kSkyDomeScaleMin &&
+                             OptSkyDomeScale <= kSkyDomeScaleMax)
+                                ? OptSkyDomeScale
+                                : kSkyDomeScaleDefault;
+    // Mode 1 horizon drop (config.cfg "sky_horizon_drop", degrees).
+    const float dropDeg = (OptSkyHorizonDrop >= kSkyHorizonDropMin &&
+                           OptSkyHorizonDrop <= kSkyHorizonDropMax)
+                              ? OptSkyHorizonDrop
+                              : kSkyHorizonDropDefault;
+    const float dropSin = std::sin(dropDeg * (3.14159265358979323846f / 180.0f));
+    // Legacy plane texture scale in texels: 0.004 texels per world unit at
+    // the inherited 4*512*16 plane height (131.072 texels per unit cot).
+    constexpr float kPlaneTexelScale = 0.004f * (4.0f * 512.0f * 16.0f);
 
-    Vector3d tx = {0.004f, 0.0f, 0.0f};
-    Vector3d ty = {0.0f, 0.0f, 0.004f};
-    Vector3d nv = {0.0f, -1.0f, 0.0f};
+    // Keep the legacy pitch calculation available in every mode. The
+    // projected texture is allowed to choose a different basis, but the
+    // inherited scanline-width fog proxy must not change when sky_mode is
+    // changed. This pitch is therefore the canonical fog basis as well as
+    // the texture basis for sky_mode 0.
+    const float heightAboveTerrain = (std::max)(0.0f, -CameraY);
+    const float altitudeFactor = (std::clamp)(
+        heightAboveTerrain / (200.0f * ctHScale), 0.0f, 1.0f);
+    const float legacySkyPitch =
+        CameraBeta - (0.20f - altitudeFactor * 0.10f);
+    const float skyPitch = (skyMode == kSkyModeLegacy)
+                               ? legacySkyPitch
+                               : CameraBeta;
 
-    auto rotateSky = [&](Vector3d& v) {
-        // First rotate around Y axis (CameraAlpha)
-        float x = v.x * localCa - v.z * localSa;
-        float z = v.z * localCa + v.x * localSa;
-        // Then rotate around X axis (CameraBeta - 0.15)
-        float y = v.y * skyPitchCos + z * skyPitchSin;
-        float zz = z * skyPitchCos - v.y * skyPitchSin;
-
-        v.x = x;
-        v.y = y;
-        v.z = zz;
+    struct SkyProjectionBasis {
+        Vector3d tangentX;
+        Vector3d tangentY;
+        Vector3d normal;
+        float planeP;
+        float ddx;
+        float ddy;
     };
 
-    rotateSky(tx);
-    rotateSky(ty);
-    rotateSky(nv);
+    const auto buildSkyBasis = [&](float pitch) {
+        const float pitchCos = std::cos(pitch);
+        const float pitchSin = std::sin(pitch);
+        SkyProjectionBasis basis = {
+            {0.004f, 0.0f, 0.0f},
+            {0.0f, 0.0f, 0.004f},
+            {0.0f, -1.0f, 0.0f},
+            0.0f,
+            0.0f,
+            0.0f,
+        };
 
-    Vector3d vbase = {-CameraX, 4.0f * 512.0f * 16.0f, CameraZ};
-    rotateSky(vbase);
+        auto rotateSky = [&](Vector3d& v) {
+            // First rotate around Y axis (CameraAlpha).
+            float x = v.x * localCa - v.z * localSa;
+            float z = v.z * localCa + v.x * localSa;
+            // Then rotate around X axis (the selected sky pitch).
+            float y = v.y * pitchCos + z * pitchSin;
+            float zz = z * pitchCos - v.y * pitchSin;
 
-    const float p = nv.x * vbase.x + nv.y * vbase.y + nv.z * vbase.z;
-    const float ddx = vbase.x * tx.x + vbase.y * tx.y + vbase.z * tx.z;
-    const float ddy = vbase.x * ty.x + vbase.y * ty.y + vbase.z * ty.z;
+            v.x = x;
+            v.y = y;
+            v.z = zz;
+        };
 
-    const float qx = CameraH * nv.x;
-    const float qy = CameraW * nv.y;
-    const float qz = CameraW * CameraH * nv.z;
+        rotateSky(basis.tangentX);
+        rotateSky(basis.tangentY);
+        rotateSky(basis.normal);
 
-    float px = p * CameraH * tx.x;
-    float py = p * CameraW * tx.y;
-    float pz = p * CameraW * CameraH * tx.z;
-    float rx = p * CameraH * ty.x;
-    float ry = p * CameraW * ty.y;
-    float rz = p * CameraW * CameraH * ty.z;
+        Vector3d vbase = {-CameraX, 4.0f * 512.0f * 16.0f, CameraZ};
+        rotateSky(vbase);
 
-    px -= ddx * qx;
-    py -= ddx * qy;
-    pz -= ddx * qz;
-    rx -= ddy * qx;
-    ry -= ddy * qy;
-    rz -= ddy * qz;
+        basis.planeP = basis.normal.x * vbase.x +
+                       basis.normal.y * vbase.y +
+                       basis.normal.z * vbase.z;
+        basis.ddx = vbase.x * basis.tangentX.x +
+                    vbase.y * basis.tangentX.y +
+                    vbase.z * basis.tangentX.z;
+        basis.ddy = vbase.x * basis.tangentY.x +
+                    vbase.y * basis.tangentY.y +
+                    vbase.z * basis.tangentY.z;
+        return basis;
+    };
+
+    const SkyProjectionBasis skyBasis = buildSkyBasis(skyPitch);
+    const SkyProjectionBasis fogBasis = buildSkyBasis(legacySkyPitch);
+    const auto buildProjection = [](const SkyProjectionBasis& basis,
+                                     float cameraW, float cameraH) {
+        return skyfog::BuildProjectionCoefficients(
+            basis.normal, basis.tangentX, basis.tangentY, basis.planeP,
+            basis.ddx, basis.ddy, cameraW, cameraH);
+    };
+    const skyfog::ProjectionCoefficients skyProjection =
+        buildProjection(skyBasis, CameraW, CameraH);
+
+    // The inherited sky fog is based on the texture span across a scanline,
+    // not a world-space distance. Controls.cpp multiplies CameraW/H for an
+    // optic, so evaluate that metric with the player's non-optic FOV instead.
+    // The shader reprojects its row by this same factor to preserve fog for
+    // the same world-space ray while the texture itself remains zoomed.
+    //
+    // Important: use fogBasis, not skyBasis. This preserves the pre-change
+    // fog envelope in sky_mode 1/2 while still allowing their cloud mapping
+    // to use a level plane or dome.
+    const float opticZoom = (std::max)(
+        1.0f, IsBinocularView() ? BinocularPower : ActiveWorldZoom());
+    const skyfog::ProjectionCoefficients fogProjection =
+        buildProjection(fogBasis, CameraW, CameraH);
+    const skyfog::ProjectionCoefficients fogReferenceProjection =
+        opticZoom > 1.0f
+            ? buildProjection(fogBasis, CameraW / opticZoom, CameraH / opticZoom)
+            : fogProjection;
 
     // The sky's distance-fog color is global, not the color of the
     // fixed fog volume the camera is currently inside. Local volumes are
@@ -115,12 +191,28 @@ void GLRenderer::RenderSkyPlane()
     // used by this shader; the sky's underwater look comes from the
     // 3dfx fog formula plus the uUnderwaterDepth uniform, plus scissor
     // clipping below the water surface horizon.
-    glUniform3f(m_locSkyQ, qx, qy, qz);
-    glUniform3f(m_locSkyP, px, py, pz);
-    glUniform3f(m_locSkyR, rx, ry, rz);
-    // §3.2 reverted: original (non-wind) sky scroll.  The §3.1 gradient,
-    // §3.6 sun glow and §3.5 pocket fog below are unchanged.
+    glUniform3f(m_locSkyQ, skyProjection.q.x, skyProjection.q.y, skyProjection.q.z);
+    glUniform3f(m_locSkyP, skyProjection.p.x, skyProjection.p.y, skyProjection.p.z);
+    glUniform3f(m_locSkyR, skyProjection.r.x, skyProjection.r.y, skyProjection.r.z);
+    glUniform3f(m_locSkyFogReferenceQ, fogReferenceProjection.q.x,
+                fogReferenceProjection.q.y, fogReferenceProjection.q.z);
+    glUniform3f(m_locSkyFogReferenceP, fogReferenceProjection.p.x,
+                fogReferenceProjection.p.y, fogReferenceProjection.p.z);
+    glUniform3f(m_locSkyFogReferenceR, fogReferenceProjection.r.x,
+                fogReferenceProjection.r.y, fogReferenceProjection.r.z);
+    glUniform1f(m_locSkyFogReferenceZoom, opticZoom);
+    // Reverted: original (non-wind) sky scroll.  The gradient,
+    // sun glow and pocket fog below are unchanged.
     glUniform1f(m_locSkyTime, static_cast<float>(SKYDTime) / 256.0f);
+    glUniform1f(m_locSkyVBias, kSkyVBias);
+    glUniform1i(m_locSkyMode, skyMode);
+    glUniform2f(m_locSkyDomeScale, domeScale, domeScale);
+    // World-level plane sampling constants (sky_mode 1).  The anchor keeps
+    // the canopy phased to world X/Z the way the legacy plane coefficients
+    // do (U = 0.004 * plane.x, V = -0.004 * plane.z).
+    glUniform1f(m_locSkyPlaneScale, kPlaneTexelScale);
+    glUniform1f(m_locSkyPlaneDrop, dropSin);
+    glUniform2f(m_locSkyPlaneAnchor, 0.004f * CameraX, -0.004f * CameraZ);
 
     // §3.6: Sun glow on sky texture.  The sun's screen position (m_sunScrX/Y)
     // and visibility (m_skyTraceK) are members updated by RenderSun(), which
@@ -303,7 +395,8 @@ void GLRenderer::RenderSkyPlane()
     // is still active, so the sun is also clipped to above the water line.
     if (SunModel && shouldDrawSky) {
         m_sunLight = 0.0f;
-        Vector3d sunDir = {-2048.0f, 4048.0f, -2048.0f};
+        // Match the legacy D3D/3DFX source for dawn, day, and night.
+        Vector3d sunDir = Sun3dPos;
         sunDir = RotateVector(sunDir);
         if (sunDir.z < -2024.0f) {
             RenderSun(sunDir.x, sunDir.y, sunDir.z);
@@ -823,6 +916,12 @@ void GLRenderer::UploadSkyTexture()
 
     glBindTexture(GL_TEXTURE_2D, m_skyTexture);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 256, GL_RGBA, GL_UNSIGNED_BYTE, expanded.data());
+    // Regenerate mipmaps on every level's sky upload.  The projected-plane
+    // mapping minifies the texture by orders of magnitude toward the horizon;
+    // without mips the tiled cloud pattern aliases into the visible
+    // woven/moire band.  Mip filtering resolves that region to the texture's
+    // local average instead.
+    glGenerateMipmap(GL_TEXTURE_2D);
 }
 
 void GLRenderer::ShutdownSkyPipeline()
@@ -862,7 +961,7 @@ void GLRenderer::InitializeSkyPipeline()
     glBindTexture(GL_TEXTURE_2D, m_skyTexture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 256, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     m_skyTextureDirty = true;

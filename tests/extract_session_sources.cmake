@@ -20,5 +20,5 @@ session_extract(Hunt/Game/EngineInit.cpp "void SetupRes()" "void EnumerateResolu
 session_extract(Hunt/Game/EngineInit.cpp "static std::string GetConfigPath()" EOF session_config.inc)
 session_extract(Hunt/Game/Trophy.cpp "void LoadTrophy2(int RegNumber)" EOF session_trophy.inc)
 session_extract(Hunt/Loaders/Resources.cpp "void SaveScreenShot()" EOF session_output.inc)
-session_extract(Hunt/Game/Interface.cpp "void DoHalt(const char* Mess)" "void WaitRetrace()" session_exit.inc)
+session_extract(Hunt/Game/Interface.cpp "[[noreturn]] static void ShutdownSession(int status)" "void WaitRetrace()" session_exit.inc)
 session_extract(Hunt/Loaders/Resources.cpp "void CreateLog()" EOF session_logs.inc)

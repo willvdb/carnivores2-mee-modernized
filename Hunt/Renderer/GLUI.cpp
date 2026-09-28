@@ -342,7 +342,11 @@ static void DrawCircleBuf(int cx, int cy, int radius, std::uint16_t color)
     // (ctViewR/4) can spill outside the map background's own dirty rect
     // when the player is near the map edge; without this its outer
     // pixels linger on the HUD texture after the map is dismissed.
-    if (g_GLRenderer) g_GLRenderer->MarkDirtyRect(cx - radius, cy - radius, radius * 2, radius * 2);
+    // Midpoint circles include both extrema (cx-radius through cx+radius).
+    // Include that final row/column so no arc pixels fall outside the region
+    // that is cleared after the map closes.
+    if (g_GLRenderer) g_GLRenderer->MarkDirtyRect(cx - radius, cy - radius,
+                                                   radius * 2 + 1, radius * 2 + 1);
 
     int d = 3 - (2 * radius);
     int x = 0;

@@ -786,8 +786,7 @@ void LoadResources()
   if (strstr(ProjectName, "trophy"))
   {
     g_GameMode = GameMode::TrophyMode;
-    ctViewR = 60;
-    charViewR = ctViewR;
+    // Keep configured view distance, fog range and far plane in the room.
   }
   {
     // Permanent breadcrumb: which map booted and whether the room was
@@ -807,7 +806,10 @@ void LoadResources()
   if (hfile==Platform::InvalidFile)
   {
     char sz[512];
-    snprintf(sz, sizeof(sz), "Error opening resource file\n%s.", RscName );
+    snprintf(sz, sizeof(sz), "Error opening resource file\n%s.\n\n"
+              "This area needs %s and its .rsc file with the same basename.\n"
+              "Restore the missing file from your game data, or remove the area.",
+              RscName, MapName);
     DoHalt(sz);
     return;
   }
@@ -832,13 +834,7 @@ void LoadResources()
   SkyTG = TransRGB[OptDayNight][1];
   SkyTB = TransRGB[OptDayNight][2];
 
-  if (OptDayNight==2)
-  {
-    SkyR = 0;
-    SkyB = 0;
-    SkyTR = 0;
-    SkyTB = 0;
-  }
+  // Night vision is a separate overlay; retain authored night RGB fog.
 
   SkyTR = MIN(255,SkyTR * (OptBrightness + 128) / 256);
   SkyTG = MIN(255,SkyTG * (OptBrightness + 128) / 256);
@@ -1284,6 +1280,11 @@ void PrintLogVerbose(const char* l)
 {
   if (!g_VerboseLogging) return;
   PrintLog(l);
+}
+
+bool IsAILoggingEnabled() { return g_AILogging || g_VerboseLogging; }
+void PrintLogAI(const char* message) {
+  if (IsAILoggingEnabled()) PrintLog(message);
 }
 
 void CloseLog()

@@ -4,6 +4,7 @@
 // ==========================================================================
 
 #include "Hunt.h"
+#include "CharacterAwareness.h"
 #include "CharacterInternal.h"
 
 // Forward declaration from AnimateHuntDead.cpp
@@ -75,7 +76,7 @@ void AnimateMHunters() {
 				TSFX *shotFx = &fxGunShot[WeapInfo[weapon].SFXIndex];
 				AddVoice3d(shotFx->length, shotFx->lpData.data(), pos->x, pos->y, pos->z);//TODO XYZ NEEDS TO BE PLAYER -> SOUND VECTOR
 			}
-			MakeNoise(*pos, ctViewR * 200 * WeapInfo[weapon].Loud);
+			MakeNoise(*pos, GunshotNoiseRangeWorld(ctViewR, WeapInfo[weapon].Loud));
 		}
 
 		if (mHunterCall[c] != -1) {
@@ -163,7 +164,9 @@ void AnimateCharacters()
 	{
 		cptr = &Characters[CurDino];
 		if (cptr->StateF == 0xFF) continue;
-		cptr->tgtime += TimeDt;
+		// Fixed flee progress and retry boundaries belong to the navigator.
+		// Other targets retain the ordinary age clock.
+		if (!IsFixedHunterFlee(cptr)) cptr->tgtime += TimeDt;
 
 		// tracker bullets
 		if (cptr->RTime && WeapInfo[cptr->tracker].radarTime) {
@@ -180,7 +183,10 @@ void AnimateCharacters()
 			if (!Packs[cptr->packId].leader->Health) Packs[cptr->packId].leader = cptr;
 		}
 
-		if (cptr->tgtime > 30 * 1000) {
+		// A remembered pursuit or fixed flee owns its target until awareness
+		// releases it. Wandering must not replace that destination mid-reaction.
+		const bool fixedReaction = IsFixedHunterPursuit(cptr) || IsFixedHunterFlee(cptr);
+		if (!fixedReaction && cptr->tgtime > 30 * 1000) {
 
 			if (cptr->Clone == AI_BRACH || cptr->Clone == AI_BRACHDANGER || cptr->Clone == AI_LANDBRACH) SetNewTargetPlace_Brahi(cptr, 2048.f);
 			else if (cptr->Clone == AI_MOSA) SetNewTargetPlaceFish(cptr, 5048.f);
@@ -189,7 +195,7 @@ void AnimateCharacters()
 
 		}
 
-		if (cptr->tgtime > 50 * 1000 && cptr->Clone == AI_ICTH) {
+		if (!fixedReaction && cptr->tgtime > 50 * 1000 && cptr->Clone == AI_ICTH) {
 			if (cptr->Phase != DinoInfo[cptr->CType].flyAnim &&
 				cptr->Phase != DinoInfo[cptr->CType].glideAnim &&
 				cptr->Phase != DinoInfo[cptr->CType].takeoffAnim &&
@@ -224,9 +230,44 @@ void AnimateCharacters()
 				}
 			}
 
-		if (cptr->AfraidTime <= 0) {
-			cptr->awareHunter = false;
-			cptr->heardShot = false;
+		// Contact-range awareness: a creature following a remembered event
+		// position still notices a hunter who physically enters its attack
+		// reach. The resolver owns the eligibility (fixed pursuit, attack reach,
+		// live player, not detached observer) and the promotion to exact
+		// tracking; the stored point alone still never authorizes a kill at a
+		// distance, and flee reactions keep their stored direction.
+		{
+			THunterStimulus contact;
+			contact.kind = HunterStimulusKind::Contact;
+			contact.position = PlayerPos;
+			ApplyHunterStimulus(*cptr, contact);
+		}
+
+		TickHunterAwareness(*cptr);
+
+		// The awareness core owns hunter-directed destinations: fixed flee
+		// extension and the local search after a fixed pursuit reaches its
+		// stored event position. Wandering and pack movement stay with the
+		// animators.
+		UpdateHunterNavigation(*cptr);
+
+		// Opt-in AI trace (ai_logging 1 in config.cfg, or verbose_logging 1):
+		// roughly once per second, show where a reacting creature is and where it
+		// is heading, plus the live hunter distance so an escape can be told from
+		// a standstill or a return. Paired with the event lines from the
+		// awareness core this shows whether it is walking toward the stored
+		// point, searching, or blocked.
+		if (IsAILoggingEnabled() && cptr->hunterAwareness != HunterAwarenessState::None
+			&& (RealTime & 1023) < TimeDt) {
+			const THunterGeometry hunter = GetHunterGeometry(cptr);
+			char aiTrace[256];
+			snprintf(aiTrace, sizeof(aiTrace),
+				"[AI] trace clone=%d ctype=%d species=%s state=%s pos=(%.0f,%.0f) target=(%.0f,%.0f) dist=%.0f afraid=%d\n",
+				cptr->Clone, cptr->CType, DinoInfo[cptr->CType].Name,
+				HunterAwarenessStateName(cptr->hunterAwareness),
+				cptr->pos.x, cptr->pos.z, cptr->tgx, cptr->tgz,
+				hunter.distance, cptr->AfraidTime);
+			PrintLogAI(aiTrace);
 		}
 
 		

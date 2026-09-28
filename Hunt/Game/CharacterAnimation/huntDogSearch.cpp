@@ -42,7 +42,8 @@ std::uint8_t huntDogSearch(TCharacter *cptr)
 		if (!DinoInfo[dino->CType].dogSmell) continue;
 
 		rlook = SubVectors(dino->pos, cptr->pos);
-		kR = VectorLength(rlook) / 256.f / (32.f + charViewR / 2);
+		kR = VectorLength(rlook) / 256.f
+			/ (32.f + GameplayViewRadiusCells(ctViewR) / 2.f);
 		NormVector(rlook, 1.0f);
 
 		kR *= 2.5f / static_cast<float>((1.5 + OptSens / 128.f));

@@ -34,6 +34,11 @@ jobs:
     - name: Build
       run: cmake --build --preset ${{ matrix.preset }}
 
+    - name: Check release stack protection
+      if: endsWith(matrix.preset, '-release')
+      shell: powershell
+      run: ./tools/check_release_flags.ps1 -BuildDir build/${{ matrix.preset }}
+
     # Hosted CI has no user-owned HUNTDAT. Run only asset-free tests here;
     # hunt/sound/shutdown validation remains a separate local smoke test.
     - name: Unit and serialized layout tests
@@ -72,3 +77,17 @@ jobs:
     - name: Wayland production presentation regression
       if: runner.os == 'Linux'
       run: bash tests/wayland/run_presentation_test.sh build/${{ matrix.preset }}/Carnivores2SDLWaylandPresentationTest build/${{ matrix.preset }}/Carnivores2SDLWaylandDisconnectTest build/${{ matrix.preset }}/Carnivores2DisplayRecoveryTest
+
+  smoke-contracts:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 8.x
+    - name: Build controlled smoke fixture
+      shell: powershell
+      run: dotnet build tests/smoke_fixture.csproj --configuration Release --output "$env:RUNNER_TEMP/c2-smoke-fixture" --nologo
+    - name: Validate deployed smoke script without licensed assets
+      shell: powershell
+      run: ./tests/test_smoke_script.ps1 -FixtureDll "$env:RUNNER_TEMP/c2-smoke-fixture/smoke_fixture.dll"

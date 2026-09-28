@@ -1,4 +1,6 @@
 // Exact production CommandLine.cpp body with state/services doubled. No graphics.
+#include "Core/CommandLineParse.h"
+#include "Core/ScoreMod.h"
 #include "Game/DisplayConfiguration.h"
 #include "Game/DisplayPreference.h"
 #include "Game/RefreshPreference.h"

@@ -16,7 +16,6 @@ void AnimateClassicAmbient(TCharacter *cptr)
 	int _Phase = cptr->Phase;
 	int _FTime = cptr->FTime;
 	float _tgalpha = cptr->tgalpha;
-	if (cptr->AfraidTime) cptr->AfraidTime = MAX(0, cptr->AfraidTime - TimeDt);
 
 	bool alertInit = false;
 	if (cptr->State == 2) alertInit = true;
@@ -73,6 +72,11 @@ TBEGIN:
 				if (pdistSq[pNo] < 2048.f * 2048.f) pdistMulti = true;
 			}
 			if (pdistMulti) {
+				if (pdistSq[0] < 2048.f * 2048.f) {
+					cptr->hunterAwareness = HunterAwarenessState::TrackingHunter;
+					TraceHunterEvent(cptr, "startle",
+						static_cast<float>(sqrt(pdistSq[0])), 0.0f, 0.0f);
+				}
 				if (cptr->Clone == AI_GALL) cptr->State = 1;
 				cptr->AfraidTime = (5 + rRand(5)) * 1024;
 				if (cptr->packId >= 0) {
@@ -101,13 +105,23 @@ TBEGIN:
 		} else if (cptr->packId >= 0) Packs[cptr->packId].alert = true;
 
 
-		nv.x = playerdx[0];
-		nv.z = playerdz[0];
-		nv.y = 0;
-		NormVector(nv, 2048.f);
-		cptr->tgx = cptr->pos.x - nv.x;
-		cptr->tgz = cptr->pos.z - nv.z;
-		cptr->tgtime = 0;
+		if (TracksHunterExactly(cptr)) {
+			nv.x = playerdx[0];
+			nv.z = playerdz[0];
+			nv.y = 0;
+			NormVector(nv, 2048.f);
+			cptr->tgx = cptr->pos.x - nv.x;
+			cptr->tgz = cptr->pos.z - nv.z;
+			cptr->tgtime = 0;
+		}
+		else if (IsTimedHunterReaction(cptr)) {
+			// Fixed event reactions keep the stored event position (approach
+			// or flee) instead of being overwritten with a pack-relative
+			// target, which made investigating pack members flee the leader.
+			// The arrival search is owned by UpdateHunterNavigation.
+			cptr->tgtime = 0;
+		}
+		else SetPackLeaderTarget(cptr, true);
 	}
 
 	// Step 4: Extend culling distance by 4 units (~1024 world units)
@@ -127,6 +141,15 @@ TBEGIN:
 		if (pdistMulti)
 		{
 			cptr->State = 1;
+			// A proximity scatter is a detection (the same rule as the 2048-unit
+			// refresh above): the creature knows where the hunter is and may use
+			// the live position. Without the lock a solo scatter kept its stale
+			// wander target and could run towards the hunter it just fled.
+			if (pdistSq[0] < 812.f * 812.f) {
+				cptr->hunterAwareness = HunterAwarenessState::TrackingHunter;
+				TraceHunterEvent(cptr, "startle",
+					static_cast<float>(sqrt(pdistSq[0])), 0.0f, 0.0f);
+			}
 			cptr->AfraidTime = (5 + rRand(5)) * 1024;
 			cptr->Phase = DinoInfo[cptr->CType].runAnim;
 			goto TBEGIN;

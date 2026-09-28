@@ -757,6 +757,11 @@ EXTERNAL SoundFX				g_MenuSound_TypeGo;
 
 int LaunchProcess(const std::string& exe_name, std::string cmd_line);
 void ShowErrorMessage(const std::string&);
+// Path of the missing half of an area's <basename>.map/.rsc pair, or an empty
+// string when both exist. The engine derives both filenames from the single
+// "prj=" token it is launched with (LaunchArgs.h), so this is the same test the
+// launch itself will run -- not a stricter one.
+std::string MissingAreaFile(const std::string& base);
 void PrintLogSeparater();
 void HuntWindowResize();
 

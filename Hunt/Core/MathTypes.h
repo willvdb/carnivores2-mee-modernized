@@ -2,6 +2,9 @@
 // Extracted from Hunt.h (Phase 0.1 — Split god header into focused headers)
 #pragma once
 
+#include <cstddef>
+#include <type_traits>
+
 struct Vector3d
 {
   float x, y, z;
@@ -37,6 +40,24 @@ struct ScrPoint
 #endif
   int Light, z, r2, r3;
 };
+
+// The same asm walks scrp[0..2] with a fixed 32-byte stride (`scrp + 4`,
+// `scrp + 4 + 32`, `scrp + 4 + 64`), so the entry size is load-bearing too.
+static_assert(sizeof(ScrPoint) == 32,
+              "ScrPoint size changed — renderasm.cpp walks scrp[] with a "
+              "32-byte stride");
+#ifdef _soft
+static_assert(std::is_same<decltype(ScrPoint::x), int>::value &&
+                  std::is_same<decltype(ScrPoint::y), int>::value &&
+                  std::is_same<decltype(ScrPoint::tx), int>::value &&
+                  std::is_same<decltype(ScrPoint::ty), int>::value,
+              "ScrPoint x/y/tx/ty must stay int under _soft — renderasm.cpp "
+              "reads them as 16.16 fixed-point dwords");
+static_assert(offsetof(ScrPoint, x) == 0 && offsetof(ScrPoint, y) == 4 &&
+                  offsetof(ScrPoint, tx) == 8 && offsetof(ScrPoint, ty) == 12,
+              "ScrPoint coordinate offsets changed — renderasm.cpp reads "
+              "them at fixed byte offsets");
+#endif
 
 struct MScrPoint
 {

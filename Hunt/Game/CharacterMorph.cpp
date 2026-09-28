@@ -9,9 +9,17 @@
 
 void CreateChMorphedModel(TCharacter *cptr)
 {
+	if (!cptr || !cptr->pinfo || !cptr->pinfo->mptr)
+		return;
 
 	TAni *aptr = &cptr->pinfo->Animation[cptr->Phase];
 	TAni *paptr = &cptr->pinfo->Animation[cptr->PrevPhase];
+
+	// ModelLoader keeps an explicit BLANK placeholder as a zero-frame
+	// animation with no payload. Such a phase has no pose to morph, so keep
+	// the model's current vertices instead of dereferencing a null buffer.
+	if (!aptr->aniData || aptr->FramesCount <= 0)
+		return;
 
 	int CurFrame, SplineD, PCurFrame = 0, PSplineD = 0;
 	float scale = cptr->scale;
@@ -22,6 +30,11 @@ void CreateChMorphedModel(TCharacter *cptr)
 
 
 	std::int32_t PMorph = (cptr->Phase != cptr->PrevPhase) && (cptr->PPMorphTime < PMORPHTIME) && (MORPHP);
+
+	// A blank previous phase has no payload to blend from; drop the partial
+	// morph and show the new pose directly.
+	if (PMorph && (!paptr->aniData || paptr->FramesCount <= 0))
+		PMorph = false;
 
 	if (PMorph)
 	{
@@ -57,7 +70,9 @@ void CreateChMorphedModel(TCharacter *cptr)
 
 	int VCount = cptr->pinfo->mptr->VCount;
 	short int* adptr = aptr->aniData.get() + CurFrame * VCount * 3;
-	short int* padptr = paptr->aniData.get() + PCurFrame * VCount * 3;
+	short int* padptr = paptr->aniData.get();
+	if (padptr)
+		padptr += PCurFrame * VCount * 3;
 
 	float sb = static_cast<float>(sin(cptr->beta)) * scale;
 	float cb = static_cast<float>(cos(cptr->beta)) * scale;
@@ -142,6 +157,8 @@ void CreateChMorphedModel(TCharacter *cptr)
 
 void CreateMorphedModelBetaGamma(TModel* mptr, TAni *aptr, int FTime, float scale, float beta, float gamma)
 {
+	if (!mptr || !aptr || !aptr->aniData || aptr->FramesCount <= 0)
+		return;
 
 	int CurFrame, SplineD, PCurFrame = 0, PSplineD = 0;
 
@@ -210,6 +227,9 @@ void CreateMorphedModelBetaGamma(TModel* mptr, TAni *aptr, int FTime, float scal
 
 void CreateMorphedModel(TModel* mptr, TAni *aptr, int FTime, float scale)
 {
+	if (!mptr || !aptr || !aptr->aniData || aptr->FramesCount <= 0)
+		return;
+
 	int CurFrame = CalculateMorphFrameFixed(aptr->FramesCount, FTime, aptr->AniTime);
 
 	int SplineD = CurFrame & 0xFF;
@@ -234,6 +254,9 @@ void CreateMorphedModel(TModel* mptr, TAni *aptr, int FTime, float scale)
 
 void CreateMorphedObject(TModel* mptr, TVTL &vtl, int FTime)
 {
+	if (!mptr || !vtl.aniData || vtl.FramesCount <= 0)
+		return;
+
 	int CurFrame = CalculateMorphFrameFixed(vtl.FramesCount, FTime, vtl.AniTime);
 
 	int SplineD = CurFrame & 0xFF;

@@ -493,9 +493,13 @@ void Init3DHardware()
   hres = DirectDrawCreate( nullptr, &lpDD, nullptr );
   if( hres != DD_OK )
   {
-    sprintf_s(logt, sizeof(logt), "DirectDrawCreate Error: %Xh\n", hres);
-    PrintLog(logt);
-    DoHalt("");
+    // Was a silent DoHalt(""), which exited with no explanation at all.
+    char message[256];
+    sprintf_s(message, sizeof(message),
+              "DirectDrawCreate failed (error %Xh).\n\n"
+              "The software renderer could not start. Set 'renderer 1' in "
+              "config.cfg to use OpenGL instead.", hres);
+    DoHalt(message);
   }
   PrintLog("DirectDrawCreate: Ok\n");
 
@@ -518,9 +522,12 @@ void Activate3DHardware()
   HRESULT hres = lpDD->SetCooperativeLevel( hwndMain, cl);
   if( hres != DD_OK )
   {
-    sprintf_s(logt, sizeof(logt), "SetCooperativeLevel Error: %Xh\n", hres);
-    PrintLog(logt);
-    DoHalt("");
+    char message[256];
+    sprintf_s(message, sizeof(message),
+              "SetCooperativeLevel failed (error %Xh).\n\n"
+              "The requested display mode is unavailable. Set 'display_mode 2' "
+              "(borderless fullscreen) in config.cfg and try again.", hres);
+    DoHalt(message);
   }
   PrintLog("SetCooperativeLevel: Ok\n");
 

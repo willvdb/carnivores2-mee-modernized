@@ -39,6 +39,20 @@ std::int32_t NeedRVM = true;
 
 void HideWeapon();
 
+static TAni* RequireCurrentWeaponAnimation(int animationIndex)
+{
+  TAni* animation = FindWeaponAnimation(Weapon, CurrentWeapon, animationIndex);
+  if (animation)
+    return animation;
+
+  char message[160];
+  snprintf(message, sizeof(message),
+            "Runtime weapon animation index is invalid (weapon=%d, animation=%d).",
+            CurrentWeapon, animationIndex);
+  DoHalt(message);
+  return nullptr;
+}
+
 
 
 
@@ -493,7 +507,7 @@ SKIPWIND:
   {
 	  if (IsUnderwater()) wptr->FTime += TimeDt/2.f;
 	  else wptr->FTime+=TimeDt;
-    if (wptr->FTime >= wptr->chinfo[CurrentWeapon].Animation[WeapInfo[CurrentWeapon].getAnim].AniTime)
+    if (wptr->FTime >= RequireCurrentWeaponAnimation(WeapInfo[CurrentWeapon].getAnim)->AniTime)
     {
       wptr->FTime = 0;
       wptr->state = 2;
@@ -504,7 +518,7 @@ SKIPWIND:
   {
 	  if (IsUnderwater()) wptr->FTime += TimeDt / 2.f;
 	  else wptr->FTime += TimeDt;
-	  if (wptr->FTime >= wptr->chinfo[CurrentWeapon].Animation[WeapInfo[CurrentWeapon].rldAnim].AniTime)
+	  if (wptr->FTime >= RequireCurrentWeaponAnimation(WeapInfo[CurrentWeapon].rldAnim)->AniTime)
 	  {
 		wptr->FTime = 0;
 		wptr->state = 2;
@@ -531,7 +545,7 @@ SKIPWIND:
   {
 	  if (IsUnderwater()) wptr->FTime += TimeDt / 2.f;
 	  else wptr->FTime += TimeDt;
-	  if (wptr->FTime >= wptr->chinfo[CurrentWeapon].Animation[WeapInfo[CurrentWeapon].rldAnimPart].AniTime)
+	  if (wptr->FTime >= RequireCurrentWeaponAnimation(WeapInfo[CurrentWeapon].rldAnimPart)->AniTime)
 	  {
 		  wptr->FTime = 0;
 		  wptr->state = 2;
@@ -558,7 +572,7 @@ SKIPWIND:
 		} else MuzzFTime = wptr->FTime;
 	}
 
-    if (wptr->FTime >= wptr->chinfo[CurrentWeapon].Animation[WeapInfo[CurrentWeapon].shtAnim].AniTime)
+    if (wptr->FTime >= RequireCurrentWeaponAnimation(WeapInfo[CurrentWeapon].shtAnim)->AniTime)
     {
       wptr->FTime = 0;
       wptr->state = 2;
@@ -581,7 +595,7 @@ SKIPWIND:
   {
 	  if (IsUnderwater()) wptr->FTime += TimeDt / 2.f;
 	  else wptr->FTime += TimeDt;
-	  if (wptr->FTime >= wptr->chinfo[CurrentWeapon].Animation[WeapInfo[CurrentWeapon].pmpAnim].AniTime)
+	  if (wptr->FTime >= RequireCurrentWeaponAnimation(WeapInfo[CurrentWeapon].pmpAnim)->AniTime)
 	  {
 		  wptr->FTime = 0;
 		  wptr->state = 2;
@@ -597,7 +611,7 @@ SKIPWIND:
   {
 	  if (IsUnderwater()) wptr->FTime += TimeDt / 2.f;
 	  else wptr->FTime += TimeDt;
-	  if (wptr->FTime >= wptr->chinfo[CurrentWeapon].Animation[WeapInfo[CurrentWeapon].modAnim].AniTime)
+	  if (wptr->FTime >= RequireCurrentWeaponAnimation(WeapInfo[CurrentWeapon].modAnim)->AniTime)
 	  {
 		  if (!FiringMode[CurrentWeapon]) FiringMode[CurrentWeapon] = 1; else FiringMode[CurrentWeapon] = 0;
 		  wptr->FTime = 0;
@@ -609,7 +623,7 @@ SKIPWIND:
   {
 	  if (IsUnderwater()) wptr->FTime += TimeDt / 2.f;
 	  else wptr->FTime+=TimeDt;
-    if (wptr->FTime >= wptr->chinfo[CurrentWeapon].Animation[WeapInfo[CurrentWeapon].putAnim].AniTime)
+    if (wptr->FTime >= RequireCurrentWeaponAnimation(WeapInfo[CurrentWeapon].putAnim)->AniTime)
     {
       wptr->FTime = 0;
       wptr->state = 0;
@@ -670,7 +684,7 @@ SKIPWIND:
   }
 
   CreateMorphedModel(wptr->chinfo[CurrentWeapon].mptr.get(),
-                     &wptr->chinfo[CurrentWeapon].Animation[phas], wptr->FTime, 1.0);
+                     RequireCurrentWeaponAnimation(phas), wptr->FTime, 1.0);
 
   if (Weapon.HoldBreath) {
 	  Weapon.BTime += TimeDt;
@@ -850,24 +864,30 @@ SKIPWEAPON:
       ind = static_cast<int>((9.0f * uiscale));
 
 		if (wptr->state == 4 || wptr->state == 5) {
-			float d = -cos(pi/2+(pi/2 * (static_cast<float>(wptr->FTime) / static_cast<float>(wptr->chinfo[CurrentWeapon].Animation[phas].AniTime))));
-			if (WeapInfo[CurrentWeapon].Reload) {
-				x1 -= d * bulletW * wptr->ammoIn;
-				//x2 -= d * ((Weapon.BulletPic[CurrentWeapon].W * wptr->ammoIn) + 3);
-				x2 -= d * ((bulletW * (WeapInfo[CurrentWeapon].Reload - Chambered[CurrentWeapon])) + hudGap);
-			} else {
-				d *= (y2 - y1);
-				y1 += d;
-				y2 -= d;
+			const TAni* animation = FindWeaponAnimation(*wptr, CurrentWeapon, phas);
+			if (animation && animation->AniTime > 0) {
+				float d = -cos(pi/2+(pi/2 * (static_cast<float>(wptr->FTime) / static_cast<float>(animation->AniTime))));
+				if (WeapInfo[CurrentWeapon].Reload) {
+					x1 -= d * bulletW * wptr->ammoIn;
+					//x2 -= d * ((Weapon.BulletPic[CurrentWeapon].W * wptr->ammoIn) + 3);
+					x2 -= d * ((bulletW * (WeapInfo[CurrentWeapon].Reload - Chambered[CurrentWeapon])) + hudGap);
+				} else {
+					d *= (y2 - y1);
+					y1 += d;
+					y2 -= d;
+				}
 			}
 		}
 		if (!WeapInfo[CurrentWeapon].Reload)
 		if ((wptr->state == 2 && !WeapInfo[CurrentWeapon].mustPump) || wptr->state == 6) {
-			float d = (static_cast<float>(wptr->FTime) / static_cast<float>(wptr->chinfo[CurrentWeapon].Animation[phas].AniTime));
-			d = 0.5*(1 - cos(pi * (static_cast<float>(wptr->FTime) / static_cast<float>(wptr->chinfo[CurrentWeapon].Animation[phas].AniTime))));
-			wptr->ammoIn = 1;
-			x1 -= d * bulletW * wptr->ammoIn;
-			x2 -= d * ((bulletW * wptr->ammoIn) + hudGap);
+			const TAni* animation = FindWeaponAnimation(*wptr, CurrentWeapon, phas);
+			if (animation && animation->AniTime > 0) {
+				float d = (static_cast<float>(wptr->FTime) / static_cast<float>(animation->AniTime));
+				d = 0.5*(1 - cos(pi * (static_cast<float>(wptr->FTime) / static_cast<float>(animation->AniTime))));
+				wptr->ammoIn = 1;
+				x1 -= d * bulletW * wptr->ammoIn;
+				x2 -= d * ((bulletW * wptr->ammoIn) + hudGap);
+			}
 		}
 
 		if (WeapInfo[CurrentWeapon].picch)
@@ -1000,8 +1020,7 @@ static GameMode DismissMenuRestore()
 {
   const GameMode saved = g_SavedOverlayMode;
   g_SavedOverlayMode = GameMode::Normal;
-  if (IsOverlayMode(saved)) return saved;
-  return GameMode::Normal;
+  return RestoreMenuState(saved);
 }
 
 // Centralized menu/mode transitions. Every mode-slot takeover that touches
@@ -1014,8 +1033,7 @@ static GameMode DismissMenuRestore()
 static void EnterMenuMode() // Escape from gameplay
 {
   if (!ExitTime) {
-    g_SavedOverlayMode = g_GameMode;
-    g_GameMode = GameMode::ExitCountdown;
+    g_GameMode = EnterMenuState(g_GameMode, g_SavedOverlayMode);
     CaptureMouse(true);
   }
   // else: the hunt is ending (evacuation countdown running) — do not open
@@ -1348,7 +1366,7 @@ static void HandleKeyEvent(const Platform::KeyEvent& event)
 //	case VK_DOWN:
 
     case LegacyKey::TAB:
-      if (g_GameMode != GameMode::TrophyMode) ToggleMapMode();
+      ToggleMapMode();
       break;
 
     case LegacyKey::PAUSE:
@@ -1420,9 +1438,7 @@ static void HandleKeyEvent(const Platform::KeyEvent& event)
       break;
 
     case LegacyKey::F9:
-      ShutDown3DHardware();
-      AudioStop();
-      DoHalt("");
+      DoQuit("hunt exit (F9)");
       break;
 
     case LegacyKey::F12:
@@ -1666,8 +1682,7 @@ void ProcessGame()
   DrawScene();
 #endif
 
-  if (g_GameMode != GameMode::TrophyMode)
-    if (g_GameMode == GameMode::MapMode) DrawHMap();
+  if (CanUseMap() && g_GameMode == GameMode::MapMode) DrawHMap();
 
   DrawPostObjects();
 

@@ -90,6 +90,9 @@ public:
     void RenderElements();
 
 private:
+    float CharacterCullRadius(const TCharacter& character) const;
+    bool SphereOutsideView(const Vector3d& viewPosition, float radius) const;
+
     // Packed terrain vertex (Phase 1.5). 32 bytes total (was 48).
     //   offset  0: vec3  aPos                    (12 bytes)  -- attribute 0, float
     //   offset 12: vec2  aTexCoord                ( 8 bytes)  -- attribute 1, float
@@ -328,6 +331,8 @@ private:
     // CollectTerrainTile calls when the block crosses a map/view-grid edge.
     void CollectTerrainChunk2x2(int x, int y,
                                 float fadeStart, float fadeStartSq, float fadeEnd);
+    void RebuildOversizedObjectPlacements();
+    void CollectOversizedMapObjects();
     // Phase 2: shared per-tile cull + emit (back-plane / 4-corner frustum /
     // distance / alpha-cull / texture emit / RenderObject).  The 4 EPoint
     // corners must already have .Fog finalised; fog colours and alphas must
@@ -489,16 +494,26 @@ private:
     int m_locSkyQ = -1;                // sky shader: uQ
     int m_locSkyP = -1;                // sky shader: uP
     int m_locSkyR = -1;                // sky shader: uR
+    int m_locSkyFogReferenceQ = -1;    // sky shader: uFogReferenceQ
+    int m_locSkyFogReferenceP = -1;    // sky shader: uFogReferenceP
+    int m_locSkyFogReferenceR = -1;    // sky shader: uFogReferenceR
+    int m_locSkyFogReferenceZoom = -1; // sky shader: uFogReferenceZoom
     int m_locSkyTime = -1;             // sky shader: uSkyTime
+    int m_locSkyVBias = -1;            // sky shader: uSkyVBias (cloud phase)
+    int m_locSkyMode = -1;             // sky shader: uSkyMode (0 legacy / 1 level / 2 dome)
+    int m_locSkyDomeScale = -1;        // sky shader: uSkyDomeScale (dome texels per radian)
+    int m_locSkyPlaneScale = -1;       // sky shader: uSkyPlaneScale (plane texel scale)
+    int m_locSkyPlaneDrop = -1;        // sky shader: uSkyPlaneDrop (horizon drop, sin)
+    int m_locSkyPlaneAnchor = -1;      // sky shader: uSkyPlaneAnchor (world phase, texels)
     int m_locSkyFogBase = -1;          // sky shader: uFogBase
     int m_locSkyUnderwaterDepth = -1;  // sky shader: uUnderwaterDepth
     int m_locSkyWaterLineY = -1;       // sky shader: uWaterLineY (screen Y from top)
-    int m_locSkySunScreenPos = -1;     // sky shader: uSunScreenPos (§3.6)
-    int m_locSkySunVisibility = -1;    // sky shader: uSunVisibility (§3.6)
-    int m_locSkySunGlow = -1;          // sky shader: uSunGlow (§3.6)
-    int m_locSkyBodyIsMoon = -1;     // sky shader: uBodyIsMoon (§3.6)
-    int m_locSkyPocketFog = -1;        // sky shader: uPocketFog (§3.5)
-    int m_locSkyPocketFogColor = -1;   // sky shader: uPocketFogColor (§3.5)
+    int m_locSkySunScreenPos = -1;     // sky shader: uSunScreenPos
+    int m_locSkySunVisibility = -1;    // sky shader: uSunVisibility
+    int m_locSkySunGlow = -1;          // sky shader: uSunGlow
+    int m_locSkyBodyIsMoon = -1;     // sky shader: uBodyIsMoon
+    int m_locSkyPocketFog = -1;        // sky shader: uPocketFog
+    int m_locSkyPocketFogColor = -1;   // sky shader: uPocketFogColor
     int m_locSkyCamRight = -1;        // sky shader: uCamRight (world-space gradient)
     int m_locSkyCamUp = -1;           // sky shader: uCamUp (world-space gradient)
     int m_locSkyCamForward = -1;      // sky shader: uCamForward (world-space gradient)
@@ -526,6 +541,26 @@ private:
     std::vector<ModelDrawItem> m_worldModelItems;
     std::vector<const ModelDrawItem*> m_transparentModelItems;
     std::vector<Vector2di> m_objectList;
+    std::vector<uint8_t> m_objectQueueMarks;
+    // Terrain collection visits only a frustum-bounded set of origin cells.
+    // Keep unusually large/tall placements in coarse spatial blocks so
+    // geometry extending into the view cannot disappear merely because its
+    // origin cell was not part of that terrain sweep.
+    static constexpr int kOversizedObjectBlockShift = 5; // 32x32 map cells
+    static constexpr int kOversizedObjectBlockSize = 1 << kOversizedObjectBlockShift;
+    static constexpr int kOversizedObjectBlockDim =
+        (ctMapSize + kOversizedObjectBlockSize - 1) / kOversizedObjectBlockSize;
+    std::array<std::vector<Vector2di>,
+               kOversizedObjectBlockDim * kOversizedObjectBlockDim> m_oversizedObjectBlocks;
+    struct MapObjectCullExtent {
+        float horizontal = 0.0f;
+        float vertical = 0.0f;
+    };
+    // One renderer-only extent per MObjects slot. Some shipped RSC metadata
+    // understates YLo/YHi, and animated scenery can exceed its base mesh, so
+    // supplementary culling must use geometry and animation coordinates too.
+    std::array<MapObjectCullExtent, 256> m_mapObjectCullExtents{};
+    bool m_oversizedObjectPlacementsValid = false;
 
     static const int kTerrainMipLevels = 4;
     static const int kMaxTerrainTextureLayers = 1024;
@@ -631,7 +666,7 @@ private:
     // in UpdateCameraFogEnvelope() and consumed by the terrain/model shaders.
     float    m_camEnvelopeAmount = 0.0f;
     Vector3d m_camEnvelopeColor  = {0.0f, 0.0f, 0.0f};
-    float    m_camEnvFlbSmooth   = 0.0f;   // §3.10 low-passed flb (kills head-bob flicker)
+    float    m_camEnvFlbSmooth   = 0.0f;   // low-passed flb (kills head-bob flicker)
 
     void InitializeSkyPipeline();
     void ShutdownSkyPipeline();
@@ -694,7 +729,7 @@ private:
     int  m_dirtyRectCount = 0;
     int  m_prevDirtyRectCount = 0;
     bool m_hudNeedsFullUpload = true;  // set after texture (re)creation
-    bool m_hudNeedsFullClear  = false; // set after CopyHARDToDIB screenshot
+    bool m_hudNeedsFullClear  = false; // set after any full-DIB overwrite
 
 public:
     float GetSunLight() const { return m_sunLight; }

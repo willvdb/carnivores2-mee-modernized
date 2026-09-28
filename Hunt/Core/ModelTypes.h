@@ -5,6 +5,7 @@
 #include "Memory.h"
 #include "Core/MathTypes.h"
 #include <cstdint>
+#include <type_traits>
 
 struct TAni
 {
@@ -119,6 +120,14 @@ struct TModel
 
   ~TModel() = default;
 };
+
+// ReleaseModelBuffers() (Hunt/Loaders/ModelLoader.cpp) frees VLight[0] through
+// _HeapFree and then nulls all four slots. That only works while the field is a
+// raw pointer, so migrating it to unique_heap_ptr the way lpTexture and gFace
+// were migrated would turn the manual free into a double-free.
+static_assert(std::is_same<decltype(TModel::VLight), float*[4]>::value,
+              "TModel::VLight must stay a raw float*[4] — it is freed by hand "
+              "in ReleaseModelBuffers()");
 
 struct TObject
 {

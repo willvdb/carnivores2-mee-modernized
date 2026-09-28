@@ -4,6 +4,7 @@
 // ==========================================================================
 
 #include "Hunt.h"
+#include "../CharacterAwareness.h"
 #include "../CharacterInternal.h"
 
 // Global state imported from StateDefs.cpp
@@ -16,7 +17,6 @@ void AnimateHuntable(TCharacter *cptr)
 	int _Phase = cptr->Phase;
 	int _FTime = cptr->FTime;
 	float _tgalpha = cptr->tgalpha;
-	if ((!AIInfo[cptr->Clone].carnivore || AIInfo[cptr->Clone].iceAge) && cptr->AfraidTime) cptr->AfraidTime = MAX(0, cptr->AfraidTime - TimeDt);
 
 	bool alertInit = false;
 	if (cptr->State == 2) alertInit = true;
@@ -44,23 +44,9 @@ TBEGIN:
 
 	float tdistSq = targetdx * targetdx + targetdz * targetdz;
 
-	float playerdx, playerdz;
-	if (cptr->Clone == AI_ALLO) {
-		playerdx = PlayerX - cptr->pos.x - cptr->lookx * 100 * cptr->scale;
-		playerdz = PlayerZ - cptr->pos.z - cptr->lookz * 100 * cptr->scale;
-	} else if (cptr->Clone == AI_CHASM || cptr->Clone == AI_HOG || cptr->Clone == AI_BRONT || cptr->Clone == AI_BEAR ||
-		cptr->Clone == AI_WOLF || cptr->Clone == AI_RHINO || cptr->Clone == AI_SMILO) {
-		playerdx = PlayerX - cptr->pos.x - cptr->lookx * 300 * cptr->scale;
-		playerdz = PlayerZ - cptr->pos.z - cptr->lookz * 300 * cptr->scale;
-	} else if (AIInfo[cptr->Clone].carnivore) {
-		playerdx = PlayerX - cptr->pos.x - cptr->lookx * 108;
-		playerdz = PlayerZ - cptr->pos.z - cptr->lookz * 108;
-	} else {
-		playerdx = PlayerX - cptr->pos.x;
-		playerdz = PlayerZ - cptr->pos.z;
-	}
-
-	float pdistSq = playerdx * playerdx + playerdz * playerdz;
+	// One shared geometry function keeps every family's hunter distance and
+	// flee direction identical to the awareness core's copy.
+	const THunterGeometry hunter = GetHunterGeometry(cptr);
 
 	
 
@@ -78,39 +64,26 @@ TBEGIN:
 	{
 		cptr->currentIdleGroup = -1;
 
-		float aDist;
-		if (AIInfo[cptr->Clone].carnivore && (!AIInfo[cptr->Clone].iceAge || cptr->Clone == AI_WOLF)) {
-			aDist = ctViewR * DinoInfo[cptr->CType].aggress + OptAgres / AIInfo[cptr->Clone].agressMulti;
-		} else {
-			aDist = AIInfo[cptr->Clone].agressMulti * DinoInfo[cptr->CType].aggress + OptAgres / 8;
-			if (pdistSq < 6000 * 6000 && cptr->Clone != AI_DEER) cptr->AfraidTime = 8000;
-		}
+		const bool fixedPursuit = IsFixedHunterPursuit(cptr);
+		const bool fixedFlee = IsFixedHunterFlee(cptr);
+		const bool fixedReaction = fixedPursuit || fixedFlee;
+		const bool tracksHunter = TracksHunterExactly(cptr);
+		// Legacy note: the non-carnivore families used to force `AfraidTime =
+		// 8000` whenever the hunter was within 6000 units. That overwrite
+		// clobbered finite shot/hit/call reaction timers and kept expiring
+		// tracking locks alive without any perception, so a spooked herbivore
+		// fled from the live hunter position even after breaking contact. The
+		// tracking lock is now only refreshed by real detection (CheckAfraid),
+		// and a pack response is held by the pack alert, not this timer.
 
-		bool fleeMode = false;
-		if (g_GameMode != GameMode::SurvivalMode) {
-			if (pdistSq > aDist * aDist ||
-				DinoInfo[cptr->CType].aggress <= 0 || !cptr->awareHunter) {
-				fleeMode = true;
-			}
-			else if (DinoInfo[cptr->CType].defensive && cptr->Health == DinoInfo[cptr->CType].Health0) fleeMode = true;
-			else if (DinoInfo[cptr->CType].fearShot && cptr->Health < DinoInfo[cptr->CType].Health0) fleeMode = true;
-			else if (DinoInfo[cptr->CType].fearHearShot && cptr->heardShot) fleeMode = true;
-			else if (cptr->packId >= 0) Packs[cptr->packId].attack = true;
-		}
-
-		if (cptr->packId >= 0) {
-			if (Packs[cptr->packId]._attack) fleeMode = false;
-		}
+		// The authored flee/pursue rule lives in the awareness core; this
+		// animator only supplies the family distance (the hunter is always
+		// attackable for this family).
+		const bool fleeMode = ShouldFleeHunter(*cptr, hunter.distanceSquared, true);
 
 		if (fleeMode) {
-			nv.x = playerdx;
-			nv.z = playerdz;
-			nv.y = 0;
-			NormVector(nv, 2048.f);
-			cptr->tgx = cptr->pos.x - nv.x;
-			cptr->tgz = cptr->pos.z - nv.z;
-			cptr->tgtime = 0;
-			if (AIInfo[cptr->Clone].carnivore) cptr->AfraidTime -= TimeDt;
+			// The navigator owns the flee destination and the per-leg tgtime
+			// clock; only the reaction bookkeeping stays in the animator.
 
 			if (cptr->packId >= 0) {
 				if (cptr->AfraidTime <= 0)
@@ -121,7 +94,7 @@ TBEGIN:
 						cptr->State = 0;
 					}
 				}
-				else Packs[cptr->packId].alert = true;
+				else if (!fixedReaction) Packs[cptr->packId].alert = true;
 			}
 			else if (cptr->AfraidTime <= 0) {
 				if (AIInfo[cptr->Clone].carnivore)cptr->AfraidTime = 0;
@@ -132,47 +105,40 @@ TBEGIN:
 		}
 		else
 		{
-			cptr->tgx = PlayerX;
-			cptr->tgz = PlayerZ;
-			cptr->tgtime = 0;
-			if (cptr->packId >= 0 && AIInfo[cptr->Clone].carnivore) {
+			// The navigator owns the live tracking destination / pack-leader
+			// follow target; the animator only raises the pack alert.
+			if (!fixedReaction && tracksHunter && cptr->packId >= 0
+				&& AIInfo[cptr->Clone].carnivore) {
 				Packs[cptr->packId].alert = true;
 			}
 		}
 
-		if (AIInfo[cptr->Clone].jumper) {
+		if (!fixedReaction && (tracksHunter || cptr->packId < 0) && AIInfo[cptr->Clone].jumper) {
 			if (!(cptr->StateF & csONWATER))
-				if (pdistSq < (1324 * cptr->scale) * (1324 * cptr->scale) && pdistSq > (900 * cptr->scale) * (900 * cptr->scale))
-					if (AngleDifference(cptr->alpha, FindVectorAlpha(playerdx, playerdz)) < 0.2f)
+				if (hunter.distanceSquared < (1324 * cptr->scale) * (1324 * cptr->scale) && hunter.distanceSquared > (900 * cptr->scale) * (900 * cptr->scale))
+					if (AngleDifference(cptr->alpha, FindVectorAlpha(hunter.dx, hunter.dz)) < 0.2f)
 						cptr->Phase = DinoInfo[cptr->CType].jumpAnim;
 		}
 
-		if (pdistSq < DinoInfo[cptr->CType].killDist * DinoInfo[cptr->CType].killDist && DinoInfo[cptr->CType].killDist > 0) {
-			int killAlt = DinoInfo[cptr->CType].waterLevel;
-			if (killAlt < 256) killAlt = 256;
-			if (fabs(PlayerY - cptr->pos.y) < killAlt + 20)
-			{
+		if (CanKillHunter(*cptr, hunter)) {
+			if (DinoInfo[cptr->CType].killTypeCount > 0) {
 
-				if (DinoInfo[cptr->CType].killTypeCount > 0) {
-
-					if (!(cptr->StateF & csONWATER))
-					{
-						cptr->vspeed /= 8.0f;
-						cptr->State = 1;
-						cptr->Phase = DinoInfo[cptr->CType].killType[cptr->killType].anim;
-						if (DinoInfo[cptr->CType].killType[cptr->killType].dontloop) cptr->FTime = 0;
-						AddDeadBody(cptr,
-							DinoInfo[cptr->CType].killType[cptr->killType].hunteranim,
-							DinoInfo[cptr->CType].killType[cptr->killType].scream);
-					}
-					else AddDeadBody(cptr, HUNT_EAT, true);
-
+				if (!(cptr->StateF & csONWATER))
+				{
+					cptr->vspeed /= 8.0f;
+					cptr->State = 1;
+					cptr->Phase = DinoInfo[cptr->CType].killType[cptr->killType].anim;
+					if (DinoInfo[cptr->CType].killType[cptr->killType].dontloop) cptr->FTime = 0;
+					AddDeadBody(cptr,
+						DinoInfo[cptr->CType].killType[cptr->killType].hunteranim,
+						DinoInfo[cptr->CType].killType[cptr->killType].scream);
 				}
-				else {
-					AddDeadBody(cptr, HUNT_EAT, true);
-					cptr->State = 0;
-				}
+				else AddDeadBody(cptr, HUNT_EAT, true);
 
+			}
+			else {
+				AddDeadBody(cptr, HUNT_EAT, true);
+				cptr->State = 0;
 			}
 		}
 
@@ -182,7 +148,7 @@ TBEGIN:
 
 	// Step 4: Extend culling distance by 4 units (~1024 world units)
 	// to allow smoothstep fade-out to complete
-	if (pdistSq > ((charViewR + 20 + 4) * 256) * ((charViewR + 20 + 4) * 256))
+	if (hunter.distanceSquared > ((charViewR + 20 + 4) * 256) * ((charViewR + 20 + 4) * 256))
 		if (ReplaceCharacterForward(cptr)) goto TBEGIN;
 
 
@@ -190,8 +156,14 @@ TBEGIN:
 	{
 		if (cptr->Clone == AI_VELO || cptr->Clone == AI_CERAT || !AIInfo[cptr->Clone].carnivore) cptr->AfraidTime = 0;
 
-		if (pdistSq < 1024.f * 1024.f && cptr->Clone == AI_DEER && !ObservMode && !DEBUG) {
+		if (hunter.distanceSquared < 1024.f * 1024.f && cptr->Clone == AI_DEER && !ObservMode && !DEBUG) {
 			cptr->State = 1;
+			// A proximity scatter is a detection: the deer knows where the
+			// hunter is, so it may flee from the live position (the same rule
+			// as the classic-ambient proximity scare). Without the lock its
+			// scatter had no awareness state and kept its stale wander target.
+			cptr->hunterAwareness = HunterAwarenessState::TrackingHunter;
+			TraceHunterEvent(cptr, "startle", hunter.distance, 0.0f, 0.0f);
 			cptr->AfraidTime = (6 + rRand(8)) * 1024;
 			cptr->Phase = DinoInfo[cptr->CType].runAnim;
 			goto TBEGIN;
@@ -235,7 +207,7 @@ TBEGIN:
 	}
 
 NOTHINK:
-	if (pdistSq < AIInfo[cptr->Clone].pWMin * AIInfo[cptr->Clone].pWMin && (AIInfo[cptr->Clone].carnivore || AIInfo[cptr->Clone].iceAge)) cptr->NoFindCnt = 0;
+	if (hunter.distanceSquared < AIInfo[cptr->Clone].pWMin * AIInfo[cptr->Clone].pWMin && (AIInfo[cptr->Clone].carnivore || AIInfo[cptr->Clone].iceAge)) cptr->NoFindCnt = 0;
 	if (cptr->NoFindCnt) cptr->NoFindCnt--;
 	else
 	{
@@ -247,7 +219,7 @@ NOTHINK:
 
 		//if (!AIInfo[cptr->Clone].carnivore || AIInfo[cptr->Clone].iceAge) weaveCondition = weaveCondition && cptr->AfraidTime;
 
-		if (cptr->State && pdistSq > DinoInfo[cptr->CType].weaveRange * DinoInfo[cptr->CType].weaveRange && !DinoInfo[cptr->CType].dontWeave)
+		if (cptr->State && hunter.distanceSquared > DinoInfo[cptr->CType].weaveRange * DinoInfo[cptr->CType].weaveRange && !DinoInfo[cptr->CType].dontWeave)
 		{
 			float rTD;
 			if (AIInfo[cptr->Clone].carnivore && !AIInfo[cptr->Clone].iceAge) {

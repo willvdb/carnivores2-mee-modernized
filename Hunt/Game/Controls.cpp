@@ -6,7 +6,7 @@
 #include "Platform/Platform.h"
 #include <algorithm>
 #include <cmath>
-#include "Core/WaterColor.h"  // §3.2: water-colour-aware depth modulation
+#include "Core/WaterColor.h"  // water-colour-aware depth modulation
 
 void ResetMousePos()
 {
@@ -55,7 +55,7 @@ void ChangeCall()
       if (TargetCall>32) TargetCall=10;
       if (TargetDino & (1<<TargetCall)) break;
     }
-  //sprintf_s(logt, sizeof(logt),"Call: %s", DinoInfo[ AI_to_CIndex[TargetCall] ].Name);
+  //snprintf(logt, sizeof(logt),"Call: %s", DinoInfo[ AI_to_CIndex[TargetCall] ].Name);
   //AddMessage(logt);
   //CallLockTime+= 1024;
   ChCallTime = 2048;
@@ -96,6 +96,7 @@ void ToggleCrouchMode()
 
 void ToggleMapMode()
 {
+  if (!CanUseMap()) return;
   if (!MyHealth) return;
   if (g_GameMode == GameMode::Binocular) return;
   if (Weapon.state) return;
@@ -141,7 +142,7 @@ void ProcessDemoMovement()
     //ResetMousePos();
     //DemoPoint.DemoTime = 0;
     //LoadTrophy();
-    DoHalt("");
+    DoQuit("hunt ended (death cinematic)");
     return;
   }
 
@@ -447,10 +448,7 @@ SKIPYMOVE:
   // (camera tweak, splash sound, water circle) when transitioning — they're
   // pure visual feedback from the physical state change, independent of
   // whether the logical game mode also flips to Underwater.
-  const bool canEnterUnderwaterFrom =
-      g_GameMode == GameMode::Normal ||
-      g_GameMode == GameMode::Swimming ||
-      g_GameMode == GameMode::Crouching;
+  const bool canEnterUnderwaterFrom = IsInWorldMovementMode(g_GameMode);
 
   if (UNDERWATER)
   {

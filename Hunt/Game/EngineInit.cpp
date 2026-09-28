@@ -11,7 +11,9 @@
 #include <cerrno>
 #include <cstdlib>
 #include <fstream>
+#include "Core/ConfigParse.h"
 #include "Core/ConfigText.h"
+#include "Loaders/LoadDiagnostics.h"
 #include "Game/DisplayModes.h"
 #include "Game/RefreshPreference.h"
 #include "Game/ResolutionSelection.h"
@@ -136,11 +138,14 @@ void HideWeapon()
     }
     
 	if (IsUnderwater()) {
-		if (WeapInfo[CurrentWeapon].getAqSnd >= 0)
-			AddVoicev(wptr->chinfo[CurrentWeapon].SoundFX[WeapInfo[CurrentWeapon].getAqSnd].length,
-				wptr->chinfo[CurrentWeapon].SoundFX[WeapInfo[CurrentWeapon].getAqSnd].lpData.data(), 256);
+		const int sound = FindWeaponSound(*wptr, CurrentWeapon,
+			WeapInfo[CurrentWeapon].getAqSnd);
+		if (sound >= 0)
+			AddVoicev(wptr->chinfo[CurrentWeapon].SoundFX[sound].length,
+				wptr->chinfo[CurrentWeapon].SoundFX[sound].lpData.data(), 256);
 	} else {
-		int fx = wptr->chinfo[CurrentWeapon].Anifx[WeapInfo[CurrentWeapon].getAnim];
+		const int fx = FindWeaponAnimationSound(*wptr, CurrentWeapon,
+			WeapInfo[CurrentWeapon].getAnim);
 		if (fx >= 0) AddVoicev(wptr->chinfo[CurrentWeapon].SoundFX[fx].length,
 			wptr->chinfo[CurrentWeapon].SoundFX[fx].lpData.data(), 256);
 	}
@@ -160,11 +165,14 @@ void HideWeapon()
 
   if (wptr->state!=2 || wptr->FTime!=0) return;
   if (IsUnderwater()) {
-	  if (WeapInfo[CurrentWeapon].putAqSnd >= 0)
-		  AddVoicev(wptr->chinfo[CurrentWeapon].SoundFX[WeapInfo[CurrentWeapon].putAqSnd].length,
-			  wptr->chinfo[CurrentWeapon].SoundFX[WeapInfo[CurrentWeapon].putAqSnd].lpData.data(), 256);
+	  const int sound = FindWeaponSound(*wptr, CurrentWeapon,
+		  WeapInfo[CurrentWeapon].putAqSnd);
+	  if (sound >= 0)
+		  AddVoicev(wptr->chinfo[CurrentWeapon].SoundFX[sound].length,
+			  wptr->chinfo[CurrentWeapon].SoundFX[sound].lpData.data(), 256);
   } else {
-	  int fx = wptr->chinfo[CurrentWeapon].Anifx[WeapInfo[CurrentWeapon].putAnim];
+	  const int fx = FindWeaponAnimationSound(*wptr, CurrentWeapon,
+		  WeapInfo[CurrentWeapon].putAnim);
 	  if (fx >= 0) AddVoicev(wptr->chinfo[CurrentWeapon].SoundFX[fx].length,
 		  wptr->chinfo[CurrentWeapon].SoundFX[fx].lpData.data(), 256);
   }
@@ -330,6 +338,7 @@ void InitGameInfo()
 
 static void CreateDefaultConfig();
 static void LoadConfig();
+static void LoadLoadPolicy();
 void InitEngine()
 {
   DisplayConfiguration = {};
@@ -474,6 +483,7 @@ void InitEngine()
   WeaponPres = 1;
   MessageList.timeleft = 0;
 
+  LoadLoadPolicy();
   InitGameInfo();
 
   CreateFadeTab();
@@ -524,6 +534,9 @@ void InitEngine()
   // default if the saved value is missing/out-of-range).
   OptFov = kFovDefault;
   g_gpuFeatures = kGpuFeaturesDefault;  // GPU-optimization kill-switch (see GameState.h)
+  OptSkyMode = kSkyModeLevel;           // sky cloud-texture placement (config.cfg sky_mode)
+  OptSkyDomeScale = kSkyDomeScaleDefault;
+  OptSkyHorizonDrop = kSkyHorizonDropDefault;
 
   OptViewR = kViewOptDefault;
   OptObjectDetail = kObjectDetailDefault;
@@ -684,6 +697,8 @@ void MakeCall()
   sendHunterCall = TargetCall - 10;
   sendHunterCallType = NextCall;
 
+  ReactToHunterCall(PlayerPos, TargetCall - 10);
+
   // NOTE: float-first arithmetic is load-bearing here. (512*256)^2 overflows
   // int32 (it is exactly 4*2^32 and wraps to 0), which made dSq<dminSq false
   // for every dino and silently disabled all call answers (issue #1).
@@ -698,16 +713,9 @@ void MakeCall()
 	float dy = PlayerY - cptr->pos.y;
 	float dz = PlayerZ - cptr->pos.z;
 	float dSq = dx * dx + dy * dy + dz * dz;
-	float hearRange = (ctViewR * 400) * (DinoInfo[cptr->CType].HearK * 2);
+	float hearRange = (GameplayViewRadiusCells(ctViewR) * 400.0f)
+		* (DinoInfo[cptr->CType].HearK * 2);
 	bool canHear = dSq < hearRange * hearRange;
-
-	if (DinoInfo[cptr->CType].fearCall[TargetCall-10] && canHear
-		&& DinoInfo[cptr->CType].Clone != AI_DIMOR && DinoInfo[cptr->CType].Clone != AI_PTERA
-		&& DinoInfo[cptr->CType].Clone != AI_BRACH
-		) { //ai that cannot flee, state always 0
-		cptr->State = 2;
-		cptr->AfraidTime = (10 + rRand(5)) * 1024;
-	}
 
 	/*
     if (DinoInfo[AI_to_CIndex[TargetCall] ].DangerCall)
@@ -761,6 +769,23 @@ static std::string GetConfigPath()
   return "config.cfg";
 }
 
+// Runs before _RES.TXT; use exactly the same session-aware resolution as the
+// later full config read, including when the private config does not yet exist.
+static void LoadLoadPolicy()
+{
+  auto& diagnostics = LoadDiagnostics::Instance();
+  diagnostics.Clear();
+  diagnostics.SetMode(LoadMode::Lenient);
+  std::ifstream input(GetConfigPath(), std::ios::binary);
+  if (input) {
+    std::string text;
+    size_t nulBytes = 0;
+    if (ReadConfigText(input, text, nulBytes))
+      InitLoadPolicyFromConfigText(text.c_str());
+  }
+  InitLoadPolicyFromEnvironment();
+}
+
 // Create a default config.cfg with all available settings documented.
 // Called when no config file exists (first launch or manual deletion).
 static void CreateDefaultConfig()
@@ -770,12 +795,10 @@ static void CreateDefaultConfig()
       (directory.empty() ? std::string("config.cfg") : directory + "/config.cfg");
   if (EngineSession::Active() && Platform::FileExists(path)) return;
   const char* writePath = path.c_str();
-  auto hfile = Platform::OpenFile(writePath, Platform::FileMode::CreateNew, false);
-  if (hfile == Platform::InvalidFile) return;
 
   // Build the default config content (kept in sync with the
   // clean config.cfg generated by tools/release/make-c2-package.ps1).
-  char buf[4096];
+  char buf[8192];
   int len2 = snprintf(buf, sizeof(buf),
     "# Carnivores 2 Modder's Engine - Configuration\r\n"
     "# This file is auto-generated on first launch.\r\n"
@@ -799,6 +822,15 @@ static void CreateDefaultConfig()
     "# Verbose logging: 0=off, 1=on (default: 0)\r\n"
     "verbose_logging 0\r\n"
     "\r\n"
+    "# AI awareness trace: 0=off, 1=on (default: 0). One line per hunter\r\n"
+    "# event and a per-second state line per reacting creature, written to\r\n"
+    "# render.log. Independent of verbose_logging, which also enables it.\r\n"
+    "ai_logging 0\r\n"
+    "\r\n"
+    "# Recover safe legacy/mod script values by default. For mod validation,\r\n"
+    "# use load_mode strict to stop on the first recoverable error.\r\n"
+    "load_mode lenient\r\n"
+    "\r\n"
     "# Nightvision key VK code (default: 78 = 'N')\r\n"
     "nightvision_key 78\r\n"
     "\r\n"
@@ -815,6 +847,20 @@ static void CreateDefaultConfig()
     "# Exclusive-fullscreen refresh rate.\r\n"
     "# 0=automatic; integer Hz or exact fraction such as 60000/1001.\r\n"
     "refresh_rate 0\r\n"
+    "\r\n"
+    "# Sky cloud-texture placement: 0=legacy camera-coupled offset,\r\n"
+    "# 1=world-level projected plane (default), 2=direction-based dome.\r\n"
+    "sky_mode 1\r\n"
+    "\r\n"
+    "# sky_mode 1 horizon drop in degrees: lowers the projected plane's\r\n"
+    "# compression singularity below the true horizon (C1 used ~17 deg).\r\n"
+    "# 0 = plain level plane.\r\n"
+    "sky_horizon_drop 12\r\n"
+    "\r\n"
+    "# Dome (sky_mode 2) canopy scale: texture texels per radian at the\r\n"
+    "# horizon. Larger = smaller clouds (384: one 256-texel texture spans\r\n"
+    "# ~38 degrees; zenith clouds are 2x larger).\r\n"
+    "sky_dome_scale 384\r\n"
     "\r\n"
     "# GPU features bitmask (default: all optimizations enabled)\r\n"
     "# Set to 0 to disable all GPU optimizations.\r\n"
@@ -844,6 +890,13 @@ static void CreateDefaultConfig()
     kGpuFeaturesDefault
   );
 
+  // Validate before creating a file, so failure leaves no empty placeholder.
+  if (len2 < 0 || static_cast<size_t>(len2) >= sizeof(buf)) {
+    PrintLog("Config: default template exceeds the write buffer; config.cfg not written.\n");
+    return;
+  }
+  auto hfile = Platform::OpenFile(writePath, Platform::FileMode::CreateNew, false);
+  if (hfile == Platform::InvalidFile) return;
   std::uint32_t written = 0;
   Platform::WriteFile(hfile, buf, (std::uint32_t)len2, &written);
   Platform::CloseFile(hfile);
@@ -936,6 +989,12 @@ static void LoadConfig()
       else if (LegacyText::Compare(key, "verbose_logging") == 0) {
         g_VerboseLogging = (value != 0);
       }
+      else if (LegacyText::Compare(key, "ai_logging") == 0) {
+        g_AILogging = (value != 0);
+        char msg[64];
+        snprintf(msg, sizeof(msg), "Config: ai_logging = %d\n", g_AILogging ? 1 : 0);
+        PrintLog(msg);
+      }
       else if (LegacyText::Compare(key, "nightvision_key") == 0) {
         NightVisionKey = value;
       }
@@ -957,6 +1016,45 @@ static void LoadConfig()
           char msg[64];
           snprintf(msg, sizeof(msg), "Config: glperf_logging = %d\n", g_glperfLoggingEnabled ? 1 : 0);
           PrintLog(msg);
+        }
+      }
+      else if (LegacyText::Compare(key, "sky_horizon_drop") == 0) {
+        // Mode 1 horizon drop in degrees (see GameState.h).
+        float f = 0.0f;
+        if (ParseConfigFloat(keyval, kSkyHorizonDropMin, kSkyHorizonDropMax, f)) {
+          OptSkyHorizonDrop = f;
+          char msg[80];
+          snprintf(msg, sizeof(msg), "Config: sky_horizon_drop = %.1f deg\n", (double)f);
+          PrintLog(msg);
+        } else {
+          PrintLog("Config: sky_horizon_drop expects 0..30 degrees, ignoring.\n");
+        }
+      }
+      else if (LegacyText::Compare(key, "sky_dome_scale") == 0) {
+        // Dome canopy scale (sky_mode 2): texture texels per radian at the
+        // horizon. Float; see GameState.h for the valid range.
+        float f = 0.0f;
+        if (ParseConfigFloat(keyval, kSkyDomeScaleMin, kSkyDomeScaleMax, f)) {
+          OptSkyDomeScale = f;
+          char msg[80];
+          snprintf(msg, sizeof(msg), "Config: sky_dome_scale = %.1f\n", (double)f);
+          PrintLog(msg);
+        } else {
+          PrintLog("Config: sky_dome_scale expects 32..4096, ignoring.\n");
+        }
+      }
+      else if (LegacyText::Compare(key, "sky_mode") == 0) {
+        // Sky cloud-texture placement (see SkyMappingMode in GameState.h).
+        // 0=legacy offset, 1=world-level plane (default), 2=dome. Parsed
+        // strictly: "abc" must not silently mean 0 (legacy).
+        int mode = 0;
+        if (ParseConfigInt(keyval, kSkyModeLegacy, kSkyModeCount - 1, mode)) {
+          OptSkyMode = mode;
+          char msg[64];
+          snprintf(msg, sizeof(msg), "Config: sky_mode = %d\n", OptSkyMode);
+          PrintLog(msg);
+        } else {
+          PrintLog("Config: sky_mode must be 0 (legacy), 1 (level) or 2 (dome), ignoring.\n");
         }
       }
       else if (LegacyText::Compare(key, "resolution") == 0) {

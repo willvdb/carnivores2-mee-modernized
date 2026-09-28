@@ -20,6 +20,15 @@ static void ModelLoadFail(const char* what, int value, int limit)
   DoHalt(sz);
 }
 
+// Mod character files use an explicit BLANK animation record as a positional
+// placeholder. It has no frame payload, but its slot must remain in the array
+// so later animation indices keep their file-defined meaning.
+static bool IsBlankAnimation(const char name[32])
+{
+  return strncmp(name, "BLANK", 5) == 0 &&
+         (name[5] == '\0' || name[5] == ' ');
+}
+
 static void ReadModelExact(Platform::FileHandle file, void* dst, std::uint32_t bytes, const char* what)
 {
   if (!ReadExact(file, dst, bytes))
@@ -898,9 +907,10 @@ void ReleaseCharacterInfo(TCharacterInfo &chinfo)
 
   chinfo.AniCount = 0;
   chinfo.SfxCount = 0;
+  chinfo.AnimationBoundRadius = 0.0f;
 }
 
-void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
+void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag, const char* source)
 {
   ReleaseCharacterInfo(chinfo);
 
@@ -909,7 +919,17 @@ void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
   if (hfile==Platform::InvalidFile)
   {
     char sz[512];
-    snprintf(sz, sizeof(sz), "Error opening character file:\n%s.", FName );
+    // Naming the entry that asked for the file is what turns "the game says a
+    // path is missing" into "this line of _RES.TXT is wrong" -- the path alone
+    // does not say which of the hundreds of entries produced it.
+    if (source && *source)
+      snprintf(sz, sizeof(sz),
+                "Error opening character file:\n%s.\n\n"
+                "Referenced by %s.\n"
+                "Fix that entry or restore the missing file in the game folder.",
+                FName, source);
+    else
+      snprintf(sz, sizeof(sz), "Error opening character file:\n%s.", FName );
     DoHalt(sz);
   }
 
@@ -964,6 +984,7 @@ void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
   //ApplyAlphaFlags(chinfo.mptr->lpTexture, 256*256);
   //ApplyAlphaFlags(chinfo.mptr->lpTexture2, 128*128);
 //============= read animations =============//
+  double maxAnimationRadiusSq = 0.0;
   for (int a=0; a<chinfo.AniCount; a++)
   {
     std::array<std::uint8_t, LegacyModel::AnimationHeaderSize> bytes{};
@@ -975,8 +996,16 @@ void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
     chinfo.Animation[a].FramesCount = animation.frames;
     const int fileFrames = chinfo.Animation[a].FramesCount;
     constexpr int maxAnimationFrames = (std::numeric_limits<int>::max)() / 256;
-    if (fileFrames <= 0 || fileFrames > maxAnimationFrames)
+    const bool blankAnimation = IsBlankAnimation(chinfo.Animation[a].aniName);
+    if (fileFrames < 0 || fileFrames > maxAnimationFrames ||
+        (fileFrames == 0 && !blankAnimation))
       ModelLoadFail("animation frame count out of range", fileFrames, maxAnimationFrames);
+    if (blankAnimation && fileFrames == 0)
+    {
+      chinfo.Animation[a].AniTime = 0;
+      chinfo.Animation[a].aniData.reset();
+      continue;
+    }
     const int storageFrames = fileFrames == 1 ? 2 : fileFrames;
     // File bytes retain the Win32 transfer limit; the duplicate frame is runtime storage.
     size_t fileAniBytes = 0, storageAniBytes = 0;
@@ -1001,7 +1030,24 @@ void LoadCharacterInfo(TCharacterInfo &chinfo, char* FName, MemoryTag tag)
       std::copy_n(chinfo.Animation[a].aniData.get(), frameSamples,
                   chinfo.Animation[a].aniData.get() + frameSamples);
     }
+
+    // Character morphing converts CAR coordinates to world units by dividing
+    // by eight and then applying the instance scale. Cache the largest source
+    // radius across every frame so frustum culling cannot discard a long model
+    // merely because its origin has moved off-screen.
+    const short int* coordinates = chinfo.Animation[a].aniData.get();
+    const size_t coordinateCount = fileAniBytes / sizeof(short int);
+    for (size_t coordinate = 0; coordinate + 2 < coordinateCount; coordinate += 3)
+    {
+      const double x = coordinates[coordinate + 0];
+      const double y = coordinates[coordinate + 1];
+      const double z = coordinates[coordinate + 2];
+      maxAnimationRadiusSq = (std::max)(maxAnimationRadiusSq,
+                                        x * x + y * y + z * z);
+    }
   }
+  chinfo.AnimationBoundRadius =
+      static_cast<float>(sqrt(maxAnimationRadiusSq) / 8.0);
 
 //============= read sound fx ==============//
   std::uint8_t tmp[32];

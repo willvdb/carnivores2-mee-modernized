@@ -113,7 +113,8 @@ TEST_F(ResourceLoader, CompleteStreamAndDayNightFiltering)
         SCOPED_TRACE(day); File file(f.bytes); OptDayNight=day;
         EXPECT_THROW(file.Load(),ResourceComplete);
         EXPECT_EQ(SkyG,21+day*3); EXPECT_EQ(SkyTG,30+day*3);
-        EXPECT_EQ(SkyR,day==2 ? 0 : 20+day*3); EXPECT_EQ(SkyB,day==2 ? 0 : 22+day*3);
+        // Authored night RGB survives loading; night vision is a renderer overlay.
+        EXPECT_EQ(SkyR,20+day*3); EXPECT_EQ(SkyB,22+day*3);
         EXPECT_EQ(MObjects[0].info.Radius,20); EXPECT_EQ(MObjects[0].info.YLo,-8);
         EXPECT_EQ(MObjects[0].info.YHi,12); EXPECT_EQ(MObjects[0].info.linelenght,128);
         EXPECT_EQ(MObjects[0].info.BoundR,2.f);

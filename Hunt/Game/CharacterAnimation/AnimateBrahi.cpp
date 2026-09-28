@@ -4,6 +4,7 @@
 // ==========================================================================
 
 #include "Hunt.h"
+#include "../CharacterAwareness.h"
 #include "../CharacterInternal.h"
 
 // Global state imported from StateDefs.cpp
@@ -28,11 +29,7 @@ TBEGIN:
 
 	float tdist = static_cast<float>(sqrt(targetdx * targetdx + targetdz * targetdz));
 
-	float playerdx = PlayerX - cptr->pos.x - cptr->lookx * 108;
-	float playerdz = PlayerZ - cptr->pos.z - cptr->lookz * 108;
-	float pdist = static_cast<float>(sqrt(playerdx * playerdx + playerdz * playerdz));
-
-	int attackDist = 128 * DinoInfo[cptr->CType].aggress + OptAgres / 8; //agress = 56
+	const THunterGeometry hunter = GetHunterGeometry(cptr);
 
 	bool playerAttackable = ((GetLandUpH(PlayerX, PlayerZ) - GetLandH(PlayerX, PlayerZ)) <= 550);
 	bool attacking = false;
@@ -62,20 +59,13 @@ TBEGIN:
 
 		cptr->currentIdleGroup = -1;
 
-		bool fleeMode = false;
-		if (g_GameMode != GameMode::SurvivalMode) {
-			if (pdist > attackDist || !playerAttackable || DinoInfo[cptr->CType].aggress <= 0 || !cptr->awareHunter) {
-				fleeMode = true;
-			}
-			else if (DinoInfo[cptr->CType].defensive && cptr->Health == DinoInfo[cptr->CType].Health0) fleeMode = true;
-			else if (DinoInfo[cptr->CType].fearShot && cptr->Health < DinoInfo[cptr->CType].Health0) fleeMode = true;
-			else if (DinoInfo[cptr->CType].fearHearShot && cptr->heardShot) fleeMode = true;
-			else if (cptr->packId >= 0) Packs[cptr->packId].attack = true;
-		}
-
-		if (cptr->packId >= 0) {
-			if (Packs[cptr->packId]._attack) fleeMode = false;
-		}
+		const bool fixedPursuit = IsFixedHunterPursuit(cptr);
+		const bool fixedFlee = IsFixedHunterFlee(cptr);
+		const bool fixedReaction = fixedPursuit || fixedFlee;
+		const bool tracksHunter = TracksHunterExactly(cptr);
+		// The authored flee/pursue rule lives in the awareness core;
+		// hunterAttackable carries the Brahi altitude rule.
+		const bool fleeMode = ShouldFleeHunter(*cptr, hunter.distanceSquared, playerAttackable);
 
 		if (!autoCorrect) {
 			if (GetLandUpH(cptr->pos.x, cptr->pos.z) - GetLandH(cptr->pos.x, cptr->pos.z) > 550) {
@@ -85,26 +75,16 @@ TBEGIN:
 			}
 			else if (!fleeMode)
 			{
-				attacking = true;
-				cptr->tgx = PlayerX;
-				cptr->tgz = PlayerZ;
-				cptr->tgtime = 0;
-				if (cptr->packId >= 0) {
+				attacking = !fixedPursuit && tracksHunter;
+				// The navigator owns the live tracking / pack-leader target.
+				if (!fixedReaction && tracksHunter && cptr->packId >= 0) {
 					Packs[cptr->packId].alert = true;
 				}
 			}
 			else
 			{
 				attacking = false;
-				nv.x = playerdx;
-				nv.z = playerdz;
-				nv.y = 0;
-				NormVector(nv, 2048.f);
-				cptr->tgx = cptr->pos.x - nv.x;
-				cptr->tgz = cptr->pos.z - nv.z;
-				cptr->tgtime = 0;
-				cptr->AfraidTime -= TimeDt;
-
+				// The navigator owns the flee destination and the tgtime clock.
 
 				if (cptr->packId >= 0) {
 					if (cptr->AfraidTime <= 0)
@@ -114,7 +94,7 @@ TBEGIN:
 							cptr->State = 0;
 						}
 					}
-					else Packs[cptr->packId].alert = true;
+					else if (!fixedReaction) Packs[cptr->packId].alert = true;
 				}
 				else if (cptr->AfraidTime <= 0) {
 					cptr->AfraidTime = 0;
@@ -124,37 +104,34 @@ TBEGIN:
 			}
 		}
 
-		if (pdist < DinoInfo[cptr->CType].killDist && DinoInfo[cptr->CType].killDist > 0) //killdist = 600
-			if (fabs(PlayerY - cptr->pos.y - 120) < 256)
-			{
+		if (CanKillHunter(*cptr, hunter)) {
+			if (DinoInfo[cptr->CType].killTypeCount > 0) {
 
-				if (DinoInfo[cptr->CType].killTypeCount > 0) {
-
-					if (!(cptr->StateF & csONWATER))
-					{
-						cptr->vspeed /= 8.0f;
-						cptr->State = 1;
-						cptr->Phase = DinoInfo[cptr->CType].killType[cptr->killType].anim;
-						if (DinoInfo[cptr->CType].killType[cptr->killType].dontloop) cptr->FTime = 0;
-						AddDeadBody(cptr,
-							DinoInfo[cptr->CType].killType[cptr->killType].hunteranim,
-							DinoInfo[cptr->CType].killType[cptr->killType].scream);
-					}
-					else AddDeadBody(cptr, HUNT_EAT, true);
-
+				if (!(cptr->StateF & csONWATER))
+				{
+					cptr->vspeed /= 8.0f;
+					cptr->State = 1;
+					cptr->Phase = DinoInfo[cptr->CType].killType[cptr->killType].anim;
+					if (DinoInfo[cptr->CType].killType[cptr->killType].dontloop) cptr->FTime = 0;
+					AddDeadBody(cptr,
+						DinoInfo[cptr->CType].killType[cptr->killType].hunteranim,
+						DinoInfo[cptr->CType].killType[cptr->killType].scream);
 				}
-				else {
-					AddDeadBody(cptr, HUNT_EAT, true);
-					cptr->State = 0;
-				}
-
+				else AddDeadBody(cptr, HUNT_EAT, true);
 
 			}
+			else {
+				AddDeadBody(cptr, HUNT_EAT, true);
+				cptr->State = 0;
+			}
+
+
+		}
 	}
 
 	// Step 4: Extend culling distance by 4 units (~1024 world units)
 	// to allow smoothstep fade-out to complete
-	if (pdist > (charViewR + 20 + 4) * 256)
+	if (hunter.distance > (charViewR + 20 + 4) * 256)
 		if (ReplaceCharacterForward(cptr)) goto TBEGIN;
 
 	if (!cptr->State)
@@ -199,13 +176,13 @@ TBEGIN:
 NOTHINK:
 	
 	if ((cptr->Clone == AI_LANDBRACH || cptr->State) && !autoCorrect) {
-		if (pdist < 2048) cptr->NoFindCnt = 0;
+		if (hunter.distance < 2048) cptr->NoFindCnt = 0;
 		if (cptr->NoFindCnt) cptr->NoFindCnt--;
 		else
 		{
 			cptr->tgalpha = CorrectedAlpha(FindVectorAlpha(targetdx, targetdz), cptr->alpha);//FindVectorAlpha(targetdx, targetdz);
 
-			if (cptr->State && pdist > DinoInfo[cptr->CType].weaveRange && !DinoInfo[cptr->CType].dontWeave)
+			if (cptr->State && hunter.distance > DinoInfo[cptr->CType].weaveRange && !DinoInfo[cptr->CType].dontWeave)
 			{
 				cptr->tgalpha += static_cast<float>(sin(RealTime / 824.f)) / 4.f;
 				if (cptr->tgalpha < 0) cptr->tgalpha += 2 * pi;
@@ -231,7 +208,7 @@ NOTHINK:
 	} else {
 		cptr->tgalpha = FindVectorAlpha(targetdx, targetdz);
 
-		if (cptr->State && pdist > DinoInfo[cptr->CType].weaveRange && !DinoInfo[cptr->CType].dontWeave)
+		if (cptr->State && hunter.distance > DinoInfo[cptr->CType].weaveRange && !DinoInfo[cptr->CType].dontWeave)
 		{
 			cptr->tgalpha += static_cast<float>(sin(RealTime / 824.f)) / 4.f;
 			if (cptr->tgalpha < 0) cptr->tgalpha += 2 * pi;
