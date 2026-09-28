@@ -40,6 +40,11 @@ authorship and license; the original game remains © Action Forms.
 | khrplatform.h (Khronos, `deps/KHR/`) | GL loader platform header | MIT |
 | OpenAL Soft (`OpenAL32.dll`) | Runtime audio library | LGPL |
 | googletest (build-time only) | Unit tests | BSD-3-Clause |
+| RmlUi 6.3 (fetched, optional `C2_FRONTEND_GUI`) | Frontend GUI toolkit | MIT |
+| SDL3 3.2.28 (fetched, optional `C2_FRONTEND_GUI`) | Frontend GUI window/input | zlib |
+| FreeType (system, or fetched 2.13.3 on Windows; optional `C2_FRONTEND_GUI`) | Frontend GUI font engine | FTL |
+| stb_image v2.30 (`Frontend/gui/third_party/stb/`) | Frontend GUI PNG decoding | MIT / public domain |
+| DejaVu Sans 2.37 (`Frontend/gui/assets/fonts/`) | Frontend GUI application font | Bitstream Vera license (DejaVu changes public domain) |
 
 OpenAL Soft is loaded dynamically by name at runtime and can be replaced with
 any other `OpenAL32.dll`. When OpenAL Soft is redistributed with a release

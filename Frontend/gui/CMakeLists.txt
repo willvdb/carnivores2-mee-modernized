@@ -62,10 +62,28 @@ if(C2_FRONTEND_GUI)
     target_compile_options(c2-frontend-gui PRIVATE -Wall -Wextra -Wpedantic)
   endif()
 
+  # Staged layout: bin/c2-frontend-gui finds share/c2-frontend-gui beside its
+  # own directory, so the install runs from any working directory without the
+  # source checkout. Notices for everything redistributed travel with it.
+  install(TARGETS c2-frontend-gui RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+  install(DIRECTORY assets/ DESTINATION ${CMAKE_INSTALL_DATADIR}/c2-frontend-gui)
+  set(c2_gui_licenses ${CMAKE_INSTALL_DATADIR}/c2-frontend-gui/licenses)
+  install(FILES "${rmlui_SOURCE_DIR}/LICENSE.txt" DESTINATION ${c2_gui_licenses} RENAME LICENSE-RmlUi.txt)
+  install(FILES third_party/stb/LICENSE.txt DESTINATION ${c2_gui_licenses} RENAME LICENSE-stb_image.txt)
+  install(FILES third_party/README.md DESTINATION ${c2_gui_licenses} RENAME THIRD-PARTY-gui.md)
+  if(NOT C2_FRONTEND_GUI_SYSTEM_SDL3)
+    install(FILES "${sdl3_SOURCE_DIR}/LICENSE.txt" DESTINATION ${c2_gui_licenses} RENAME LICENSE-SDL3.txt)
+  endif()
+  if(c2_gui_freetype_license)
+    install(FILES "${c2_gui_freetype_license}" DESTINATION ${c2_gui_licenses} RENAME LICENSE-FreeType-FTL.txt)
+  endif()
+
   if(BUILD_TESTING)
     # Real RmlUi documents driven through the app's own dispatch path. The
     # offscreen SDL driver supplies an OpenGL context without a display.
     add_test(NAME frontend-gui-self-test COMMAND c2-frontend-gui --self-test)
     set_tests_properties(frontend-gui-self-test PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=offscreen")
+    add_test(NAME frontend-gui-help COMMAND c2-frontend-gui --help)
+    set_tests_properties(frontend-gui-help PROPERTIES PASS_REGULAR_EXPRESSION "--self-test")
   endif()
 endif()

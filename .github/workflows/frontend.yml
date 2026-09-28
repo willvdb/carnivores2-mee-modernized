@@ -33,3 +33,46 @@ jobs:
           python Frontend/native/tests/test_native_workflow.py build/stage/bin "$d/c2-frontend-native-fixture$x" "$d/c2-native-session-fixture$x"
       - name: Run frontend with required codec probe
         run: ctest --test-dir build/frontend -C Debug --output-on-failure --no-tests=error
+
+  frontend-gui:
+    # Opt-in RmlUi evaluation GUI. Separate job so the CLI jobs stay exactly as
+    # they were; it never runs the Python reference suite.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Linux build and headless GL dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config libfreetype6-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev \
+            libwayland-dev libxkbcommon-dev libegl1-mesa-dev libgl1-mesa-dev libgl1-mesa-dri libdecor-0-dev
+      - name: Configure with the GUI enabled (pinned SDL3 and RmlUi)
+        run: cmake -S Frontend -B build/gui -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DC2_FRONTEND_GUI=ON
+      - name: Build the GUI, the headless model and their tests
+        run: cmake --build build/gui --config Release --parallel 2 --target c2-frontend-gui c2-frontend-gui-model-tests c2-frontend-gui-store-tests c2-frontend-gui-worker-tests
+      - name: Headless model and real-core tests
+        run: ctest --test-dir build/gui -C Release -R "frontend-gui-(model|store|worker|help)" --output-on-failure --no-tests=error
+      - name: Real RmlUi self-test with the offscreen driver (Linux)
+        if: runner.os == 'Linux'
+        run: ctest --test-dir build/gui -C Release -R frontend-gui-self-test --output-on-failure --no-tests=error
+      - name: Staged install runs from an unrelated directory without Python (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cmake --install build/gui --config Release --prefix build/gui-stage
+          mkdir -p "$RUNNER_TEMP/elsewhere" && cd "$RUNNER_TEMP/elsewhere"
+          PATH=/usr/bin:/bin SDL_VIDEODRIVER=offscreen "$GITHUB_WORKSPACE/build/gui-stage/bin/c2-frontend-gui" --self-test
+      - name: Staged install layout (Windows; GL 3.3 self-test needs a GPU, not run)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          cmake --install build/gui --config Release --prefix build/gui-stage
+          ls build/gui-stage/bin build/gui-stage/share/c2-frontend-gui
+          build/gui-stage/bin/c2-frontend-gui.exe --help
