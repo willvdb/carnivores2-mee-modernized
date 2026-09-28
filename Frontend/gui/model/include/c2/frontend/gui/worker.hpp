@@ -34,6 +34,9 @@ public:
     void post(std::function<void()> completion);
     // Runs queued completions on the calling thread. Returns how many ran.
     std::size_t drain();
+    // Optional: called (from any thread, never under the queue lock) whenever a
+    // completion is queued, so an event loop blocked in a wait can wake up.
+    void set_wake(std::function<void()> wake);
     bool idle() const;   // no work running or waiting (completions may be queued)
     std::size_t pending_completions() const;
 
@@ -43,6 +46,7 @@ private:
     std::condition_variable wake_;
     std::deque<std::pair<std::function<void()>, std::function<void()>>> work_;
     std::deque<std::function<void()>> completions_;
+    std::function<void()> wake_callback_;
     bool stopping_ = false;
     bool busy_ = false;
     std::thread thread_;

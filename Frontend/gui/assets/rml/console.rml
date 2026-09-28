@@ -1,0 +1,59 @@
+<rml>
+<head>
+    <title>Expedition Console</title>
+    <link type="text/rcss" href="../rcss/theme.rcss"/>
+</head>
+<body data-model="console" class="screen">
+    <div class="console-root">
+        <div class="console-header">
+            <button id="console-back" class="btn" data-event-click="back()">Back</button>
+            <div class="grow">
+                <div class="title">Expedition Console</div>
+                <div class="subtitle">{{source_line}}</div>
+            </div>
+        </div>
+        <div class="console-body">
+            <div class="list-pane">
+                <div class="pane-title">Expeditions ({{expedition_count}})</div>
+                <div id="expedition-list" class="list">
+                    <div class="state" data-if="state_loading">Loading store...</div>
+                    <div class="state error" data-if="state_error">{{load_error}}</div>
+                    <div class="state" data-if="state_empty">No expeditions are registered in this store.</div>
+                    <div class="state" data-if="state_no_manifest">This directory has no lodge.json; the core observed the empty default manifest. Nothing was created.</div>
+                    <div class="row" data-for="e : expeditions" data-attr-id="'exp-' + e.id" data-class-selected="e.selected" data-event-click="select_expedition(e.id)">
+                        <div class="row-label">{{e.label}}</div>
+                        <div class="row-sub">{{e.mode}} · {{e.flavor}} · …{{e.short_id}}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="details-pane">
+                <div class="state" data-if="!has_selection">Select an expedition to see its details. Use Up/Down (or the D-pad) in the list and Enter to select; Right moves to this panel.</div>
+                <div data-if="has_selection">
+                    <div class="detail-title">{{sel_label}}</div>
+                    <div id="preview-art" class="preview-art"></div>
+                    <div class="kv"><span class="k">Identity</span><span class="v">{{sel_id}}</span></div>
+                    <div class="kv"><span class="k">Locator</span><span class="v wrap">{{sel_path}}</span></div>
+                    <div class="kv"><span class="k">Mode</span><span class="v">{{sel_mode}} ({{sel_flavor}} path)</span></div>
+                    <div class="section-title">Viewing as hunter <span class="badge">local selection, not persisted</span></div>
+                    <div>
+                        <div class="hunter-row" data-for="h : hunters" data-attr-id="'hunter-' + h.id" data-class-selected="h.selected" data-event-click="view_hunter(h.id)">{{h.name}} …{{h.short_id}}{{h.suffix}}</div>
+                        <div class="state" data-if="hunters.size == 0">No hunters in this store.</div>
+                    </div>
+                    <div class="section-title">Demo loadout <span class="badge">sample values, not catalog data</span></div>
+                    <div class="field"><label>Area</label>
+                        <select id="area-select" data-value="area"></select></div>
+                    <div class="field"><label>Weapon</label>
+                        <select id="weapon-select" data-value="weapon"></select></div>
+                    <div class="field"><label>Time of day</label>
+                        <select id="time-select" data-value="time_of_day"></select></div>
+                    <div class="actions">
+                        <button id="preview-button" class="btn primary" data-event-click="preview()">Demo preview</button>
+                        <button id="launch-button" class="btn disabled" disabled>Launch</button>
+                    </div>
+                    <div class="explain">{{launch_reason}}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</rml>

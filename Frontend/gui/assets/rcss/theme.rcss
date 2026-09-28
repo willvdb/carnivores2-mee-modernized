@@ -1,0 +1,216 @@
+/* Evaluation theme: plain, replaceable styling. Sizes are in dp so the UI
+   follows the display scale; the lodge stage is sized by the application. */
+
+/* RmlUi ships no default stylesheet: every element starts as inline. */
+div, p, label, h1, h2, ul, li, form { display: block; }
+span, b, i, em { display: inline; }
+button, select, input { display: inline-block; }
+body {
+    font-family: "DejaVu Sans";
+    font-size: 15dp;
+    color: #e8e2d2;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    background-color: #14171a;
+}
+.screen { display: block; }
+.title { font-size: 22dp; color: #f0d890; }
+.subtitle { font-size: 12dp; color: #a9a79c; }
+.context { font-size: 12dp; color: #cfcab8; }
+.badge { font-size: 11dp; color: #14171a; background-color: #d9b45c; padding: 1dp 5dp; border-radius: 3dp; margin-left: 6dp; }
+.state { padding: 12dp; color: #a9a79c; }
+.state.error { color: #f0a0a0; }
+.hbox { display: flex; flex-direction: row; align-items: center; gap: 8dp; }
+
+/* Focusable controls: tab-index for Tab, nav for arrows/D-pad. */
+.btn {
+    display: inline-block;
+    tab-index: auto;
+    nav: auto;
+    cursor: pointer;
+    padding: 8dp 14dp;
+    border: 2dp #4b5a4a;
+    border-radius: 4dp;
+    background-color: #2b3a2c;
+    color: #e8e2d2;
+    text-align: center;
+}
+.btn:hover { background-color: #3a4d3b; }
+.btn:active { background-color: #223022; }
+.btn:focus { border-color: #8fb48a; }
+.btn:focus-visible { border-color: #f0d890; box-shadow: 0 0 0 2dp #f0d89066; }
+.btn.primary { background-color: #4a5e2a; border-color: #7a9648; }
+.btn.primary:hover { background-color: #5b7334; }
+.btn.disabled, .btn:disabled {
+    tab-index: none;
+    nav: none;
+    cursor: unavailable;
+    color: #7c7a70;
+    background-color: #24282a;
+    border-color: #35393b;
+}
+.explain { font-size: 12dp; color: #d9b45c; margin-top: 4dp; }
+
+/* Text inputs: the caret keys stay with the widget; Tab leaves it. */
+input.text {
+    tab-index: auto;
+    nav: auto;
+    cursor: text;
+    padding: 6dp 8dp;
+    border: 2dp #4b5a4a;
+    border-radius: 3dp;
+    background-color: #0f1214;
+    color: #f3efe2;
+    min-width: 200dp;
+    height: 20dp;
+    caret-color: #f0d890;
+}
+input.text:focus { border-color: #8fb48a; }
+input.text:focus-visible { border-color: #f0d890; }
+input.text selection, textarea selection { background-color: #4a5e2a; color: #ffffff; }
+label { display: block; margin-bottom: 4dp; color: #cfcab8; font-size: 13dp; }
+.field { margin-bottom: 14dp; }
+.msg { font-size: 12dp; color: #a9a79c; margin-top: 4dp; min-height: 14dp; }
+.msg.error { color: #f0a0a0; }
+.msg.ok { color: #9fd08a; }
+
+/* Dropdowns. */
+select {
+    tab-index: auto;
+    nav: auto;
+    cursor: pointer;
+    width: 300dp;
+    height: 32dp;
+    border: 2dp #4b5a4a;
+    border-radius: 3dp;
+    background-color: #0f1214;
+    color: #f3efe2;
+}
+select:focus { border-color: #8fb48a; }
+select:focus-visible { border-color: #f0d890; }
+select selectvalue { padding: 6dp 8dp; width: auto; margin-right: 32dp; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+select selectarrow { width: 28dp; height: 28dp; background-color: #2b3a2c; }
+select selectarrow:checked { background-color: #4a5e2a; }
+select selectbox { background-color: #1a1f22; border: 2dp #4b5a4a; margin-top: 2dp; max-height: 180dp; overflow-y: auto; }
+select selectbox option { padding: 6dp 8dp; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+select selectbox option:hover { background-color: #3a4d3b; }
+select selectbox option:checked { background-color: #4a5e2a; }
+
+/* Scrollbars (RmlUi draws nothing without these rules). */
+scrollbarvertical { width: 12dp; }
+scrollbarvertical slidertrack { background-color: #1a1f22; }
+scrollbarvertical sliderbar { background-color: #4b5a4a; min-height: 24dp; border-radius: 4dp; }
+scrollbarvertical sliderbar:hover, scrollbarvertical sliderbar:active { background-color: #8fb48a; }
+scrollbarvertical sliderarrowdec, scrollbarvertical sliderarrowinc { height: 0; }
+scrollbarhorizontal { height: 12dp; }
+scrollbarhorizontal slidertrack { background-color: #1a1f22; }
+scrollbarhorizontal sliderbar { background-color: #4b5a4a; min-width: 24dp; }
+scrollbarhorizontal sliderarrowdec, scrollbarhorizontal sliderarrowinc { width: 0; }
+
+/* ---- Lodge: a 16:9 stage fitted inside the window, letterboxed. ---- */
+#lodge-letterbox {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #0b0d0f;
+}
+#lodge-stage {
+    position: relative;
+    /* width/height in dp are set by the application from the window size. */
+    background-color: #1c2320;
+    overflow: hidden;
+}
+#lodge-art {
+    position: absolute;
+    left: 0; top: 0; width: 100%; height: 100%;
+    decorator: image("../images/lodge_background.png" contain);
+}
+#lodge-stage.no-artwork #lodge-art { decorator: none; }
+.art-missing {
+    position: absolute;
+    left: 4%; top: 4%;
+    font-size: 12dp;
+    color: #d9b45c;
+}
+/* Hotspots are ordinary focusable elements positioned in stage percentages,
+   so artwork and interaction share the one aspect-fit transform. */
+.hotspot {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    tab-index: auto;
+    nav: auto;
+    cursor: pointer;
+    border: 2dp #8fb48a88;
+    border-radius: 6dp;
+    background-color: #1c2320aa;
+    color: #f0d890;
+    font-size: 16dp;
+    text-align: center;
+    padding: 4dp;
+}
+.hotspot:hover { background-color: #2b3a2ccc; }
+.hotspot:focus { border-color: #8fb48a; }
+.hotspot:focus-visible { border-color: #f0d890; background-color: #2b3a2cdd; box-shadow: 0 0 0 3dp #f0d89066; }
+.hotspot .label { display: block; text-align: center; }
+.hotspot.unavailable { tab-index: none; nav: none; cursor: unavailable; color: #8a877a; border-color: #4b5a4a66; font-size: 12dp; }
+#lodge-context {
+    position: absolute;
+    left: 2%; bottom: 2%; width: 96%;
+    background-color: #0b0d0fbb;
+    padding: 6dp;
+    border-radius: 4dp;
+}
+
+/* ---- Expedition Console: flexible layout, scrolling panes. ---- */
+.console-root { display: flex; flex-direction: column; width: 100%; height: 100%; }
+.console-header { display: flex; flex-direction: row; align-items: center; gap: 12dp; padding: 10dp 16dp; background-color: #1a1f22; border-bottom: 2dp #2b3a2c; }
+.console-header .grow { flex: 1; overflow: hidden; }
+.console-body { display: flex; flex-direction: row; flex: 1; min-height: 0; }
+.list-pane { display: flex; flex-direction: column; width: 34%; min-width: 220dp; max-width: 420dp; border-right: 2dp #2b3a2c; min-height: 0; }
+.pane-title { padding: 8dp 12dp; color: #f0d890; background-color: #171b1d; }
+.list { flex: 1; overflow-y: auto; min-height: 0; }
+.row {
+    display: block;
+    tab-index: auto;
+    nav: vertical;
+    nav-right: auto;   /* Right leaves the list for the details pane */
+    cursor: pointer;
+    padding: 8dp 12dp;
+    border-left: 4dp #00000000;
+    border-bottom: 1dp #1f2528;
+}
+.row:hover { background-color: #22292c; }
+.row.selected { border-left-color: #d9b45c; background-color: #23301f; }
+.row:focus { background-color: #2b3a2c; }
+.row:focus-visible { border-left-color: #f0d890; box-shadow: inset 0 0 0 2dp #f0d89055; }
+.row-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-sub { font-size: 11dp; color: #a9a79c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.details-pane { flex: 1; overflow-y: auto; padding: 16dp 20dp; min-width: 0; }
+.detail-title { font-size: 20dp; color: #f0d890; margin-bottom: 8dp; }
+.preview-art { width: 160dp; height: 120dp; decorator: image("../images/expedition_preview.png" contain); background-color: #0f1214; border: 1dp #2b3a2c; margin-bottom: 10dp; }
+.preview-art.no-artwork { decorator: none; }
+.kv { display: flex; flex-direction: row; gap: 10dp; margin-bottom: 4dp; }
+.kv .k { width: 90dp; color: #a9a79c; flex-shrink: 0; }
+.kv .v { flex: 1; min-width: 0; }
+.kv .v.wrap { word-break: break-all; }
+.section-title { margin-top: 16dp; margin-bottom: 8dp; color: #f0d890; }
+.actions { display: flex; flex-direction: row; flex-wrap: wrap; gap: 10dp; align-items: center; margin-top: 16dp; }
+.hunter-row { display: inline-block; tab-index: auto; nav: auto; cursor: pointer; padding: 3dp 8dp; margin: 0 6dp 6dp 0; border: 1dp #4b5a4a; border-radius: 3dp; font-size: 12dp; }
+.hunter-row.selected { border-color: #d9b45c; background-color: #23301f; }
+.hunter-row:focus-visible { border-color: #f0d890; }
+
+/* ---- Profile/Setup ---- */
+.setup-root { padding: 20dp 24dp; max-width: 720dp; }
+.notice { padding: 8dp 10dp; margin: 10dp 0 16dp 0; background-color: #2d2a1a; border-left: 4dp #d9b45c; font-size: 13dp; color: #e8dfb8; }
+
+/* ---- Modal dialog document ---- */
+body.modal { background-color: #00000099; display: flex; align-items: center; justify-content: center; }
+.dialog { width: 520dp; max-width: 92%; background-color: #1a1f22; border: 2dp #7a9648; border-radius: 6dp; padding: 16dp 20dp; }
+.dialog-title { font-size: 18dp; color: #f0d890; margin-bottom: 10dp; }
+.notes div { font-size: 12dp; color: #cfcab8; margin-bottom: 3dp; }

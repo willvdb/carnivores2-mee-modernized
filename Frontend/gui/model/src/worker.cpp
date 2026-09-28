@@ -26,9 +26,19 @@ void Worker::submit(std::function<void()> work, std::function<void()> completion
 }
 
 void Worker::post(std::function<void()> completion) {
+    std::function<void()> wake;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (stopping_) return;
+        completions_.push_back(std::move(completion));
+        wake = wake_callback_;
+    }
+    if (wake) wake();
+}
+
+void Worker::set_wake(std::function<void()> wake) {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (stopping_) return;
-    completions_.push_back(std::move(completion));
+    wake_callback_ = std::move(wake);
 }
 
 std::size_t Worker::drain() {
@@ -69,11 +79,16 @@ void Worker::run() {
             busy_ = true;
         }
         job.first();
+        std::function<void()> wake;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             busy_ = false;
-            if (!stopping_) completions_.push_back(std::move(job.second));
+            if (!stopping_) {
+                completions_.push_back(std::move(job.second));
+                wake = wake_callback_;
+            }
         }
+        if (wake) wake();
     }
 }
 } // namespace c2::frontend::gui

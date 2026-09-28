@@ -44,4 +44,28 @@ endif()
 
 if(C2_FRONTEND_GUI)
   include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/Dependencies.cmake")
+
+  add_executable(c2-frontend-gui
+    app/main.cpp app/app.cpp app/screens.cpp app/gamepad.cpp app/resources.cpp
+    app/render_png.cpp app/capture.cpp app/self_test.cpp)
+  target_link_libraries(c2-frontend-gui PRIVATE c2_frontend_gui_model c2_rmlui_backend_sdl_gl3)
+  target_include_directories(c2-frontend-gui SYSTEM PRIVATE third_party/stb)
+  target_compile_features(c2-frontend-gui PRIVATE cxx_std_17)
+  # Development fallback only: an installed binary finds its assets beside
+  # itself (../share/c2-frontend-gui) and never needs the source checkout.
+  target_compile_definitions(c2-frontend-gui PRIVATE
+    "C2_FRONTEND_GUI_SOURCE_ASSETS=\"${CMAKE_CURRENT_SOURCE_DIR}/assets\"")
+  if(MSVC)
+    target_compile_options(c2-frontend-gui PRIVATE /W4 /utf-8)
+    set_target_properties(c2-frontend-gui PROPERTIES WIN32_EXECUTABLE ON)
+  else()
+    target_compile_options(c2-frontend-gui PRIVATE -Wall -Wextra -Wpedantic)
+  endif()
+
+  if(BUILD_TESTING)
+    # Real RmlUi documents driven through the app's own dispatch path. The
+    # offscreen SDL driver supplies an OpenGL context without a display.
+    add_test(NAME frontend-gui-self-test COMMAND c2-frontend-gui --self-test)
+    set_tests_properties(frontend-gui-self-test PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=offscreen")
+  endif()
 endif()
