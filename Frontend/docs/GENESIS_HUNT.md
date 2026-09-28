@@ -41,16 +41,16 @@ backend boundary. Selection has exactly `area`, `licenses`, `weapons`, `equipmen
 mode `hunt`. There is no arbitrary argv or flag input.
 
 ```sh
-python3 Frontend/frontend.py --store TASK_STORE native-hunt plan ASSOCIATION \
+python3 Frontend/reference/python/frontend.py --store TASK_STORE native-hunt plan ASSOCIATION \
   --area areas:0 --license licenses:0 --weapon weapons:0 --time 1
-python3 Frontend/frontend.py --store TASK_STORE native-hunt prepare ASSOCIATION \
+python3 Frontend/reference/python/frontend.py --store TASK_STORE native-hunt prepare ASSOCIATION \
   --area areas:0 --license licenses:0 --weapon weapons:0 --time 1 \
   --engine REVIEWED_ENGINE --trusted-engine-sha256 REVIEWED_SHA256 \
   --experimental-native-hunt --timeout 900
-python3 Frontend/frontend.py --store TASK_STORE native-hunt run SESSION \
+python3 Frontend/reference/python/frontend.py --store TASK_STORE native-hunt run SESSION \
   --engine REVIEWED_ENGINE --trusted-engine-sha256 REVIEWED_SHA256 \
   --experimental-native-hunt
-python3 Frontend/frontend.py --store TASK_STORE native-hunt inspect SESSION
+python3 Frontend/reference/python/frontend.py --store TASK_STORE native-hunt inspect SESSION
 ```
 
 Pass `--probe` before the command or configure `C2_PROFILE_PROBE` as before.

@@ -13,7 +13,7 @@ import sys
 import tempfile
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import c2_reference_paths  # noqa: E402; worktree-local reference imports
 from lodge import acceptance, discovery, session_io, store
 
 DESTINATION = Path(__file__).resolve().parents[1] / 'tests/compatibility/golden.json'

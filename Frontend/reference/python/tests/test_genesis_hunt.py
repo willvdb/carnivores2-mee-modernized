@@ -23,9 +23,7 @@ def observations():
             'score_modifier_observations': [], 'diagnostics': []}
 
 
-def selection():
-    return {'area': 'areas:0', 'mode': 'hunt', 'time_of_day': 1,
-            'licenses': ['licenses:0'], 'weapons': ['weapons:0'], 'equipment': []}
+from c2_test_support import selection
 
 
 class HuntPolicyTests(unittest.TestCase):

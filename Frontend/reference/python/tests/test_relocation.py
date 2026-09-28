@@ -6,7 +6,7 @@ import unittest
 
 from lodge.discovery import inspect_instance, move_candidates, refresh_instance, register, relocate
 from lodge.store import FrontendError, Store, empty_manifest, validate
-from support import game
+from c2_test_support import game
 
 
 class RelocationTests(unittest.TestCase):

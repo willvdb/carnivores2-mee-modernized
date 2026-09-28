@@ -53,13 +53,13 @@ include(CTest)
 # c2-frontend-synthetic-child) never needs Python. The Python reference
 # implementation is optional developer/test tooling: it is required only for
 # BUILD_TESTING (differential oracles) or C2_FRONTEND_REFERENCE_TOOLS.
-option(C2_FRONTEND_REFERENCE_TOOLS "Add the Python reference CLI helper target c2-frontend" ${BUILD_TESTING})
+option(C2_FRONTEND_REFERENCE_TOOLS "Add the Python reference CLI helper target c2-frontend-reference" ${BUILD_TESTING})
 if(BUILD_TESTING OR C2_FRONTEND_REFERENCE_TOOLS)
   find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
 endif()
 if(C2_FRONTEND_REFERENCE_TOOLS)
-  add_custom_target(c2-frontend
-    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/frontend.py" --help
+  add_custom_target(c2-frontend-reference
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/reference/python/frontend.py" --help
     DEPENDS c2-profile-probe
     COMMENT "Show the optional Python reference frontend CLI")
 endif()
@@ -331,11 +331,10 @@ if(BUILD_TESTING)
   target_include_directories(c2-launch-argument-probe PRIVATE ../Hunt "${CMAKE_CURRENT_BINARY_DIR}")
   add_test(NAME frontend-backend
     COMMAND "${CMAKE_COMMAND}" -E env
-      "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}"
       "C2_PROFILE_PROBE=$<TARGET_FILE:c2-profile-probe>"
       "C2_LAUNCH_ARGUMENT_PROBE=$<TARGET_FILE:c2-launch-argument-probe>"
       "C2_NATIVE_TEST_ENGINE=$<TARGET_FILE:c2-native-session-fixture>"
-      "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/run_tests.py")
+      "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/reference/python/run_tests.py")
   # Test-only dispatcher with the labelled asset-free policy doubles.
   c2_frontend_test_driver(c2-frontend-native-fixture native/tests/fixture_cli.cpp)
   add_test(NAME frontend-native-cli COMMAND "${Python3_EXECUTABLE}"

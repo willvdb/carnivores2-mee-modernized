@@ -29,7 +29,7 @@ commit only updates this execution record. Both draft PRs have no auto-merge.
 
 ## Decisions and source evidence
 
-The exact Genesis fingerprint in `Frontend/lodge/genesis.py` is unchanged.
+The exact Genesis fingerprint in `Frontend/reference/python/lodge/genesis.py` is unchanged.
 `Menu/Menu.cpp` maps filtered AI>=10 license *positions* and weapon positions to
 bits. `CommandLine.cpp` multiplies `din` by 1024 once, consumes `wep` directly;
 `ScriptParser.cpp` char0..char9 conditions use bits 10..19. Grouped licenses and

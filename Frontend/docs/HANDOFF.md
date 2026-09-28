@@ -1,5 +1,10 @@
 # Frontend backend foundation handoff — 2026-09-18
 
+> Historical record: Python source paths and the `c2-frontend` help target below
+> predate the [reference isolation cleanup](PYTHON_REFERENCE_CLEANUP.md).
+> Current reference commands are in [reference/python/README.md](../reference/python/README.md).
+
+
 The working deliverable is an independent CLI/backend, with JSON hunter and
 instance persistence, conservative catalog projection, lossless native-state
 inspection/import, structured dry-run launch requests, and simulated return

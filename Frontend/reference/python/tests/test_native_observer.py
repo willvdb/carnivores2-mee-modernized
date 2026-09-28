@@ -17,14 +17,14 @@ from lodge.reconciliation import reconcile_session
 from lodge.session_io import capture, persist, read_journal, session_root
 from lodge.session_runner import recover_session, run_session
 from lodge.store import FrontendError
-from test_profiles import save_bytes
-import test_sessions
+from c2_test_support import save_bytes
+from c2_test_support import session_fixture
 
 
 class NativeObserverTests(unittest.TestCase):
     def setUp(self):
         # Reuse fixture setup, not the inherited suite or synthetic runner spec.
-        self.fixture = test_sessions.SessionTests()
+        self.fixture = session_fixture.SessionFixture()
         self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
         self.store, self.association = self.fixture.store, self.fixture.association

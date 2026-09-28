@@ -6,7 +6,8 @@ import random
 import subprocess
 import sys
 root=Path(__file__).resolve().parents[2]
-sys.path.insert(0,str(root))
+sys.path.insert(0, str(root / 'tools'))
+import c2_reference_paths  # noqa: E402
 exe=sys.argv[1]
 corpus=json.loads((root/'tests/compatibility/schema.json').read_text())
 cases=corpus['cases']

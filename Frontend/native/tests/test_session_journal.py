@@ -8,7 +8,8 @@ import sys
 import tempfile
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'tools'))
+import c2_reference_paths  # noqa: E402
 from lodge import session_io  # noqa: E402
 from lodge.store import FrontendError, Store  # noqa: E402
 

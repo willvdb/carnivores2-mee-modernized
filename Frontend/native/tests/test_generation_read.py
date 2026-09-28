@@ -12,8 +12,8 @@ import tempfile
 import threading
 
 root = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(root))
 sys.path.insert(0, str(root / 'tools'))
+import c2_reference_paths  # noqa: E402
 from lodge.store import Store, validate
 from lodge.session_io import capture
 from lodge.managed_state import resolve_generation, inspect_history

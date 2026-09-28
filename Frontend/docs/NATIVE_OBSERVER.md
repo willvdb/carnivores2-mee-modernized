@@ -134,11 +134,11 @@ operate on disposable session copies of that explicitly selected association;
 they are not the asset-free smoke or automatic progression approval.
 
 ```sh
-python3 Frontend/frontend.py --store /path/to/lodge --probe /path/to/c2-profile-probe \
+python3 Frontend/reference/python/frontend.py --store /path/to/lodge --probe /path/to/c2-profile-probe \
   native-observer prepare ASSOCIATION_UUID --area areas:0 \
   --engine /path/to/reviewed/Carnivores1_GL --trusted-engine-sha256 REVIEWED_SHA256 \
   --experimental-native-observer --timeout 900
-python3 Frontend/frontend.py --store /path/to/lodge --probe /path/to/c2-profile-probe \
+python3 Frontend/reference/python/frontend.py --store /path/to/lodge --probe /path/to/c2-profile-probe \
   native-observer run SESSION_UUID \
   --engine /path/to/reviewed/Carnivores1_GL --trusted-engine-sha256 REVIEWED_SHA256 \
   --experimental-native-observer

@@ -1,5 +1,12 @@
 # Carnivores lodge backend prototype
 
+> Historical prototype walkthrough. The reference sources now live in
+> [`reference/python/`](reference/python/README.md). In the commands below,
+> replace `Frontend/frontend.py` with `Frontend/reference/python/frontend.py`.
+> The optional help target is now `c2-frontend-reference`. Historical validation
+> statements below are not the current native status; see [README.md](README.md).
+
+
 An optional, independent frontend CLI for universal hunters and isolated
 expedition associations. It does not change the engine or Win32 Menu, select a
 GUI toolkit, synthesize native profiles, or enable general hunt launching. The lodge and full-screen

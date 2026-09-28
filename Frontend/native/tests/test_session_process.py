@@ -19,7 +19,8 @@ import time
 import unittest
 import warnings
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'tools'))
+import c2_reference_paths  # noqa: E402
 from lodge.session_runner import LOG_LIMIT, BoundedLog, stop_owned  # noqa: E402
 
 DRIVER, CHILD = sys.argv[1:3]

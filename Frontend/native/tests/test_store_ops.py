@@ -23,14 +23,15 @@ import unittest
 import uuid
 
 FRONTEND = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(FRONTEND), str(FRONTEND / 'tests')]
+sys.path.insert(0, str(FRONTEND / 'tools'))
+import c2_reference_paths  # noqa: E402; worktree-local reference and shared fixtures
 from lodge.discovery import discover, get_instance, move_candidates, refresh_instance, register, relocate  # noqa: E402
 from lodge.managed_state import UPGRADE_BACKUP, inspect_history, resolve_generation, upgrade_store  # noqa: E402
 from lodge.profiles import associate  # noqa: E402
 from lodge.session_io import encode  # noqa: E402
 from lodge.store import FrontendError, Store, _unique_object, hunter, validate  # noqa: E402
-from support import game  # noqa: E402
-from test_profiles import room_bytes, save_bytes  # noqa: E402
+from c2_test_support import game  # noqa: E402
+from c2_test_support import room_bytes, save_bytes  # noqa: E402
 
 DRIVER, PROBE = sys.argv[1:3]
 TIMESTAMP = re.compile(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{6})?\+00:00')

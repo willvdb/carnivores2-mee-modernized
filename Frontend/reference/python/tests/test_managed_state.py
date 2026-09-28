@@ -11,19 +11,19 @@ from lodge.managed_state import (AUTHORITY, UPGRADE_BACKUP, inspect_history,
 from lodge.session_io import capture
 from lodge.sessions import prepare_session
 from lodge.store import FrontendError, validate
-import test_sessions
+from c2_test_support import session_fixture
 
 
 class ManagedStateTests(unittest.TestCase):
     def setUp(self):
-        self.fixture=test_sessions.SessionTests(); self.fixture.setUp()
+        self.fixture=session_fixture.SessionFixture(); self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
         self.store,self.association=self.fixture.store,self.fixture.association
         self.addCleanup(self.unchanged_native)
 
     def unchanged_native(self):
         self.assertEqual(capture(self.fixture.source),self.fixture.original)
-        self.assertEqual(test_sessions.capture_native(self.fixture.game),self.fixture.native)
+        self.assertEqual(session_fixture.capture_native(self.fixture.game),self.fixture.native)
 
     def test_explicit_upgrade_backups_unknown_metadata_and_exact_import(self):
         with self.store.transaction() as d:
@@ -96,7 +96,7 @@ class ManagedStateTests(unittest.TestCase):
         upgrade_store(self.store)
         self.assertEqual(inspect_history(self.store,self.association)['import_provenance']['origin'],'unknown')
         from lodge.sessions import snapshot_pins
-        from test_genesis_hunt import selection
+        from c2_test_support import selection
         with self.assertRaisesRegex(FrontendError,'managed personal'):
             snapshot_pins(self.store,self.association,selection(),None,managed=True,mode='hunt')
 

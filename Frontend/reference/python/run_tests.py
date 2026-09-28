@@ -1,10 +1,13 @@
-"""CTest entry point: the production codec is mandatory, never an optional skip."""
+"""Python reference suite entry point: the production codec is mandatory, never an optional skip."""
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
 import unittest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'tools'))
+import c2_reference_paths  # noqa: E402
 
 probe = os.environ.get('C2_PROFILE_PROBE')
 if not probe or not Path(probe).is_file():

@@ -29,7 +29,8 @@ import unittest
 from unittest.mock import patch
 
 FRONTEND = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(FRONTEND), str(FRONTEND / 'tests')]
+sys.path.insert(0, str(FRONTEND / 'tools'))
+import c2_reference_paths  # noqa: E402; worktree-local reference and shared fixtures
 from lodge.acceptance import accept_candidate, candidate_digest, preview_acceptance  # noqa: E402
 from lodge.discovery import register  # noqa: E402
 from lodge.managed_state import upgrade_store  # noqa: E402
@@ -43,10 +44,10 @@ from lodge.session_io import capture, encode, persist, read_journal, session_roo
 from lodge.session_runner import LOG_LIMIT, recover_session, run_session  # noqa: E402
 from lodge.sessions import SCENARIOS, prepare_session  # noqa: E402
 from lodge.store import FrontendError, Store, hunter, valid_id  # noqa: E402
-from support import game  # noqa: E402
-from test_genesis_hunt import selection as hunt_selection  # noqa: E402
-from test_launch import SCRIPT  # noqa: E402
-from test_profiles import room_bytes, save_bytes  # noqa: E402
+from c2_test_support import game  # noqa: E402
+from c2_test_support import selection as hunt_selection  # noqa: E402
+from c2_test_support import SCRIPT  # noqa: E402
+from c2_test_support import room_bytes, save_bytes  # noqa: E402
 
 DRIVER, PROBE, ENGINE, CHILD, HELPER = (str(Path(a).resolve()) for a in sys.argv[1:6])
 MODE = sys.argv[6] if len(sys.argv) > 6 else 'prepare'

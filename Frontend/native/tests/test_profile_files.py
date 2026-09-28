@@ -14,7 +14,8 @@ import tempfile
 import threading
 import unicodedata
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'tools'))
+import c2_reference_paths  # noqa: E402
 from lodge import profiles
 
 DRIVER, PROBE = map(str, map(Path, sys.argv[1:3]))
@@ -272,7 +273,7 @@ def capability(name, base):
             script = ('import json,sys;sys.path.insert(0,sys.argv[1]);'
                       'from lodge.profiles import inventory;'
                       'print(json.dumps(inventory(sys.argv[2]),indent=2))')
-            py = subprocess.run([sys.executable, '-c', script, str(Path(__file__).resolve().parents[2]), str(root)],
+            py = subprocess.run([sys.executable, '-c', script, str(c2_reference_paths.REFERENCE), str(root)],
                                 capture_output=True, env=ENV, **identity)
             native = subprocess.run([DRIVER, 'inventory', str(root)], capture_output=True, env=ENV, **identity)
             assert py.returncode == native.returncode == 0, (py.stderr, native.stderr)

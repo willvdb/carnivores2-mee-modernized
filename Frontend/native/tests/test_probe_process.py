@@ -10,7 +10,8 @@ import tempfile
 import time
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'tools'))
+import c2_reference_paths  # noqa: E402
 from lodge import profiles, sessions  # noqa: E402
 from lodge.store import FrontendError  # noqa: E402
 

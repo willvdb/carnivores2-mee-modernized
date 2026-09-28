@@ -6,7 +6,7 @@ from unittest.mock import patch
 from lodge.discovery import (discover, fingerprint, inspect_instance, move_candidates,
                              recognize, refresh_instance, register, relocate, resolve_reference)
 from lodge.store import FrontendError, empty_manifest
-from support import game
+from c2_test_support import game
 
 
 class DiscoveryTests(unittest.TestCase):

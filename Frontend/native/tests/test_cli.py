@@ -18,14 +18,15 @@ import tempfile
 import unittest
 
 FRONTEND = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(FRONTEND), str(FRONTEND / 'tests')]
+sys.path.insert(0, str(FRONTEND / 'tools'))
+import c2_reference_paths  # noqa: E402; worktree-local reference and shared fixtures
 from lodge.discovery import register  # noqa: E402
 from lodge.profiles import associate  # noqa: E402
 from lodge.session_io import encode  # noqa: E402
 from lodge.store import Store, hunter  # noqa: E402
-from support import game  # noqa: E402
-from test_launch import SCRIPT  # noqa: E402
-from test_profiles import room_bytes, save_bytes  # noqa: E402
+from c2_test_support import game  # noqa: E402
+from c2_test_support import SCRIPT  # noqa: E402
+from c2_test_support import room_bytes, save_bytes  # noqa: E402
 
 NATIVE, FIXTURE, PROBE, ENGINE, CHILD = sys.argv[1:6]
 del sys.argv[1:6]
