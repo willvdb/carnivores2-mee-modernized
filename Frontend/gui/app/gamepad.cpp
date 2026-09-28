@@ -2,19 +2,32 @@
 #include <cmath>
 
 namespace c2::frontend::gui::app {
-GamepadInput::GamepadInput() { open_first(); }
+GamepadInput::GamepadInput() { open_all(); }
 GamepadInput::~GamepadInput() {
-    if (gamepad_) SDL_CloseGamepad(gamepad_);
+    for (auto* g : gamepads_) SDL_CloseGamepad(g);
 }
 
-void GamepadInput::open_first() {
-    if (gamepad_) return;
+void GamepadInput::open_all() {
     int count = 0;
     SDL_JoystickID* ids = SDL_GetGamepads(&count);
-    if (ids) {
-        for (int i = 0; i < count && !gamepad_; ++i) gamepad_ = SDL_OpenGamepad(ids[i]);
-        SDL_free(ids);
+    if (!ids) return;
+    for (int i = 0; i < count; ++i) open(ids[i]);
+    SDL_free(ids);
+}
+
+void GamepadInput::open(SDL_JoystickID id) {
+    for (auto* g : gamepads_)
+        if (SDL_GetGamepadID(g) == id) return;
+    if (SDL_Gamepad* g = SDL_OpenGamepad(id)) gamepads_.push_back(g);
+}
+
+std::vector<std::string> GamepadInput::names() const {
+    std::vector<std::string> out;
+    for (auto* g : gamepads_) {
+        const char* name = SDL_GetGamepadName(g);
+        out.push_back(name ? name : "(unnamed)");
     }
+    return out;
 }
 
 Action GamepadInput::to_action(Dir dir) {
@@ -38,15 +51,16 @@ void GamepadInput::set_direction(Dir dir, std::uint64_t now_ms, std::vector<Acti
 bool GamepadInput::handle_event(const SDL_Event& event, std::uint64_t now_ms, std::vector<Action>& out) {
     switch (event.type) {
     case SDL_EVENT_GAMEPAD_ADDED:
-        if (!gamepad_) gamepad_ = SDL_OpenGamepad(event.gdevice.which);
+        open(event.gdevice.which);
         return true;
     case SDL_EVENT_GAMEPAD_REMOVED:
-        if (gamepad_ && SDL_GetGamepadID(gamepad_) == event.gdevice.which) {
-            SDL_CloseGamepad(gamepad_);
-            gamepad_ = nullptr;
-            clear_held();
-            open_first();   // fall back to another connected controller, if any
+        for (auto it = gamepads_.begin(); it != gamepads_.end(); ++it) {
+            if (SDL_GetGamepadID(*it) != event.gdevice.which) continue;
+            SDL_CloseGamepad(*it);
+            gamepads_.erase(it);
+            break;
         }
+        if (held_device_ == event.gdevice.which) clear_held();   // no stuck repeat from a lost device
         return true;
     case SDL_EVENT_GAMEPAD_BUTTON_DOWN: {
         Dir d = Dir::none;
@@ -63,6 +77,7 @@ bool GamepadInput::handle_event(const SDL_Event& event, std::uint64_t now_ms, st
         default: return true;
         }
         dpad_ = d;
+        held_device_ = event.gbutton.which;
         set_direction(d, now_ms, out);
         return true;
     }
@@ -98,6 +113,7 @@ bool GamepadInput::handle_event(const SDL_Event& event, std::uint64_t now_ms, st
         }
         if (next != stick_) {
             stick_ = next;
+            held_device_ = event.gaxis.which;
             if (dpad_ == Dir::none) set_direction(stick_, now_ms, out);
         }
         return true;
@@ -115,6 +131,7 @@ void GamepadInput::tick(std::uint64_t now_ms, std::vector<Action>& out) {
 }
 
 void GamepadInput::clear_held() {
+    held_device_ = 0;
     held_ = Dir::none;
     stick_ = Dir::none;
     dpad_ = Dir::none;

@@ -249,13 +249,81 @@ int run_self_test(App& app) {
         ST(near(left, 0.68f * screens.lodge_stage_dp().x));
     }
 
-    // 8. A store reload keeps identities and drops nothing that still exists.
+    // 8. Virtual controller: D-pad, stick dead zone with hysteresis, repeat,
+    //    confirm/back, and held state cleared on window focus loss. These are
+    //    SDL virtual-device events, not a physical controller.
+    {
+        SDL_VirtualJoystickDesc desc;
+        SDL_INIT_INTERFACE(&desc);
+        desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+        desc.naxes = SDL_GAMEPAD_AXIS_COUNT;
+        desc.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
+        desc.name = "c2 self-test virtual gamepad";
+        const SDL_JoystickID vid = SDL_AttachVirtualJoystick(&desc);
+        ST(vid != 0);
+        SDL_Joystick* joystick = vid ? SDL_OpenJoystick(vid) : nullptr;
+        ST(joystick != nullptr);
+        if (joystick) {
+            settle(app);   // delivers SDL_EVENT_GAMEPAD_ADDED to the app
+            std::cout << "self-test: controllers open in the app:";
+            for (const auto& n : app.gamepad_names()) std::cout << " [" << n << "]";
+            std::cout << '\n';
+            ST(app.gamepad_connected());
+            auto press = [&](SDL_GamepadButton button) {
+                SDL_SetJoystickVirtualButton(joystick, button, true);
+                SDL_UpdateJoysticks(); app.step(false);
+                SDL_SetJoystickVirtualButton(joystick, button, false);
+                SDL_UpdateJoysticks(); app.step(false);
+            };
+            ST(screens.focused_id() == "dest-expeditions");
+            press(SDL_GAMEPAD_BUTTON_DPAD_RIGHT); settle(app);
+            ST(screens.focused_id() == "dest-profile");
+            press(SDL_GAMEPAD_BUTTON_DPAD_LEFT); settle(app);
+            ST(screens.focused_id() == "dest-expeditions");
+            // Stick inside the dead zone does nothing; past it moves once.
+            SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_LEFTX, static_cast<Sint16>(0.40f * 32767));
+            SDL_UpdateJoysticks(); settle(app);
+            ST(screens.focused_id() == "dest-expeditions");
+            SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_LEFTX, static_cast<Sint16>(0.80f * 32767));
+            SDL_UpdateJoysticks(); settle(app);
+            ST(screens.focused_id() == "dest-profile");
+            // Holding past the repeat delay repeats; a synthetic focus loss clears it.
+            const auto t0 = SDL_GetTicks();
+            while (SDL_GetTicks() - t0 < GamepadInput::kRepeatDelayMs + GamepadInput::kRepeatIntervalMs / 2) { app.step(false); SDL_Delay(5); }
+            ST(screens.focused_id() == "dest-exit");
+            SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_LEFTX, static_cast<Sint16>(-0.80f * 32767));
+            SDL_UpdateJoysticks(); settle(app);
+            ST(screens.focused_id() == "dest-profile");
+            SDL_Event lost{};
+            lost.type = SDL_EVENT_WINDOW_FOCUS_LOST;
+            lost.window.windowID = SDL_GetWindowID(app.window());
+            SDL_PushEvent(&lost);
+            const auto t1 = SDL_GetTicks();
+            while (SDL_GetTicks() - t1 < GamepadInput::kRepeatDelayMs + 2 * GamepadInput::kRepeatIntervalMs) { app.step(false); SDL_Delay(5); }
+            ST(screens.focused_id() == "dest-profile");   // no stuck repeat after focus loss
+            SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_LEFTX, 0);
+            SDL_UpdateJoysticks(); settle(app);
+            // South confirms into setup, East backs out with focus restored.
+            press(SDL_GAMEPAD_BUTTON_SOUTH); settle(app);
+            ST(model.screen() == Screen::setup);
+            press(SDL_GAMEPAD_BUTTON_EAST); settle(app);
+            ST(model.screen() == Screen::lodge);
+            ST(screens.focused_id() == "dest-profile");
+            press(SDL_GAMEPAD_BUTTON_DPAD_LEFT); settle(app);
+            ST(screens.focused_id() == "dest-expeditions");
+            SDL_CloseJoystick(joystick);
+        }
+        if (vid) { SDL_DetachVirtualJoystick(vid); settle(app); }
+        std::cout << "self-test: after detaching the virtual controller, controllers open: " << app.gamepad_names().size() << '\n';
+    }
+
+    // 9. A store reload keeps identities and drops nothing that still exists.
     app.reload_store();
     ST(wait_for(app, [&] { return model.load_state() != LoadState::loading; }));
     ST(model.load_state() == LoadState::ready);
     ST(model.selected_expedition() == ids.expedition_ids[1]);
 
-    // 9. Exit through the lodge destination.
+    // 10. Exit through the lodge destination.
     app.dispatch(Action::nav_right); app.dispatch(Action::nav_right); settle(app);
     ST(screens.focused_id() == "dest-exit");
     app.dispatch(Action::confirm); settle(app);

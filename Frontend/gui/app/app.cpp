@@ -34,6 +34,10 @@ App::~App() {
 
 bool App::init(std::string& error) {
     SDL_SetHint(SDL_HINT_VIDEO_ALLOW_SCREENSAVER, "1");
+    // The self-test runs with a hidden window and no keyboard focus; SDL drops
+    // joystick events for unfocused apps unless told otherwise. Production
+    // keeps SDL's default (no controller input while another app is focused).
+    if (options_.self_test) SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_EVENTS)) {
         error = std::string("SDL_Init failed: ") + SDL_GetError();
         return false;

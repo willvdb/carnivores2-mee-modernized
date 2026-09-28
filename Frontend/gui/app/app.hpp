@@ -56,6 +56,8 @@ public:
     SDL_Window* window() const noexcept { return window_; }
     const std::filesystem::path& asset_root() const noexcept { return asset_root_; }
     const std::string& gl_version() const noexcept { return gl_version_; }
+    bool gamepad_connected() const noexcept { return gamepad_.connected(); }
+    std::vector<std::string> gamepad_names() const { return gamepad_.names(); }
     static constexpr int kMinWidth = 800, kMinHeight = 520;
 
 private:

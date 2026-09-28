@@ -3,6 +3,7 @@
 // Real focus navigation: actions become RmlUi key events, never a fake cursor.
 #include <SDL3/SDL.h>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace c2::frontend::gui::app {
@@ -23,7 +24,10 @@ public:
     void clear_held();
     // Milliseconds until the next repeat is due, or a large value when idle.
     std::uint32_t next_wake_ms(std::uint64_t now_ms) const;
-    bool connected() const noexcept { return gamepad_ != nullptr; }
+    bool connected() const noexcept { return !gamepads_.empty(); }
+    std::size_t count() const noexcept { return gamepads_.size(); }
+    // Names of the open controllers, for diagnostics and evidence.
+    std::vector<std::string> names() const;
     // Tunables (also documented in the evaluation record).
     static constexpr float kDeadZoneEnter = 0.55f;
     static constexpr float kDeadZoneExit = 0.35f;
@@ -32,10 +36,14 @@ public:
 
 private:
     enum class Dir { none, up, down, left, right };
-    void open_first();
+    void open_all();
+    void open(SDL_JoystickID id);
     void set_direction(Dir dir, std::uint64_t now_ms, std::vector<Action>& out);
     static Action to_action(Dir dir);
-    SDL_Gamepad* gamepad_ = nullptr;
+    // Every connected controller is open and any of them drives the UI; the
+    // held direction belongs to one device so a disconnect clears it.
+    std::vector<SDL_Gamepad*> gamepads_;
+    SDL_JoystickID held_device_ = 0;
     Dir held_ = Dir::none;
     Dir stick_ = Dir::none;
     Dir dpad_ = Dir::none;
