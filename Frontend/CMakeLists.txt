@@ -49,6 +49,10 @@ include(GNUInstallDirs)
 install(TARGETS c2-frontend-native c2-profile-probe c2-frontend-synthetic-child
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 include(CTest)
+# Optional GUI evaluation slice (RmlUi + SDL3 + OpenGL); see gui/CMakeLists.txt.
+# OFF keeps the CLI build free of graphics, font and display dependencies.
+option(C2_FRONTEND_GUI "Build the optional c2-frontend-gui evaluation executable" OFF)
+add_subdirectory(gui)
 # The production artifact (c2-frontend-native, c2-profile-probe,
 # c2-frontend-synthetic-child) never needs Python. The Python reference
 # implementation is optional developer/test tooling: it is required only for
