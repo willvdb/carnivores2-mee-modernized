@@ -26,9 +26,9 @@ from lodge.discovery import register  # noqa: E402
 from lodge.profiles import associate  # noqa: E402
 from lodge.session_io import read_journal, session_root  # noqa: E402
 from lodge.store import Store, hunter  # noqa: E402
-from support import game  # noqa: E402
-from test_launch import SCRIPT  # noqa: E402
-from test_profiles import room_bytes, save_bytes  # noqa: E402
+from c2_test_support import game  # noqa: E402
+from c2_test_support import SCRIPT  # noqa: E402
+from c2_test_support import room_bytes, save_bytes  # noqa: E402
 
 POSIX = os.name == 'posix'
 

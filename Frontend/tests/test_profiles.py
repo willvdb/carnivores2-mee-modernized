@@ -1,7 +1,6 @@
 import hashlib
 import os
 from pathlib import Path
-import struct
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -10,19 +9,7 @@ from lodge.discovery import register
 from lodge.profiles import (associate, codec_inspect, inspect_set, inventory,
                             refresh_association, stable_read)
 from lodge.store import FrontendError, Store, hunter
-from support import game
-
-
-def save_bytes(slot=0, score=100):
-    # Original synthetic bytes, including noncanonical options and opaque words.
-    result = bytearray((i * 73 + 19) % 256 for i in range(1660))
-    result[:128] = b'Test hunter\0' + bytes(range(116))
-    struct.pack_into('<iii', result, 128, slot, score, 1000)
-    return bytes(result)
-
-
-def room_bytes():
-    return bytes((i * 37) % 256 for i in range(7176))
+from c2_test_support import game, save_bytes, room_bytes
 
 
 class ProfileTests(unittest.TestCase):

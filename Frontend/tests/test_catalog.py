@@ -3,7 +3,7 @@ import tempfile
 import unittest
 
 from lodge.catalog import parse_script, project
-from support import game
+from c2_test_support import game
 
 SCRIPT = """weapons {
 {

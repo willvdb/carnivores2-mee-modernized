@@ -16,8 +16,8 @@ from lodge.discovery import register  # noqa: E402
 from lodge.launch import prepare  # noqa: E402
 from lodge.profiles import associate, refresh_association  # noqa: E402
 from lodge.store import FrontendError, Store, hunter  # noqa: E402
-from support import game  # noqa: E402
-from test_profiles import room_bytes, save_bytes  # noqa: E402
+from c2_test_support import game  # noqa: E402
+from c2_test_support import room_bytes, save_bytes  # noqa: E402
 
 DRIVER, PROBE, HELPER = sys.argv[1:4]
 SCRIPT = """weapons {

@@ -3,51 +3,21 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-import tempfile
 import threading
 import unittest
 from unittest.mock import patch
 
-from lodge.discovery import register
-from lodge.profiles import associate
 from lodge.session_io import capture, read_journal, session_root, transition
 from lodge.sessions import prepare_session
 from lodge.session_runner import recover_session, run_session
 from lodge.reconciliation import reconcile_session
-from lodge.store import FrontendError, Store, hunter, valid_id
-from support import game
-from test_launch import SCRIPT
-from test_profiles import save_bytes, room_bytes
+from lodge.store import FrontendError, Store, valid_id
+from c2_test_support import save_bytes, room_bytes, session_fixture
+from c2_test_support.session_fixture import capture_native
 
 
 @unittest.skipUnless(os.environ.get('C2_PROFILE_PROBE'), 'build codec helper')
-class SessionTests(unittest.TestCase):
-    def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temp.cleanup)
-        self.game = game(self.temp.name)
-        (self.game / 'HUNTDAT/_MENU.TXT').write_text(SCRIPT)
-        (self.game / 'trophy00.sav').write_bytes(save_bytes())
-        (self.game / 'trophy00.sab').write_bytes(room_bytes())
-        self.store = Store(Path(self.temp.name) / 'Lodge')
-        with self.store.transaction() as data:
-            h = hunter(data, 'create', name='Synthetic test hunter')
-            i = register(data, self.game, dialect='c2-classic')
-            a = associate(self.store, data, h['id'], i['id'], 'trophy00', 'personal', 'managed')
-            self.association = a['id']
-        self.source = self.store.directory / 'snapshots' / self.association
-        self.original = capture(self.source)
-        self.native = capture_native(self.game)
-        self.manifest = self.store.path.read_bytes()
-
-    def prepare(self, scenario='unchanged', **kwargs):
-        return prepare_session(self.store, self.association, 'areas:0', scenario=scenario, **kwargs)
-
-    def assert_sources_untouched(self):
-        self.assertEqual(capture(self.source), self.original)
-        self.assertEqual(capture_native(self.game), self.native)
-        self.assertEqual(self.store.path.read_bytes(), self.manifest)
-
+class SessionTests(session_fixture.SessionFixture):
     def test_uuid_workspace_and_pinned_provenance(self):
         j = self.prepare()
         root = session_root(self.store, j['id'])
@@ -441,10 +411,6 @@ session_runner.run_session(Store(sys.argv[1]), sys.argv[2])
             self.assertEqual(result['state'], 'quarantined')
             self.assertEqual(capture(root / 'returned'), capture(root / 'work/state'))
         self.assert_sources_untouched()
-
-
-def capture_native(root):
-    return {p.name: p.read_bytes() for p in root.iterdir() if p.suffix in ('.sav', '.sab')}
 
 
 if __name__ == '__main__':

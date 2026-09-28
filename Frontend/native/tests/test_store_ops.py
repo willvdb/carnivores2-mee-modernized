@@ -29,8 +29,8 @@ from lodge.managed_state import UPGRADE_BACKUP, inspect_history, resolve_generat
 from lodge.profiles import associate  # noqa: E402
 from lodge.session_io import encode  # noqa: E402
 from lodge.store import FrontendError, Store, _unique_object, hunter, validate  # noqa: E402
-from support import game  # noqa: E402
-from test_profiles import room_bytes, save_bytes  # noqa: E402
+from c2_test_support import game  # noqa: E402
+from c2_test_support import room_bytes, save_bytes  # noqa: E402
 
 DRIVER, PROBE = sys.argv[1:3]
 TIMESTAMP = re.compile(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{6})?\+00:00')

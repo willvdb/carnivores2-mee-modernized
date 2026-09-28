@@ -10,26 +10,7 @@ from lodge.discovery import register, relocate
 from lodge.launch import prepare, simulated_return
 from lodge.profiles import associate
 from lodge.store import Store, hunter
-from support import game
-from test_profiles import save_bytes, room_bytes
-
-SCRIPT = """weapons {
-{
- name = 'Synthetic weapon'
-}
-}
-characters {
-{
- name = 'Synthetic group'
- ai = 10
-}
-}
-prices {
- area = 5
- dino = 10
- weapon = 20
-}
-"""
+from c2_test_support import game, save_bytes, room_bytes, SCRIPT
 
 
 @unittest.skipUnless(os.environ.get('C2_PROFILE_PROBE'), 'build codec helper and set C2_PROFILE_PROBE')

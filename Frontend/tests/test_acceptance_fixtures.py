@@ -24,14 +24,14 @@ from lodge.reconciliation import reconcile_session
 from lodge.session_io import capture, encode, persist, read_journal, session_root, transition
 from lodge.session_runner import recover_session
 from lodge.store import FrontendError, Store, new_id
-import test_sessions
-from test_genesis_hunt import selection
-from test_profiles import save_bytes
+from c2_test_support import session_fixture
+from c2_test_support import selection
+from c2_test_support import save_bytes
 
 
 class AcceptanceFixtureTests(unittest.TestCase):
     def setUp(self):
-        self.fixture=test_sessions.SessionTests();self.fixture.setUp()
+        self.fixture=session_fixture.SessionFixture();self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
         self.store,self.association=self.fixture.store,self.fixture.association
         self.engine=Path(os.environ['C2_NATIVE_TEST_ENGINE']).resolve()
@@ -51,7 +51,7 @@ class AcceptanceFixtureTests(unittest.TestCase):
 
     def unchanged_native(self):
         self.assertEqual(capture(self.fixture.source),self.fixture.original)
-        self.assertEqual(test_sessions.capture_native(self.fixture.game),self.fixture.native)
+        self.assertEqual(session_fixture.capture_native(self.fixture.game),self.fixture.native)
 
     def head(self):return self.store.read()['associations'][self.association]['managed_state']['current_generation']
 

@@ -27,7 +27,7 @@ sys.path[:0] = [str(FRONTEND), str(FRONTEND / 'tests')]
 DRIVER, PROBE, ENGINE = (str(Path(a).resolve()) for a in sys.argv[1:4])
 os.environ['C2_PROFILE_PROBE'] = PROBE
 os.environ['C2_NATIVE_TEST_ENGINE'] = ENGINE
-import test_sessions  # noqa: E402
+from c2_test_support import session_fixture  # noqa: E402
 from lodge.acceptance import (accept_candidate, candidate_digest, preview_acceptance,  # noqa: E402
                               recover_acceptance)
 from lodge.genesis_hunt import POLICY_ID  # noqa: E402
@@ -37,8 +37,8 @@ from lodge.reconciliation import reconcile_session  # noqa: E402
 from lodge.session_io import capture, encode, read_journal, session_root, transition  # noqa: E402
 from lodge.session_runner import recover_session  # noqa: E402
 from lodge.store import FrontendError, new_id, valid_id  # noqa: E402
-from test_genesis_hunt import selection  # noqa: E402
-from test_profiles import save_bytes  # noqa: E402
+from c2_test_support import selection  # noqa: E402
+from c2_test_support import save_bytes  # noqa: E402
 
 ISO = re.compile(r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{6})?\+00:00$')
 POSIX = os.name == 'posix'
@@ -60,7 +60,7 @@ class Acceptance(unittest.TestCase):
     maxDiff = None
 
     def setUp(self):
-        self.fixture = test_sessions.SessionTests()
+        self.fixture = session_fixture.SessionFixture()
         self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
         self.store, self.association = self.fixture.store, self.fixture.association
@@ -76,7 +76,7 @@ class Acceptance(unittest.TestCase):
     # -- fixture pipeline (unchanged reference) --------------------------------
     def unchanged_native(self):
         self.assertEqual(capture(self.fixture.source), self.fixture.original)
-        self.assertEqual(test_sessions.capture_native(self.fixture.game), self.fixture.native)
+        self.assertEqual(session_fixture.capture_native(self.fixture.game), self.fixture.native)
 
     def head(self):
         return self.store.read()['associations'][self.association]['managed_state']['current_generation']

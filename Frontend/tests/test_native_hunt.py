@@ -12,13 +12,13 @@ from lodge.reconciliation import reconcile_session
 from lodge.session_io import capture, session_root
 from lodge.session_runner import run_session
 from lodge.store import FrontendError
-import test_sessions
-from test_genesis_hunt import selection
+from c2_test_support import session_fixture
+from c2_test_support import selection
 
 
 class NativeHuntTests(unittest.TestCase):
     def setUp(self):
-        self.fixture = test_sessions.SessionTests(); self.fixture.setUp()
+        self.fixture = session_fixture.SessionFixture(); self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
         self.store, self.association = self.fixture.store, self.fixture.association
         self.engine = Path(os.environ['C2_NATIVE_TEST_ENGINE']).resolve()
