@@ -23,7 +23,8 @@ import unittest
 from unittest.mock import patch
 
 FRONTEND = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(FRONTEND), str(FRONTEND / 'tests')]
+sys.path.insert(0, str(FRONTEND / 'tools'))
+import c2_reference_paths  # noqa: E402; worktree-local reference and shared fixtures
 DRIVER, PROBE, ENGINE = (str(Path(a).resolve()) for a in sys.argv[1:4])
 os.environ['C2_PROFILE_PROBE'] = PROBE
 os.environ['C2_NATIVE_TEST_ENGINE'] = ENGINE

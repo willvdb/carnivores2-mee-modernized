@@ -8,7 +8,8 @@ import subprocess
 import sys
 import tempfile
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'tools'))
+import c2_reference_paths  # noqa: E402
 from lodge.profiles import codec_inspect
 
 driver, probe = map(lambda p: str(Path(p).resolve()), sys.argv[1:])

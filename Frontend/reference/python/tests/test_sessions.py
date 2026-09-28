@@ -244,6 +244,7 @@ class SessionTests(session_fixture.SessionFixture):
         j = self.prepare('sav')
         code = '''
 import os, sys
+sys.path.insert(0, sys.argv[3])
 from lodge.store import Store
 from lodge import session_runner
 original = session_runner.transition
@@ -254,7 +255,8 @@ def interrupted(root, journal, state, **fields):
 session_runner.transition = interrupted
 session_runner.run_session(Store(sys.argv[1]), sys.argv[2])
 '''
-        result = subprocess.run([sys.executable, '-c', code, str(self.store.directory), j['id']],
+        result = subprocess.run([sys.executable, '-c', code, str(self.store.directory), j['id'],
+                                 str(Path(__file__).resolve().parents[1])],
                                 capture_output=True, timeout=10)
         self.assertEqual(result.returncode, 91, result.stderr)
         self.assertEqual(read_journal(self.store, j['id'])['state'], 'returned')

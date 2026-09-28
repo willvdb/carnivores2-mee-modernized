@@ -9,7 +9,7 @@ import json
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from unittest.mock import patch
 import sys
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+import c2_reference_paths  # noqa: E402; worktree-local reference imports
 from lodge import store, managed_state, native_session
 from lodge.genesis_hunt import SCORE_MODIFIERS
 

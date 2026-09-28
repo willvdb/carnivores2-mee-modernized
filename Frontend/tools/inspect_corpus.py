@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import c2_reference_paths  # noqa: E402; worktree-local reference imports
 from lodge.catalog import project
 from lodge.discovery import hash_file
 from lodge.profiles import inspect_set, inventory

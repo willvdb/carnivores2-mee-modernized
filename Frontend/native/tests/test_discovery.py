@@ -10,7 +10,8 @@ import sys
 import tempfile
 import uuid
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'tools'))
+import c2_reference_paths  # noqa: E402
 from lodge import discovery as reference
 from lodge.store import validate
 
@@ -438,7 +439,7 @@ def capability(name, base):
         identity = {'user': 65534, 'group': 65534, 'extra_groups': []} if os.geteuid() == 0 else {}
         try:
             code = 'import sys,json;sys.path.insert(0,sys.argv[1]);from lodge.discovery import discover;print(json.dumps(discover(sys.argv[2]),indent=2))'
-            p = subprocess.run([sys.executable, '-c', code, str(Path(__file__).resolve().parents[2]), str(base)], capture_output=True, **identity)
+            p = subprocess.run([sys.executable, '-c', code, str(c2_reference_paths.REFERENCE), str(base)], capture_output=True, **identity)
             assert p.returncode == 0, p.stderr
             got = native({'op': 'discover', 'root': str(base)}, **identity)
             assert got['ok'] and got['json'].encode() == p.stdout

@@ -6,8 +6,8 @@
 layers; this directory does not yet provide that GUI.
 
 The Python implementation is retained for reference, differential tests and
-developer tools, **not as a production runtime dependency**. The former
-Python-first README is preserved verbatim in [PYTHON_REFERENCE.md](PYTHON_REFERENCE.md).
+developer tools, **not as a production runtime dependency**. The historical
+Python-first walkthrough is retained in [PYTHON_REFERENCE.md](PYTHON_REFERENCE.md).
 That walkthrough describes the reference prototype and historical validation
 gates; it is not the current native build or release guide.
 
@@ -19,6 +19,7 @@ From the repository root, with CMake 3.20+ and a C++17 compiler:
 cmake -S Frontend -B build/frontend-native-only \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTING=OFF \
+  -DC2_FRONTEND_REFERENCE_TOOLS=OFF \
   -DCMAKE_DISABLE_FIND_PACKAGE_Python3=TRUE
 cmake --build build/frontend-native-only --config Release --parallel 2
 cmake --install build/frontend-native-only --config Release --prefix build/frontend-stage
@@ -61,7 +62,8 @@ Use a separate build directory so the test configuration cannot inherit the
 Python-disabled production cache:
 
 ```sh
-cmake -S Frontend -B build/frontend-tests -DCMAKE_BUILD_TYPE=Debug
+cmake -S Frontend -B build/frontend-tests -DCMAKE_BUILD_TYPE=Debug \
+  -DBUILD_TESTING=ON -DPython3_EXECUTABLE=/absolute/path/to/python3.12
 cmake --build build/frontend-tests --config Debug --parallel 2
 ctest --test-dir build/frontend-tests -C Debug --output-on-failure --no-tests=error
 ```
@@ -72,7 +74,7 @@ Windows. It also runs the staged native workflow with failing Python shims on
 its child-process PATH. Python remains the *test driver*, not a dependency of the
 installed frontend.
 
-`C2_FRONTEND_REFERENCE_TOOLS` controls the optional `c2-frontend` CMake helper
+`C2_FRONTEND_REFERENCE_TOOLS` controls the optional `c2-frontend-reference` CMake helper
 target, which only displays the Python reference CLI's help. It defaults to the
 value of `BUILD_TESTING`. It is not the native executable; the native target is
 `c2-frontend-native`.
@@ -83,26 +85,24 @@ value of `BUILD_TESTING`. It is not the native executable; the native target is
 | --- | --- |
 | `native/include/`, `native/src/` | C++ backend and CLI; `c2_frontend_core` is the backend library target. |
 | `native/tests/` | Native test drivers, Python harnesses and differential comparisons. |
-| `frontend.py`, `lodge/` | Retained Python reference CLI and implementation. |
-| `tests/`, `run_tests.py` | Reference regression suite, shared fixtures and native test helpers. |
-| `tools/` | Fixture/Unicode generators and developer corpus inspection. |
+| `reference/python/frontend.py`, `reference/python/lodge/` | Independent Python reference CLI and backend; not installed. |
+| `reference/python/tests/`, `reference/python/run_tests.py` | Reference regression suite and its entry point. |
+| `tests/c2_test_support/` | Shared authored fixture builders and disposable session setup. |
+| `tests/catalog/`, `tests/compatibility/`, `tests/*.cpp` | Golden data and compiled helpers used by verification. |
+| `tools/` | Fixture/Unicode generators, shared import bootstrap and developer corpus inspection. |
 
-Do not remove the Python implementation merely because the runtime migration is
-complete. In particular:
+The [Python reference guide](reference/python/README.md) documents its supported
+entry points. Native comparisons import the reference implementation and shared
+fixtures, never reference test modules. `tools/c2_reference_paths.py` selects the
+reference and shared support from this checkout, without global installation or
+an externally configured `PYTHONPATH`. The full CTest suite runs the reference
+regressions and all five generator `--check` oracles by default.
 
-- `native/tests/reference_cli.py` imports `frontend.py`, and the CLI/workflow
-  suites compare native behavior against that reference.
-- Native tests import `lodge` modules and fixtures from `tests/`, including
-  `support.py`, `test_launch.py` and `test_profiles.py`.
-- CTest runs `run_tests.py` and the `tools/generate_*.py --check` oracles; compiled
-  native test helpers also live under `tests/`.
-
-A future relocation into a clearly named reference directory must update the
-imports, subprocess paths, CMake registrations, generators and documentation
-together, while preserving the independent expected results and test coverage.
-Shared fixtures must not be deleted with an old test directory. Keep production
-C++/GUI development on the native boundary rather than extending the reference
-implementation as product code.
+The optional help target was renamed from `c2-frontend` to
+`c2-frontend-reference`; no old-target alias is retained. Production target names
+are unchanged. Future GUI and backend features belong on the native boundary.
+See the [cleanup record](docs/PYTHON_REFERENCE_CLEANUP.md) for the path map and
+validation evidence.
 
 ## Contracts and implementation records
 

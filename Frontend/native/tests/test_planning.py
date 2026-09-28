@@ -15,7 +15,8 @@ import sys
 import tempfile
 import uuid
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'tools'))
+import c2_reference_paths  # noqa: E402
 from lodge import catalog, genesis, genesis_hunt, launch, profiles
 from lodge.discovery import register
 from lodge.genesis import GENESIS_REVISION

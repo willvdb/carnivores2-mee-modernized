@@ -1,5 +1,10 @@
 # Native frontend migration relay
 
+> Historical record: Python source paths and the `c2-frontend` help target below
+> predate the [reference isolation cleanup](PYTHON_REFERENCE_CLEANUP.md).
+> Current reference commands are in [reference/python/README.md](../reference/python/README.md).
+
+
 ## Historical foundation baseline and scope
 
 Python remains the authoritative runtime/reference at main commit

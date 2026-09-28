@@ -10,7 +10,8 @@ import sys
 from unittest.mock import patch
 
 FRONTEND = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(FRONTEND))
+sys.path.insert(0, str(FRONTEND / 'tools'))
+import c2_reference_paths  # noqa: E402
 import frontend  # noqa: E402
 from lodge.genesis_hunt import POLICY_ID  # noqa: E402
 

@@ -20,7 +20,8 @@ import tempfile
 import unittest
 
 FRONTEND = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(FRONTEND), str(FRONTEND / 'tests')]
+sys.path.insert(0, str(FRONTEND / 'tools'))
+import c2_reference_paths  # noqa: E402; worktree-local reference and shared fixtures
 DRIVER, PROBE, CHILD = (str(Path(a).resolve()) for a in sys.argv[1:4])
 from lodge.discovery import register  # noqa: E402
 from lodge.profiles import associate  # noqa: E402

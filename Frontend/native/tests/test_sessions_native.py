@@ -29,7 +29,8 @@ import unittest
 from unittest.mock import patch
 
 FRONTEND = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(FRONTEND), str(FRONTEND / 'tests')]
+sys.path.insert(0, str(FRONTEND / 'tools'))
+import c2_reference_paths  # noqa: E402; worktree-local reference and shared fixtures
 from lodge.acceptance import accept_candidate, candidate_digest, preview_acceptance  # noqa: E402
 from lodge.discovery import register  # noqa: E402
 from lodge.managed_state import upgrade_store  # noqa: E402

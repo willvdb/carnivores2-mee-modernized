@@ -10,8 +10,8 @@ import tempfile
 from unittest.mock import patch
 
 root = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(root))
 sys.path.insert(0, str(root / 'tools'))
+import c2_reference_paths  # noqa: E402
 from lodge.store import Store, empty_manifest
 import frontend
 from generate_schema_fixtures import base, H, I

@@ -1,5 +1,10 @@
 # C++ runtime completion (Python-free production frontend)
 
+> Historical record: Python source paths and the `c2-frontend` help target below
+> predate the [reference isolation cleanup](PYTHON_REFERENCE_CLEANUP.md).
+> Current reference commands are in [reference/python/README.md](../reference/python/README.md).
+
+
 Maintained, resumable record for the runtime-completion sprint. Terms are kept
 distinct: **implemented** (native library code exists), **wired** (reachable
 through `c2-frontend-native`), **tested** (differential and/or end-to-end

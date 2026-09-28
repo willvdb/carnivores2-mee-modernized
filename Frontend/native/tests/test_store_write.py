@@ -59,8 +59,8 @@ def assert_fresh_timestamp(stamp, before, after):
 
 
 root = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(root))
 sys.path.insert(0, str(root / 'tools'))
+import c2_reference_paths  # noqa: E402
 import lodge.store as store_module
 from lodge.store import FrontendError, Store, atomic_write, empty_manifest, valid_id
 from lodge.session_io import capture, session_root, write_blobs
@@ -292,9 +292,9 @@ def lock_link_case(parent, name, plant, target_name):
 
 def hold_python_lock(directory):
     # Binary control channel with explicit LF: text-mode print would emit CRLF on Windows.
-    code = ('import sys; from lodge.store import Store\nout = sys.stdout.buffer\nwith Store(sys.argv[1]).lock():\n'
+    code = ('import sys; sys.path.insert(0, sys.argv[2]); from lodge.store import Store\nout = sys.stdout.buffer\nwith Store(sys.argv[1]).lock():\n'
             '    out.write(b"ready\\n"); out.flush(); sys.stdin.buffer.readline()\nout.write(b"released\\n"); out.flush()')
-    return spawn([sys.executable, '-c', code, str(directory)], cwd=str(root))
+    return spawn([sys.executable, '-c', code, str(directory), str(c2_reference_paths.REFERENCE)], cwd=str(root))
 
 
 def check_lock_content(content, pid):

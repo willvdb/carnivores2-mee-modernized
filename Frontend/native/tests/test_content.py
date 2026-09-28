@@ -14,7 +14,8 @@ import time
 import traceback
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'tools'))
+import c2_reference_paths  # noqa: E402
 from lodge import discovery as reference
 
 DRIVER = str(Path(sys.argv[1]).resolve())
@@ -502,7 +503,7 @@ def capability(name, base):
         identity = {'user': 65534, 'group': 65534, 'extra_groups': []} if os.geteuid() == 0 else {}
         try:
             script = 'import sys,json;sys.path.insert(0,sys.argv[1]);from lodge.discovery import content_inventory;print(json.dumps(content_inventory(__import__("pathlib").Path(sys.argv[2]))))'
-            py = subprocess.run([sys.executable, '-c', script, str(Path(__file__).resolve().parents[2]), str(root / 'HUNTDAT')], capture_output=True, **identity)
+            py = subprocess.run([sys.executable, '-c', script, str(c2_reference_paths.REFERENCE), str(root / 'HUNTDAT')], capture_output=True, **identity)
             assert py.returncode == 0, py.stderr
             result = native('content_inventory', root / 'HUNTDAT', **identity)
             assert result['ok'] and result['value'] == json.loads(py.stdout)
