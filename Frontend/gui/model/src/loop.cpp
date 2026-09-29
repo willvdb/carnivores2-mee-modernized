@@ -18,6 +18,7 @@ bool HuntLoop::loadout(planning::Selection s) {
 }
 bool HuntLoop::inspect_session(std::u32string id) {
     if (busy() || id.empty()) return false;
+    association_.reset(); catalog_.reset();
     session_ = play_loop::Session{}; session_->id = std::move(id);
     preview_.reset(); state_ = LoopState::selection; ++version_; return true;
 }

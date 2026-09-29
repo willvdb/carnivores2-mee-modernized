@@ -44,6 +44,14 @@ int main() {
     changed.loadout(planning::Selection::hunt(U"areas:1",{U"licenses:0"},{U"weapons:0"},{"2"}));
     CHECK(!changed.can(Operation::prepare));
     CHECK(changed.state()==LoopState::selection);
+    HuntLoop retained(true); retained.select({U"previous-association",U"hunter",U"expedition",U"personal",U"managed",U"managed-state-history",U"g0"});
+    CHECK(retained.inspect_session(U"different-session"));
+    CHECK(!retained.association()); CHECK(!retained.can(Operation::plan));
+    auto retained_request=*retained.begin(Operation::inspect);
+    session.id=U"different-session"; session.association_id=U"different-association";
+    retained.complete(retained_request.id,{session,{}});
+    CHECK(retained.session()->association_id==U"different-association");
+    CHECK(!retained.can(Operation::prepare));
     HuntLoop ro; ro.select({}); CHECK(ro.begin(Operation::plan).has_value());
     CHECK(ro.complete(1,{play_loop::Plan{},{}})); CHECK(!ro.can(Operation::prepare));
     for (auto op : {Operation::recover,Operation::recover_acceptance,Operation::upgrade}) {

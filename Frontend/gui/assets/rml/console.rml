@@ -45,10 +45,10 @@
                         <div class="explain">{{source}}</div>
                         <div class="field"><label>Hunter / expedition association</label>
                             <select id="association-select" data-value="association" data-attrif-disabled="busy"></select></div>
-                        <div class="field"><label>Area</label><select id="loop-area" data-value="loop_area" data-attrif-disabled="busy"></select></div>
-                        <div class="field"><label>License (catalog selection)</label><select id="loop-license" data-value="loop_license" data-attrif-disabled="busy"></select></div>
-                        <div class="field"><label>Weapon</label><select id="loop-weapon" data-value="loop_weapon" data-attrif-disabled="busy"></select></div>
-                        <div class="field"><label>Time</label><select id="loop-time" data-value="loop_time" data-attrif-disabled="busy">
+                        <div class="field"><label>Area</label><select id="loop-area" data-value="loop_area" data-attrif-disabled="!can_plan"></select></div>
+                        <div class="field"><label>License (catalog selection)</label><select id="loop-license" data-value="loop_license" data-attrif-disabled="!can_plan"></select></div>
+                        <div class="field"><label>Weapon</label><select id="loop-weapon" data-value="loop_weapon" data-attrif-disabled="!can_plan"></select></div>
+                        <div class="field"><label>Time</label><select id="loop-time" data-value="loop_time" data-attrif-disabled="!can_plan">
                             <option value="0">Dawn</option><option value="1">Day</option><option value="2">Night</option></select></div>
                         <div class="actions">
                             <button id="plan-button" class="btn" data-attrif-disabled="!can_plan" data-class-disabled="!can_plan" data-event-click="operate('plan')">Validate loadout</button>

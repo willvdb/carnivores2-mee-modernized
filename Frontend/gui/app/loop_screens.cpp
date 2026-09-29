@@ -33,7 +33,7 @@ void Screens::bind_loop() {
         if(const auto& a=model_.loop.association()) out="Association: "+to_utf8(a->id)+"\nHunter: "+to_utf8(a->hunter_id)+
             "\nExpedition: "+to_utf8(a->instance_id)+"\nOrigin: "+to_utf8(a->origin)+"; ownership: "+to_utf8(a->ownership)+
             "; authority: "+to_utf8(a->authority)+"\nCurrent generation: "+to_utf8(a->current_generation.value_or(U"unavailable — explicit upgrade may be required"));
-        if(const auto& s=model_.loop.session()) out+="\nSession: "+to_utf8(s->id)+"\nState: "+to_utf8(s->state)+
+        if(const auto& s=model_.loop.session()) out+="\nSession: "+to_utf8(s->id)+"\nSession association: "+to_utf8(s->association_id)+"\nState: "+to_utf8(s->state)+
             "\nPinned generation: "+to_utf8(s->generation.value_or(U"unavailable"))+
             "\nChanged members: "+(s->changed_members ? std::to_string(s->changed_members->size())+" observed" : "unavailable")+
             "\nLogs and evidence: "+model_.source().directory+"/sessions/"+to_utf8(s->id);
@@ -87,7 +87,11 @@ void Screens::bind_loop() {
         if(action=="close") {review_open_=false; return;}
         if(action=="decline") {model_.loop.decline(); review_open_=false; return;}
         if(action=="load_session") {
-            if(model_.loop.inspect_session(to_utf32(recovery_id_)) && callbacks_.loop_operation) callbacks_.loop_operation(Operation::inspect);
+            if(model_.loop.inspect_session(to_utf32(recovery_id_))) {
+                loop_association_.clear(); catalog_association_.clear();
+                loop_area_.clear(); loop_license_.clear(); loop_weapon_.clear();
+                if(callbacks_.loop_operation) callbacks_.loop_operation(Operation::inspect);
+            }
             review_open_=true; return;
         }
         for(const auto& pair:operations) if(action==pair.first && callbacks_.loop_operation) callbacks_.loop_operation(pair.second);

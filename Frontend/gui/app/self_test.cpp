@@ -209,6 +209,14 @@ int run_self_test(App& app) {
     ST(model.loop.session()->id!=first_session);
     ST(model.loop.session()->generation==model.loop.association()->current_generation);
     ST(app.capture("10-prepared-from-accepted-generation"));
+    auto* retained=screens.console()->GetElementById("session-id");
+    ST(retained!=nullptr);
+    if(retained) { retained->Focus(true); retained->ScrollIntoView(); settle(app); type_replace(to_utf8(first_session).c_str()); }
+    activate(screens.console(),"inspect-session"); finish();
+    ST(model.loop.session() && model.loop.session()->id==first_session);
+    ST(!model.loop.association()); ST(!model.loop.can(Operation::prepare));
+    ST(app.capture("11-retained-session-review"));
+    app.dispatch(Action::back); settle(app);
 
     // 6. Back to the lodge restores the destination used to leave.
     app.dispatch(Action::back); settle(app);
