@@ -1,3 +1,13 @@
+# Owned asset-free demonstration. Test seams never enter c2_frontend_core/CLI.
+add_library(c2_frontend_demo STATIC ../native/demo/demo_play_loop.cpp)
+target_include_directories(c2_frontend_demo PRIVATE ../native/src)
+target_link_libraries(c2_frontend_demo PUBLIC c2_frontend_core)
+if(C2_FRONTEND_GUI OR BUILD_TESTING)
+  add_executable(c2-frontend-demo-child ../tests/native_session_fixture.cpp
+    ../../Hunt/Session/Session.cpp ../../Hunt/Platform/Files.cpp)
+  target_compile_features(c2-frontend-demo-child PRIVATE cxx_std_17)
+  target_compile_definitions(c2-frontend-demo-child PRIVATE C2_GUI_DEMO_FIXTURE=1)
+endif()
 # Optional RmlUi + SDL3 + OpenGL GUI evaluation slice.
 #
 # Layering (dependency direction, top to bottom):
@@ -35,6 +45,9 @@ if(BUILD_TESTING)
       target_compile_options(${name} PRIVATE -Wall -Wextra -Wpedantic)
     endif()
   endfunction()
+  c2_frontend_gui_test(c2-frontend-gui-loop-integration tests/loop_integration_tests.cpp)
+  target_link_libraries(c2-frontend-gui-loop-integration PRIVATE c2_frontend_demo)
+  add_test(NAME frontend-gui-loop-integration COMMAND c2-frontend-gui-loop-integration $<TARGET_FILE:c2-profile-probe> $<TARGET_FILE:c2-frontend-demo-child>)
   c2_frontend_gui_test(c2-frontend-gui-loop-tests tests/loop_tests.cpp)
   add_test(NAME frontend-gui-loop COMMAND c2-frontend-gui-loop-tests)
   c2_frontend_gui_test(c2-frontend-gui-model-tests tests/model_tests.cpp)
@@ -46,12 +59,13 @@ if(BUILD_TESTING)
 endif()
 
 if(C2_FRONTEND_GUI)
+  install(TARGETS c2-frontend-demo-child RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
   include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/Dependencies.cmake")
 
   add_executable(c2-frontend-gui
     app/main.cpp app/app.cpp app/screens.cpp app/gamepad.cpp app/resources.cpp
     app/render_png.cpp app/capture.cpp app/self_test.cpp)
-  target_link_libraries(c2-frontend-gui PRIVATE c2_frontend_gui_model c2_rmlui_backend_sdl_gl3)
+  target_link_libraries(c2-frontend-gui PRIVATE c2_frontend_gui_model c2_frontend_demo c2_rmlui_backend_sdl_gl3)
   target_include_directories(c2-frontend-gui SYSTEM PRIVATE third_party/stb)
   target_compile_features(c2-frontend-gui PRIVATE cxx_std_17)
   # Development fallback only: an installed binary finds its assets beside

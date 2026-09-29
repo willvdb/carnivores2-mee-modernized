@@ -11,16 +11,22 @@
 #include <string>
 #include <vector>
 int main(int argc, char** argv) {
+#ifndef C2_GUI_DEMO_FIXTURE
     // Test-only invocation marker: proves whether a frontend path executed the engine.
     if (const auto* marker = std::getenv("C2_NATIVE_FIXTURE_MARKER")) {
         if (FILE* file = std::fopen(marker, "ab")) { std::fputs("invoked\n", file); std::fclose(file); }
     }
+ #endif
     std::vector<std::string> args(argv, argv+argc), legacy;
     std::string error;
     const auto result = EngineSession::Initialize(args, std::filesystem::current_path().string(),
         Platform::ModuleDirectory(), legacy, error);
+#ifdef C2_GUI_DEMO_FIXTURE
+    const std::string scenario = "changed";
+#else
     const auto* behavior = std::getenv("C2_NATIVE_FIXTURE_BEHAVIOR");
     const std::string scenario = behavior ? behavior : "";
+#endif
     if (result == EngineSession::Startup::Query) {
         // Test-only: a slow capability answer, so a harness can interrupt the query (the
         // invocation marker above is written first and serves as the readiness signal).
