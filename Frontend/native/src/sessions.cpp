@@ -245,9 +245,9 @@ namespace {
 // the frontend owns for the query's working directory, removed afterwards.
 struct ContractDirectory {
     fs::path path;
-    ContractDirectory() {
+    explicit ContractDirectory(const std::optional<fs::path>& parent) {
         std::error_code error;
-        const fs::path base = fs::temp_directory_path(error);
+        const fs::path base = parent ? *parent : fs::temp_directory_path(error);
         if (error) throw fs::filesystem_error("temporary directory", base, error);
         path = base / ("c2-contract-" + store_write::new_id());
         if (!fs::create_directory(path, error) || error)
@@ -256,14 +256,14 @@ struct ContractDirectory {
     ~ContractDirectory() { std::error_code ignored; fs::remove_all(path, ignored); }
 };
 } // namespace
-Value query_contract(const Value& evidence) {
+Value query_contract(const Value& evidence, const std::optional<fs::path>& parent) {
     // Only after explicit binary trust; capability text is not certification.
     // Bounded helper-style query: stdin closed, both streams captured, and the
     // engine started in a fresh empty temporary directory it may not outlive.
     const fs::path path = path_of(evidence.at(U"path"));
     probe_process::Result result;
     try {
-        const ContractDirectory directory;
+        const ContractDirectory directory(parent);
         result = probe_process::run(path, {"--session-capabilities"}, "", std::chrono::seconds(5),
                                     probe_process::default_output_limit, {}, directory.path);
     } catch (const probe_process::Timeout&) {
@@ -433,7 +433,7 @@ Value prepare(Adapter adapter, const Store& store, std::u32string_view associati
     disjoint(store.directory(), preview.pins, evidence, false);
     store_write::WriterLock lock(store.directory());
     auto captured = native_pins(adapter, store, association_id, selection, probe, std::nullopt, policies);
-    const Value contract = query_contract(evidence);
+    const Value contract = query_contract(evidence, policies.query_parent);
     const std::string identity = store_write::new_id();
     const fs::path root = store_write::session_root(store, std::u32string(identity.begin(), identity.end()));
     const Value spec = execution_spec(adapter, root, captured.pins, evidence, contract, timeout);

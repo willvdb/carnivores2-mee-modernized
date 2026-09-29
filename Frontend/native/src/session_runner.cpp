@@ -106,7 +106,7 @@ void native_preflight(const Store& store, const fs::path& root, const Value& jou
                                                      pins.at(U"codec"), policies);
     if (!schema::equal(current.pins, pins)) throw StoreError("native identity/content/policy/source pins changed");
     // Re-query only the same explicitly trusted, unchanged binary.
-    const Value contract = native_session::query_contract(evidence);
+    const Value contract = native_session::query_contract(evidence, policies.query_parent);
     const Value expected = native_session::execution_spec(adapter, root, pins, evidence, contract, get(spec, U"timeout_seconds"));
     if (!schema::equal(expected, spec) || !native_session::supported_contract(get(spec, U"contract")) || !is_false(get(spec, U"shell")))
         throw StoreError("native execution specification changed");

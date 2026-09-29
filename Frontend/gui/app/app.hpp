@@ -17,9 +17,12 @@
 
 namespace c2::frontend::gui::app {
 struct Options {
-    std::optional<std::filesystem::path> store;    // read-only supplied store
+    std::optional<std::filesystem::path> store;    // supplied store; mutations require allow_writes
     std::optional<std::filesystem::path> assets;   // asset root override
     bool self_test = false;
+    bool allow_writes = false;
+    std::optional<std::filesystem::path> probe;
+    play_loop::Authorization authorization;
     std::optional<std::filesystem::path> capture_dir;   // self-test writes PNG evidence here
     int width = 1280, height = 720;
 };
@@ -42,6 +45,7 @@ public:
     void request_quit() { running_ = false; }
     // Reloads the store off-thread; older completions are rejected by the model.
     void reload_store();
+    void loop_operation(Operation);
     void open_folder_dialog();
     // Applies a new drawable size (pixels) as the window event handler would.
     void apply_pixel_size(int width, int height);
@@ -75,6 +79,8 @@ private:
     std::uint32_t wait_timeout_ms(std::uint64_t now_ms) const;
 
     Options options_;
+    std::optional<play_loop::Client> client_;
+    play_loop::Authorization authorization_;
     SDL_Window* window_ = nullptr;
     SDL_GLContext gl_ = nullptr;
     std::unique_ptr<SystemInterface_SDL> system_;

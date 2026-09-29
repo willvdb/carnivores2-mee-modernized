@@ -45,9 +45,10 @@ int run_self_test(App& app) {
     ST(wait_for(app, [&] { return model.load_state() != LoadState::loading; }));
     ST(model.load_state() == LoadState::ready);
     if (model.load_state() != LoadState::ready) std::cerr << "load error: " << model.load_error() << '\n';
-    const auto& ids = demo_identities();
-    ST(model.snapshot() && model.snapshot()->hunters.size() == ids.hunter_ids.size());
-    ST(model.snapshot() && model.snapshot()->expeditions.size() == ids.expedition_ids.size());
+    ST(model.snapshot() && model.snapshot()->associations.size() == 1);
+    const auto expedition_id = to_utf8(model.snapshot()->associations.front().instance_id);
+    const auto first_expedition_id = model.snapshot()->expeditions.front().id;
+    ST(model.snapshot()->hunters.size()==4); ST(model.snapshot()->expeditions.size()==3);
     settle(app);
     ST(app.capture("01-lodge"));
 
@@ -129,95 +130,113 @@ int run_self_test(App& app) {
     app.dispatch(Action::back); settle(app);
     ST(model.screen() == Screen::lodge);
 
-    // 5. Console: list focus, selection by Enter, details, modal preview.
+    // 5. Real Console bindings and owned asset-free play loop.
     app.dispatch(Action::nav_left); settle(app);
-    ST(screens.focused_id() == "dest-expeditions");
     app.dispatch(Action::confirm); settle(app);
     ST(model.screen() == Screen::console);
-    ST(screens.focused_id() == "exp-" + ids.expedition_ids[0]);
-    ST(app.capture("04-console-empty-selection"));
-    app.dispatch(Action::nav_down); settle(app);
-    ST(screens.focused_id() == "exp-" + ids.expedition_ids[1]);
+    ST(screens.focused_id() == "exp-" + first_expedition_id);
     app.dispatch(Action::confirm); settle(app);
-    ST(model.selected_expedition() == ids.expedition_ids[1]);
-    ST(screens.focused_id() == "exp-" + ids.expedition_ids[1]);   // the row was not rebuilt
-    if (auto* row = screens.console()->GetElementById("exp-" + ids.expedition_ids[1])) ST(row->IsClassSet("selected"));
-    if (auto* row = screens.console()->GetElementById("exp-" + ids.expedition_ids[0])) ST(!row->IsClassSet("selected"));
+    ST(model.selected_expedition() == first_expedition_id);
     app.dispatch(Action::nav_down); settle(app);
-    ST(screens.focused_id() == "exp-" + ids.expedition_ids[2]);
+    ST(screens.focused_id()=="exp-"+model.snapshot()->expeditions[1].id);
     app.dispatch(Action::nav_down); settle(app);
-    ST(screens.focused_id() == "exp-" + ids.expedition_ids[2]);   // no wrap past the end
+    ST(screens.focused_id()=="exp-"+model.snapshot()->expeditions[2].id);
+    app.dispatch(Action::nav_down); settle(app);
+    ST(screens.focused_id()=="exp-"+model.snapshot()->expeditions[2].id);
+    std::vector<std::string> duplicate_ids;
+    for(const auto& h:model.snapshot()->hunters) if(h.name=="Fixture Hunter") duplicate_ids.push_back(h.id);
+    ST(duplicate_ids.size()==2); ST(duplicate_ids[0]!=duplicate_ids[1]);
+    for(const auto& id:duplicate_ids) ST(screens.console()->GetElementById("hunter-"+id)!=nullptr);
+    ST(app.capture("04a-console-before-navigation"));
     app.dispatch(Action::nav_right); settle(app);
-    const auto in_details = screens.focused_id();
-    std::cout << "self-test: Right from the list focused '" << in_details << "'\n";
-    ST(in_details == "area-select");
-    ST(app.capture("05-console-details"));
-    app.dispatch(Action::nav_left); settle(app);
-    ST(screens.focused_id() == "exp-" + ids.expedition_ids[1]);   // Left returns to the selected row
-    app.dispatch(Action::nav_right); settle(app);
-    app.dispatch(Action::nav_down); settle(app);
-    ST(screens.focused_id() == "weapon-select");                   // vertical nav inside the pane
-    // Duplicate hunter names are distinct rows with distinct identities.
-    ST(screens.console()->GetElementById("hunter-" + ids.hunter_ids[0]) != nullptr);
-    ST(screens.console()->GetElementById("hunter-" + ids.hunter_ids[1]) != nullptr);
-    if (auto* row = screens.console()->GetElementById("hunter-" + ids.hunter_ids[1])) { row->Focus(true); settle(app); app.dispatch(Action::confirm); settle(app); }
-    ST(model.viewed_hunter() == ids.hunter_ids[1]);
-    if (auto* row = screens.console()->GetElementById("hunter-" + ids.hunter_ids[2])) ST(row->GetInnerRML().find("Bj") != std::string::npos);
+    std::cout << "self-test: console cross-pane focus " << screens.focused_id() << std::endl;
+    ST(screens.focused_id() == "association-select");
+    auto* association = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(screens.console()->GetElementById("association-select"));
+    ST(association != nullptr);
 
-    // Dropdown: value binding both ways; Back closes an open box before leaving.
-    auto* area = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(screens.console()->GetElementById("area-select"));
-    ST(area != nullptr);
-    if (area) {
-        std::cout << "self-test: area select has " << area->GetNumOptions() << " options\n";
-        ST(area->GetNumOptions() == static_cast<int>(PresentationModel::demo_areas().size()));
-        ST(area->GetValue() == model.area());
-        model.set_area("demo-area-2"); screens.sync(); settle(app);
-        ST(area->GetValue() == "demo-area-2");            // model -> widget
-        area->SetValue("demo-area-3"); settle(app);
-        ST(model.area() == "demo-area-3");                // widget -> model
-        area->Focus(true); settle(app);
-        area->Click(); settle(app);
-        ST(select_open(area));
-        ST(app.capture("06-console-dropdown-open"));
-        ST(screens.handle_back()); settle(app);
-        ST(!select_open(area));
-        ST(model.screen() == Screen::console);            // back only closed the box
-        ST(screens.focused_id() == "area-select");
-    }
-
-    // Modal preview: focus moves in, Back closes it and restores focus.
-    auto* preview_button = screens.console()->GetElementById("preview-button");
-    ST(preview_button != nullptr);
-    if (preview_button) { preview_button->Focus(true); settle(app); }
-    app.dispatch(Action::confirm); settle(app);
-    ST(model.preview_open());
-    ST(screens.preview()->IsModal());
-    ST(screens.focused_id() == "preview-close");
-    ST(app.capture("07-preview-dialog"));
-    ST(screens.preview()->GetInnerRML().find(ids.expedition_ids[1]) != std::string::npos);
-    // A click landing on the console behind the modal must not act.
-    if (auto* back = screens.console()->GetElementById("console-back")) {
-        const auto box = back->GetAbsoluteOffset(Rml::BoxArea::Border);
-        const auto size = back->GetBox().GetSize(Rml::BoxArea::Border);
-        const float dp = ctx->GetDensityIndependentPixelRatio();
-        const int x = static_cast<int>((box.x + size.x / 2) * dp), y = static_cast<int>((box.y + size.y / 2) * dp);
-        ctx->ProcessMouseMove(x, y, 0);
-        ctx->ProcessMouseButtonDown(0, 0);
-        ctx->ProcessMouseButtonUp(0, 0);
-        settle(app);
-        ST(model.screen() == Screen::console && model.preview_open());
-    }
+    if (!association) return 1;
+    association->SetValue(to_utf8(model.snapshot()->associations.front().id));
+    ST(wait_for(app,[&]{return !model.loop.busy() && model.loop.catalog().has_value();}));
+    ST(model.loop.error().empty());
+    ST(model.selected_expedition()==expedition_id);
+    ST(model.viewed_hunter()==to_utf8(model.snapshot()->associations.front().hunter_id));
+    association->Focus(true); association->Click(); settle(app);
+    ST(select_open(association));
     app.dispatch(Action::back); settle(app);
-    ST(!model.preview_open());
-    ST(model.screen() == Screen::console);
-    ST(screens.focused_id() == "preview-button");
-    ST(model.selected_expedition() == ids.expedition_ids[1]);   // dismissal changed nothing
-    // Launch is disabled: Tab from Preview skips it, and its explanation is plain text.
-    app.dispatch(Action::focus_next); settle(app);
-    ST(screens.focused_id() != "launch-button");
-    app.dispatch(Action::focus_previous); settle(app);
-    ST(screens.focused_id() == "preview-button");
-    ST(screens.console()->GetInnerRML().find("outside this evaluation") != std::string::npos);
+    ST(!select_open(association)); ST(model.screen()==Screen::console);
+    auto* disabled_launch=screens.console()->GetElementById("launch-button");
+    ST(disabled_launch && disabled_launch->IsClassSet("disabled"));
+    ST(app.capture("04-console-loadout"));
+    auto activate = [&](Rml::ElementDocument* doc, const char* id) {
+        auto* button=doc->GetElementById(id); ST(button != nullptr);
+        if(button) { button->Focus(true); button->ScrollIntoView(); settle(app); app.dispatch(Action::confirm); settle(app); }
+    };
+    auto finish = [&] {
+        ST(wait_for(app,[&]{return !model.loop.busy();},10000));
+        if(!model.loop.error().empty()) std::cerr<<"loop error: "<<model.loop.error()<<'\n';
+        ST(model.loop.error().empty()); settle(app);
+    };
+    ST(screens.console()->GetElementById("plan-button")==nullptr);
+    ST(model.loop.advice() && model.loop.advice()->allowed);
+    ST(model.loop.state()==LoopState::validated);
+    ST(model.loop.advice()->score->decimal=="100");
+    ST(model.loop.advice()->requirement->decimal=="35");
+    auto* weapon=rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(screens.console()->GetElementById("loop-weapon"));
+    ST(weapon && weapon->GetNumOptions()==2);
+    if(weapon) {
+        ST(!weapon->GetOption(0)->HasAttribute("disabled"));
+        ST(weapon->GetOption(1)->HasAttribute("disabled"));
+        auto* retained_option=weapon->GetOption(0);
+        auto* time=rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(screens.console()->GetElementById("loop-time"));
+        time->Focus(true); time->SetValue("2"); settle(app);
+        ST(model.loop.can(Operation::prepare)); ST(!model.loop.busy());
+        ST(screens.focused_id()=="loop-time");
+        ST(weapon->GetOption(0)==retained_option);
+        weapon->ScrollIntoView(); weapon->Focus(true); weapon->Click(); settle(app);
+        ST(app.capture("04b-live-points-options"));
+        app.dispatch(Action::back); settle(app);
+    }
+    ST(app.capture("05-validated-intent"));
+    activate(screens.console(),"prepare-button"); finish(); ST(model.loop.state()==LoopState::prepared);
+    if(!model.loop.session()) return 1;
+    const auto first_session=model.loop.session()->id;
+    const auto g0=model.loop.session()->generation;
+    ST(!model.loop.can(Operation::accept));
+    ST(app.capture("06-prepared"));
+    activate(screens.console(),"launch-button");
+    app.dispatch(Action::back); settle(app); ST(model.screen()==Screen::lodge);
+    finish(); ST(model.loop.state()==LoopState::returned);
+    app.dispatch(Action::confirm); settle(app); ST(model.screen()==Screen::console);
+    ST(model.loop.session()->state==U"candidate"); ST(!model.loop.can(Operation::accept));
+    activate(screens.console(),"review-button"); settle(app);
+    ST(screens.review()->IsModal()); ST(screens.focused_id()=="review-close");
+    ST(app.capture("07-return-review"));
+    activate(screens.review(),"inspect-button"); finish(); ST(model.loop.state()==LoopState::reviewing);
+    activate(screens.review(),"acceptance-preview"); finish(); ST(model.loop.can(Operation::accept));
+    ST(model.loop.preview() && !model.loop.preview()->candidate_sha256.empty());
+    ST(!screens.review()->GetElementById("accept-button")->IsClassSet("disabled"));
+    ST(app.capture("08-acceptance-preview"));
+    activate(screens.review(),"decline-button"); settle(app); ST(model.loop.state()==LoopState::declined);
+    ST(!model.loop.can(Operation::accept)); ST(model.loop.association()->current_generation==g0);
+    activate(screens.console(),"review-button"); settle(app);
+    activate(screens.review(),"acceptance-preview"); finish();
+    activate(screens.review(),"accept-button"); finish(); ST(model.loop.can(Operation::prepare));
+    ST(app.capture("09-acceptance-receipt"));
+    ST(model.loop.association()->current_generation!=g0);
+    ST(model.loop.advice() && model.loop.advice()->score->decimal=="107");
+    app.dispatch(Action::back); settle(app); ST(screens.focused_id()=="review-button");
+    activate(screens.console(),"prepare-button"); finish(); ST(model.loop.state()==LoopState::prepared);
+    ST(model.loop.session()->id!=first_session);
+    ST(model.loop.session()->generation==model.loop.association()->current_generation);
+    ST(app.capture("10-prepared-from-accepted-generation"));
+    auto* retained=screens.console()->GetElementById("session-id");
+    ST(retained!=nullptr);
+    if(retained) { retained->Focus(true); retained->ScrollIntoView(); settle(app); type_replace(to_utf8(first_session).c_str()); }
+    activate(screens.console(),"inspect-session"); finish();
+    ST(model.loop.session() && model.loop.session()->id==first_session);
+    ST(!model.loop.association()); ST(!model.loop.can(Operation::prepare));
+    ST(app.capture("11-retained-session-review"));
+    app.dispatch(Action::back); settle(app);
 
     // 6. Back to the lodge restores the destination used to leave.
     app.dispatch(Action::back); settle(app);
@@ -321,7 +340,7 @@ int run_self_test(App& app) {
     app.reload_store();
     ST(wait_for(app, [&] { return model.load_state() != LoadState::loading; }));
     ST(model.load_state() == LoadState::ready);
-    ST(model.selected_expedition() == ids.expedition_ids[1]);
+    ST(model.selected_expedition() == expedition_id);
 
     // 10. Exit through the lodge destination.
     app.dispatch(Action::nav_right); app.dispatch(Action::nav_right); settle(app);

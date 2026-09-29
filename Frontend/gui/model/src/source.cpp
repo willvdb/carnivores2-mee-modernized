@@ -91,6 +91,7 @@ SnapshotResult read_store_snapshot(const std::filesystem::path& directory) {
         snapshot.directory = store.directory().u8string();
         snapshot.manifest_present = manifest_present;
         snapshot.schema_version = manifest.schema_version();
+        snapshot.associations = play_loop::associations(manifest);
         if (auto active = manifest.active_hunter()) snapshot.active_hunter = to_utf8(*active);
         for (const auto& h : manifest.hunters())
             snapshot.hunters.push_back({to_utf8(h.id), to_utf8(h.name), h.archived});

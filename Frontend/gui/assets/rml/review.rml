@@ -1,0 +1,21 @@
+<rml><head><title>Return review</title><link type="text/rcss" href="../rcss/theme.rcss"/></head>
+<body data-model="console" class="modal"><div class="dialog return-review">
+    <div class="dialog-title">Return review</div>
+    <div class="explain">{{source}}</div>
+    <div class="section-title">{{loop_status}}</div>
+    <div class="error wrap">{{loop_error}}</div>
+    <div class="pins">{{pins}}</div>
+    <div class="explain">An engine return does not adopt progress. Preview revalidates the candidate; Accept explicitly adopts the displayed predecessor and digest. Decline keeps evidence and current state.</div>
+    <div class="actions">
+        <button id="review-close" class="btn" data-event-click="operate('close')">Close</button>
+        <button id="inspect-button" class="btn" data-attrif-disabled="!can_inspect" data-class-disabled="!can_inspect" data-event-click="operate('inspect')">Inspect</button>
+        <button id="acceptance-preview" class="btn" data-attrif-disabled="!can_preview" data-class-disabled="!can_preview" data-event-click="operate('preview')">Preview acceptance</button>
+        <button id="accept-button" class="btn primary" data-attrif-disabled="!can_accept" data-class-disabled="!can_accept" data-event-click="operate('accept')">Accept reviewed candidate</button>
+        <button id="review-cancel-run" class="btn" data-attrif-disabled="!busy" data-class-disabled="!busy" data-event-click="operate('cancel')">Cancel run</button>
+        <button id="decline-button" class="btn" data-attrif-disabled="busy" data-class-disabled="busy" data-event-click="operate('decline')">Decline</button>
+        <button id="recover-button" class="btn" data-attrif-disabled="!can_recover" data-class-disabled="!can_recover" data-event-click="operate('recover')">Recover session</button>
+        <button id="recover-acceptance" class="btn" data-attrif-disabled="!can_recover_acceptance" data-class-disabled="!can_recover_acceptance" data-event-click="operate('recover_acceptance')">Recover receipt</button>
+    </div>
+    <div class="explain">Full backend observations and diagnostics (missing/null means unavailable; empty lists are observed empty).</div>
+    <div class="evidence">{{loop_details}}</div>
+</div></body></rml>

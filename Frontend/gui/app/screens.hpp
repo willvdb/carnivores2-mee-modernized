@@ -11,6 +11,7 @@
 
 namespace c2::frontend::gui::app {
 struct ScreenCallbacks {
+    std::function<void(Operation)> loop_operation;
     std::function<void()> open_folder_dialog;                       // native dialog (UI thread)
     std::function<void(RequestId, std::string)> check_folder;       // off-thread existence probe
 };
@@ -48,6 +49,7 @@ public:
     Rml::ElementDocument* lodge() const noexcept { return lodge_; }
     Rml::ElementDocument* console() const noexcept { return console_; }
     Rml::ElementDocument* setup() const noexcept { return setup_; }
+    Rml::ElementDocument* review() const noexcept { return review_; }
     Rml::ElementDocument* preview() const noexcept { return preview_; }
     // Current focus element id, or empty (test/diagnostic aid).
     std::string focused_id() const;
@@ -60,6 +62,8 @@ private:
     struct ExpeditionView { std::string id, dom_id, label, mode, flavor, short_id; bool selected = false; };
     struct OptionView { std::string id, label; };
 
+    void bind_loop();
+    void sync_loop();
     void bind_lodge();
     void bind_console();
     void bind_preview();
@@ -76,6 +80,13 @@ private:
     PresentationModel& model_;
     std::filesystem::path root_;
     ScreenCallbacks callbacks_;
+    Rml::ElementDocument* review_ = nullptr;
+    Rml::DataModelHandle loop_model_;
+    std::string loop_association_, loop_area_, loop_license_, loop_weapon_, loop_time_ = "1", recovery_id_;
+    std::uint64_t catalog_version_ = 0;
+    std::string catalog_association_, loop_return_focus_;
+    std::vector<std::string> association_ids_;
+    bool review_open_ = false, review_shown_ = false;
     Rml::ElementDocument* lodge_ = nullptr;
     Rml::ElementDocument* console_ = nullptr;
     Rml::ElementDocument* setup_ = nullptr;

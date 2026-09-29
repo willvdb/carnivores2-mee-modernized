@@ -11,16 +11,22 @@
 #include <string>
 #include <vector>
 int main(int argc, char** argv) {
+#ifndef C2_GUI_DEMO_FIXTURE
     // Test-only invocation marker: proves whether a frontend path executed the engine.
     if (const auto* marker = std::getenv("C2_NATIVE_FIXTURE_MARKER")) {
         if (FILE* file = std::fopen(marker, "ab")) { std::fputs("invoked\n", file); std::fclose(file); }
     }
+ #endif
     std::vector<std::string> args(argv, argv+argc), legacy;
     std::string error;
     const auto result = EngineSession::Initialize(args, std::filesystem::current_path().string(),
         Platform::ModuleDirectory(), legacy, error);
+#ifdef C2_GUI_DEMO_FIXTURE
+    const std::string scenario = "changed";
+#else
     const auto* behavior = std::getenv("C2_NATIVE_FIXTURE_BEHAVIOR");
     const std::string scenario = behavior ? behavior : "";
+#endif
     if (result == EngineSession::Startup::Query) {
         // Test-only: a slow capability answer, so a harness can interrupt the query (the
         // invocation marker above is written first and serves as the readiness signal).
@@ -28,6 +34,10 @@ int main(int argc, char** argv) {
         std::puts(scenario == "bad-contract" ? "{\"version\":99}" : EngineSession::Capability); return 0;
     }
     if (result != EngineSession::Startup::Ready) { std::fprintf(stderr,"%s\n",error.c_str()); return 2; }
+#ifdef C2_GUI_DEMO_FIXTURE
+    // Keep the owned child observable long enough to exercise cancellation.
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+#endif
     if (scenario == "hang") std::this_thread::sleep_for(std::chrono::seconds(60));
     if (scenario == "nonzero") return 7;
     const auto name = "trophy0" + std::to_string(EngineSession::Slot()) + ".sav";

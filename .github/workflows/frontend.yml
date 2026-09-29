@@ -59,7 +59,7 @@ jobs:
       - name: Build everything (the install rules also stage the CLI executables)
         run: cmake --build build/gui --config Release --parallel 2
       - name: Headless model and real-core tests
-        run: ctest --test-dir build/gui -C Release -R "frontend-gui-(model|store|worker|help)" --output-on-failure --no-tests=error
+        run: ctest --test-dir build/gui -C Release -R "frontend-gui-(loop|model|store|worker|help)" --output-on-failure --no-tests=error
       - name: Real RmlUi self-test with the offscreen driver (Linux)
         if: runner.os == 'Linux'
         run: ctest --test-dir build/gui -C Release -R frontend-gui-self-test --output-on-failure --no-tests=error

@@ -2,11 +2,13 @@
 // One owned worker thread and one completion queue. Work runs off the UI
 // thread; completions run only when the UI thread calls drain(). Foreign
 // threads (for example a native dialog callback) marshal with post().
-// Deliberately not a job framework: no priorities, no cancellation, no pools.
+// Deliberately not a job framework: no priorities or pools. The caller sets
+// its run cancellation token before shutdown(), which joins the owned thread.
 #include <condition_variable>
 #include <deque>
 #include <functional>
 #include <mutex>
+#include <memory>
 #include <thread>
 #include <utility>
 
@@ -17,6 +19,7 @@ public:
     // Stops accepting work, lets the running job finish, joins the thread and
     // discards queued completions. Nothing is detached.
     ~Worker();
+    void shutdown(); // join before releasing stores, documents or SDL
     Worker(const Worker&) = delete;
     Worker& operator=(const Worker&) = delete;
 

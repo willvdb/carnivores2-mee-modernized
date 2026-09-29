@@ -2,6 +2,7 @@
 #include "c2/frontend/gui/demo_store.hpp"
 #include "c2/frontend/gui/source.hpp"
 #include "capture.hpp"
+#include "c2/frontend/demo_play_loop.hpp"
 #include "resources.hpp"
 #include <RmlUi/Core.h>
 #include <algorithm>
@@ -18,7 +19,9 @@ App::~App() {
         std::lock_guard<std::mutex> lock(dialog_sink_->mutex);
         dialog_sink_->app = nullptr;   // a late dialog callback finds nobody
     }
+    if (model_) model_->loop.cancel();
     worker_.set_wake({});
+    worker_.shutdown();
     screens_.reset();                  // closes documents (deferred to context update)
     if (context_) context_->Update();  // runs the deferred document destruction
     if (rml_initialised_) Rml::Shutdown();
@@ -65,7 +68,7 @@ bool App::init(std::string& error) {
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
     const SDL_WindowFlags flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
                                   (options_.self_test ? SDL_WINDOW_HIDDEN : 0);
-    window_ = SDL_CreateWindow("Carnivores frontend (RmlUi evaluation)", options_.width, options_.height, flags);
+    window_ = SDL_CreateWindow("Carnivores Expedition Console", options_.width, options_.height, flags);
     if (!window_) {
         error = std::string("SDL_CreateWindow failed: ") + SDL_GetError();
         return false;
@@ -115,23 +118,47 @@ bool App::init(std::string& error) {
     context_->SetDensityIndependentPixelRatio(SDL_GetWindowDisplayScale(window_));
     render_->SetViewport(pw, ph);
 
-    // Data source: explicit read-only store, else an owned disposable demo store.
+    auto helper = [](const char* name) {
+        auto base = std::filesystem::u8path(SDL_GetBasePath());
+        if (base.filename().empty()) base = base.parent_path();
+#ifdef _WIN32
+        const auto file = std::string(name) + ".exe";
+#else
+        const auto file = std::string(name);
+#endif
+        // Installed helpers share bin/. Single-config builds put the probe
+        // above gui/; multi-config builds put it in ../../<config>/.
+        for (const auto& candidate : {base/file, base.parent_path()/file,
+             base.parent_path().parent_path()/base.filename()/file})
+            if (std::filesystem::is_regular_file(candidate)) return candidate;
+        return base/file; // backend diagnostic names the missing helper
+    };
+    const auto probe = options_.probe.value_or(helper("c2-profile-probe"));
+    authorization_ = options_.authorization;
+    // Supplied stores require explicit write opt-in; demo owns all its data.
     DataSource source;
     if (options_.store) {
         source.kind = DataSource::Kind::supplied;
         source.directory = options_.store->u8string();
+        source.allow_writes = options_.allow_writes;
+        client_.emplace(Store(*options_.store),probe,options_.allow_writes);
     } else {
         try {
-            demo_store_ = create_demo_store();
+            auto demo = play_loop::create_demo(probe,helper("c2-frontend-demo-child"));
+            demo_store_ = demo.owned_root;
+            source.directory = demo.directory.u8string();
+            client_ = std::move(demo.client);
+            authorization_ = std::move(demo.authorization);
         } catch (const std::exception& e) {
             error = std::string("cannot create the disposable demo store: ") + e.what();
             return false;
         }
         source.kind = DataSource::Kind::demo;
-        source.directory = demo_store_.u8string();
+
     }
     model_ = std::make_unique<PresentationModel>(source);
     ScreenCallbacks callbacks;
+    callbacks.loop_operation = [this](Operation op) { loop_operation(op); };
     callbacks.open_folder_dialog = [this] { open_folder_dialog(); };
     callbacks.check_folder = [this](RequestId id, std::string path) {
         worker_.submit_result<bool>(
@@ -165,6 +192,25 @@ void App::reload_store() {
             if (model_->complete_load(id, std::move(result))) screens_->sync();
         });
     screens_->sync();
+}
+
+void App::loop_operation(Operation op) {
+    auto request = model_->loop.begin(op);
+    if (!request || !client_) return;
+    auto cancel = model_->loop.cancellation();
+    worker_.submit_result<LoopResult>(
+        [client = *client_, request = *request, auth = authorization_, cancel] {
+            return execute_loop(client,request,auth,*cancel);
+        },
+        [this, id = request->id, op](LoopResult result) {
+            if (model_->loop.complete(id,std::move(result))) {
+                if (op == Operation::accept || op == Operation::upgrade) {
+                    reload_store();
+                    if (model_->loop.association() && model_->loop.error().empty()) loop_operation(Operation::catalog);
+                }
+                screens_->sync();
+            }
+        });
 }
 
 // --- native folder dialog --------------------------------------------------------

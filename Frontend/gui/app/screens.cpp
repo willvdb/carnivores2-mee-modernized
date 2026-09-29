@@ -20,7 +20,7 @@ Screens::Screens(Rml::Context& context, PresentationModel& model, std::filesyste
 Screens::~Screens() {
     // Documents are owned by the context; closing them here keeps listener
     // lifetimes inside this object's lifetime.
-    for (auto* doc : {lodge_, console_, setup_, preview_})
+    for (auto* doc : {lodge_, console_, setup_, preview_, review_})
         if (doc) doc->Close();
 }
 
@@ -33,6 +33,7 @@ bool Screens::load(std::string& error) {
     for (const auto& o : PresentationModel::demo_times()) times_.push_back({o.id, o.label});
     bind_lodge();
     bind_console();
+    bind_loop();
     bind_preview();
     bind_setup();
     auto load = [&](const char* name) -> Rml::ElementDocument* {
@@ -44,7 +45,8 @@ bool Screens::load(std::string& error) {
     console_ = load("console.rml");
     setup_ = load("setup.rml");
     preview_ = load("preview.rml");
-    if (!lodge_ || !console_ || !setup_ || !preview_) return false;
+    review_ = load("review.rml");
+    if (!lodge_ || !console_ || !setup_ || !preview_ || !review_) return false;
     if (lodge_art_missing_)
         if (auto* stage = lodge_->GetElementById("lodge-stage")) stage->SetClass("no-artwork", true);
     if (preview_art_missing_)
@@ -294,7 +296,7 @@ void Screens::sync() {
     }
     show_screen(model_.screen(), false);
     // Modal preview dialog: remember and restore the focus around it.
-    if (model_.preview_open() && !preview_shown_) {
+    if (model_.preview_open() && !preview_shown_ && !review_shown_) {
         preview_return_focus_ = focused_id();
         if (preview_return_focus_.empty()) preview_return_focus_ = "preview-button";
         preview_shown_ = true;
@@ -305,9 +307,10 @@ void Screens::sync() {
         preview_->Hide();
         if (!focus_by_id(console_, preview_return_focus_)) focus_console_default();
     }
+    sync_loop();
     apply_selection_classes();
     // A rebuilt list may have destroyed the focused row; land somewhere sensible.
-    if (model_.screen() == Screen::console && !preview_shown_) {
+    if (model_.screen() == Screen::console && !preview_shown_ && !review_shown_) {
         auto* focus = context_.GetFocusElement();
         if (!focus || focus == console_ || focus->GetOwnerDocument() != console_) focus_console_default();
     }
@@ -379,6 +382,7 @@ bool Screens::dismiss_open_dropdown() {
 
 bool Screens::handle_back() {
     if (dismiss_open_dropdown()) return true;
+    if (review_open_) { review_open_ = false; sync(); return true; }
     if (model_.preview_open()) {
         model_.close_preview();
         sync();
@@ -393,10 +397,10 @@ bool Screens::handle_back() {
 
 // --- cross-pane navigation ---------------------------------------------------------------
 bool Screens::cross_pane_right() {
-    if (model_.screen() != Screen::console || preview_shown_) return false;
+    if (model_.screen() != Screen::console || preview_shown_ || review_shown_) return false;
     auto* focus = context_.GetFocusElement();
     if (!focus || !focus->IsClassSet("row")) return false;
-    for (const char* id : {"area-select", "preview-button"})
+    for (const char* id : {"association-select", "review-button"})
         if (auto* target = console_->GetElementById(id); target && target->IsVisible(true)) {
             target->Focus(true);
             target->ScrollIntoView(Rml::ScrollIntoViewOptions{Rml::ScrollAlignment::Nearest, Rml::ScrollAlignment::Nearest});
@@ -406,7 +410,7 @@ bool Screens::cross_pane_right() {
 }
 
 bool Screens::cross_pane_left() {
-    if (model_.screen() != Screen::console || preview_shown_) return false;
+    if (model_.screen() != Screen::console || preview_shown_ || review_shown_) return false;
     auto* focus = context_.GetFocusElement();
     if (!focus || focus->GetOwnerDocument() != console_ || focus->IsClassSet("row")) return false;
     if (focus->GetTagName() == "input") return false;   // caret keys stay with text fields
