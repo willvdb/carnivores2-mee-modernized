@@ -51,19 +51,19 @@
                         <div class="field"><label>Time</label><select id="loop-time" data-value="loop_time" data-attrif-disabled="busy">
                             <option value="0">Dawn</option><option value="1">Day</option><option value="2">Night</option></select></div>
                         <div class="actions">
-                            <button id="plan-button" class="btn" data-attrif-disabled="!can_plan" data-event-click="operate('plan')">Validate loadout</button>
-                            <button id="prepare-button" class="btn" data-attrif-disabled="!can_prepare" data-event-click="operate('prepare')">Prepare fresh session</button>
-                            <button id="launch-button" class="btn primary" data-attrif-disabled="!can_run" data-event-click="operate('run')">Run prepared session</button>
-                            <button id="cancel-run" class="btn" data-attrif-disabled="!busy" data-event-click="operate('cancel')">Cancel run</button>
+                            <button id="plan-button" class="btn" data-attrif-disabled="!can_plan" data-class-disabled="!can_plan" data-event-click="operate('plan')">Validate loadout</button>
+                            <button id="prepare-button" class="btn" data-attrif-disabled="!can_prepare" data-class-disabled="!can_prepare" data-event-click="operate('prepare')">Prepare fresh session</button>
+                            <button id="launch-button" class="btn primary" data-attrif-disabled="!can_run" data-class-disabled="!can_run" data-event-click="operate('run')">Run prepared session</button>
+                            <button id="cancel-run" class="btn" data-attrif-disabled="!busy" data-class-disabled="!busy" data-event-click="operate('cancel')">Cancel run</button>
                             <button id="review-button" class="btn" data-event-click="operate('review')">Return review</button>
                         </div>
                         <div class="section-title">{{loop_status}}</div>
                         <div class="error wrap">{{loop_error}}</div>
                         <div class="pins">{{pins}}</div>
                         <div data-if="schema_one" class="explain">Schema 1: reading does not upgrade. Explicit upgrade creates lodge.schema-1.backup.json and generation-zero identities; its backend result is shown below.
-                            <button id="upgrade-button" class="btn" data-attrif-disabled="!can_upgrade" data-event-click="operate('upgrade')">Upgrade managed metadata</button></div>
+                            <button id="upgrade-button" class="btn" data-attrif-disabled="!can_upgrade" data-class-disabled="!can_upgrade" data-event-click="operate('upgrade')">Upgrade managed metadata</button></div>
                         <div class="field"><label>Inspect retained session UUID</label><input id="session-id" class="text" type="text" data-value="recovery_id"/></div>
-                        <button id="inspect-session" class="btn" data-attrif-disabled="busy" data-event-click="operate('load_session')">Inspect retained session</button>
+                        <button id="inspect-session" class="btn" data-attrif-disabled="busy" data-class-disabled="busy" data-event-click="operate('load_session')">Inspect retained session</button>
                         <div class="evidence">{{loop_details}}</div>
                     </div>
             </div>

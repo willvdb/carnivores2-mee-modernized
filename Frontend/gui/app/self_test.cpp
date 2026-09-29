@@ -164,6 +164,8 @@ int run_self_test(App& app) {
     ST(select_open(association));
     app.dispatch(Action::back); settle(app);
     ST(!select_open(association)); ST(model.screen()==Screen::console);
+    auto* disabled_launch=screens.console()->GetElementById("launch-button");
+    ST(disabled_launch && disabled_launch->IsClassSet("disabled"));
     ST(app.capture("04-console-loadout"));
     auto activate = [&](Rml::ElementDocument* doc, const char* id) {
         auto* button=doc->GetElementById(id); ST(button != nullptr);
@@ -193,6 +195,7 @@ int run_self_test(App& app) {
     activate(screens.review(),"inspect-button"); finish(); ST(model.loop.state()==LoopState::reviewing);
     activate(screens.review(),"acceptance-preview"); finish(); ST(model.loop.can(Operation::accept));
     ST(model.loop.preview() && !model.loop.preview()->candidate_sha256.empty());
+    ST(!screens.review()->GetElementById("accept-button")->IsClassSet("disabled"));
     ST(app.capture("08-acceptance-preview"));
     activate(screens.review(),"decline-button"); settle(app); ST(model.loop.state()==LoopState::declined);
     ST(!model.loop.can(Operation::accept)); ST(model.loop.association()->current_generation==g0);
