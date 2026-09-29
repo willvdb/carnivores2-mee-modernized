@@ -126,8 +126,12 @@ bool App::init(std::string& error) {
 #else
         const auto file = std::string(name);
 #endif
-        if (std::filesystem::is_regular_file(base/file)) return base/file;
-        return base.parent_path()/file; // build tree: probe is one directory above gui
+        // Installed helpers share bin/. Single-config builds put the probe
+        // above gui/; multi-config builds put it in ../../<config>/.
+        for (const auto& candidate : {base/file, base.parent_path()/file,
+             base.parent_path().parent_path()/base.filename()/file})
+            if (std::filesystem::is_regular_file(candidate)) return candidate;
+        return base/file; // backend diagnostic names the missing helper
     };
     const auto probe = options_.probe.value_or(helper("c2-profile-probe"));
     authorization_ = options_.authorization;
