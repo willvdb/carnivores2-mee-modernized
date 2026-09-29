@@ -8,6 +8,7 @@
 #include "store_ops.hpp"
 #include "content_internal.hpp"
 #include "schema_compat.hpp"
+#include <algorithm>
 
 namespace c2::frontend::play_loop {
 namespace {
@@ -83,10 +84,23 @@ struct LoadoutContext::Impl {
     catalog::Projection catalog;
     Value revision, slot, score;
     std::optional<std::u32string> generation;
-    planning_store::PolicyEvaluator policy;
+    planning_store::PolicyEvaluator policy, partial_policy;
 };
 const catalog::Projection& LoadoutContext::catalog() const { return impl_->catalog; }
 const std::optional<std::u32string>& LoadoutContext::generation() const { return impl_->generation; }
+std::u32string LoadoutContext::label(catalog::Group group, std::u32string_view id) const {
+    // Semantic names belong to this bounded adapter, never to ordinal widget callbacks.
+    if(group==catalog::Group::equipment && impl_->revision.contains(U"sha256") &&
+       impl_->revision.at(U"sha256").string==planning::GENESIS_REVISION.sha256) {
+        const std::pair<std::u32string_view,std::u32string_view> names[]={{U"equipment:0",U"Camouflage"},{U"equipment:1",U"Radar"},
+            {U"equipment:2",U"Cover scent"},{U"equipment:3",U"Double ammo"}};
+        for(const auto& n:names) if(n.first==id) return std::u32string(n.second);
+    }
+    for(const auto& entry:impl_->catalog.entries(group)) if(entry.id()==id) {
+        if(auto l=entry.label()) if(auto text=std::get_if<std::u32string>(&*l)) return *text;
+    }
+    return std::u32string(id);
+}
 LoadoutAdvice LoadoutContext::evaluate(const planning::Selection& selection) const {
     LoadoutAdvice advice;
     if (impl_->score.kind == compat::Kind::integer) advice.score = planning::Integer{impl_->score.integer};
@@ -100,7 +114,7 @@ LoadoutAdvice LoadoutContext::evaluate(const planning::Selection& selection) con
     // Ask the same policy for the requirement even when the real score is too low.
     // This is an observation, never eligibility or launch authorization.
     if (!advice.requirement) try {
-        const auto quote = impl_->policy(impl_->revision, impl_->catalog, impl_->slot,
+        const auto quote = impl_->partial_policy(impl_->revision, impl_->catalog, impl_->slot,
             planning::PlanningAccess::value(selection), planning_internal::integer_value("2147483647"));
         if (quote.contains(U"score_requirement")) advice.requirement = planning::Integer{quote.at(U"score_requirement").integer};
     } catch (const std::exception&) {}
@@ -113,15 +127,17 @@ LoadoutAdvice LoadoutContext::evaluate(const planning::Selection& selection) con
     return advice;
 }
 LoadoutAdvice LoadoutContext::alternative(const planning::Selection& selection, catalog::Group group, std::u32string id) const {
-    auto value = planning::PlanningAccess::value(selection);
-    if (group == catalog::Group::areas) {
-        for (auto& field : value.object) if (field.first == U"area") field.second = planning_internal::string_value(std::move(id));
-    } else if (group == catalog::Group::licenses || group == catalog::Group::weapons) {
-        auto ids = planning_internal::array_value(); ids.array.push_back(planning_internal::string_value(std::move(id)));
-        for (auto& field : value.object)
-            if (field.first == (group == catalog::Group::licenses ? U"licenses" : U"weapons")) field.second = std::move(ids);
-    } else return {false, {}, {}, {}, "unsupported loadout group"};
-    return evaluate(planning::PlanningAccess::selection(std::move(value)));
+    const auto chosen=selection.selected(group);
+    const bool removing=group!=catalog::Group::areas && std::find(chosen.begin(),chosen.end(),id)!=chosen.end();
+    const auto next=selection.with(group,std::move(id));
+    auto advice=evaluate(next);
+    try {
+        impl_->partial_policy(impl_->revision,impl_->catalog,impl_->slot,planning::PlanningAccess::value(next),impl_->score);
+        advice.can_change=true;
+    } catch(const std::exception& e) { advice.diagnostic=e.what(); }
+    if(removing) { advice.can_change=true; advice.diagnostic.clear(); }
+    else if(advice.can_change) advice.diagnostic.clear();
+    return advice;
 }
 LoadoutContext Client::loadout_context(std::u32string_view id) const {
     // One immutable manifest view; refresh_association changes only this local copy.
@@ -153,7 +169,12 @@ LoadoutContext Client::loadout_context(std::u32string_view id) const {
     if (association.contains(U"managed_state")) generation = text(association.at(U"managed_state"),U"current_generation");
     auto context = std::make_shared<LoadoutContext::Impl>(LoadoutContext::Impl{
         std::move(projection),instance.at(U"revision"),association.at(U"filename_slot"),score,generation,
-        impl_->policies.hunt ? impl_->policies.hunt : planning_store::PolicyEvaluator(planning_internal::hunt_policy)});
+        impl_->policies.hunt ? impl_->policies.hunt : planning_store::PolicyEvaluator([](const auto& r,const auto& c,const auto& sl,const auto& se,const auto& sc) {
+            return planning_internal::expanded_hunt_policy(r,c,sl,se,sc);
+        }),
+        impl_->policies.hunt_advice ? impl_->policies.hunt_advice : impl_->policies.hunt ? impl_->policies.hunt : planning_store::PolicyEvaluator([](const auto& r,const auto& c,const auto& sl,const auto& se,const auto& sc) {
+            return planning_internal::expanded_hunt_policy(r,c,sl,se,sc,true);
+        })});
     return LoadoutContext(std::move(context));
 }
 Client::Client(Store store, std::optional<std::filesystem::path> probe, bool writes)

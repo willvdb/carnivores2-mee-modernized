@@ -1,6 +1,7 @@
 #pragma once
 #include "c2/frontend/play_loop.hpp"
 #include <variant>
+#include <algorithm>
 namespace c2::frontend::gui {
 enum class Operation { catalog, plan, prepare, run, inspect, preview, accept, recover, recover_acceptance, upgrade };
 enum class LoopState { selection, validating, validated, preparing, prepared, running, returned,
@@ -23,6 +24,12 @@ public:
     bool select(play_loop::Association);
     void observe_associations(const std::vector<play_loop::Association>&);
     bool loadout(planning::Selection);
+    const planning::Selection& selection() const { return selection_; }
+    bool toggle(catalog::Group, std::u32string id);
+    bool time(planning::Integer value) { return loadout(selection_.at_time(std::move(value))); }
+    std::u32string label(catalog::Group group, std::u32string_view id) const {
+        return context_ ? context_->label(group,id) : std::u32string(id);
+    }
     bool inspect_session(std::u32string id); // explicit UUID, including historical/blocked sessions
     std::optional<LoopRequest> begin(Operation);
     bool complete(std::uint64_t id, LoopResult);
@@ -32,7 +39,11 @@ public:
     const std::optional<catalog::Projection>& catalog() const { return catalog_; }
     const std::optional<play_loop::LoadoutAdvice>& advice() const { return advice_; }
     play_loop::LoadoutAdvice alternative(catalog::Group g, std::u32string id) const {
-        return context_ ? context_->alternative(selection_,g,std::move(id)) : play_loop::LoadoutAdvice{};
+        if(context_) return context_->alternative(selection_,g,std::move(id));
+        play_loop::LoadoutAdvice advice;
+        const auto ids=selection_.selected(g);
+        advice.can_change=g!=catalog::Group::areas && std::find(ids.begin(),ids.end(),id)!=ids.end();
+        return advice;
     }
     std::uint64_t catalog_version() const { return catalog_version_; }
     bool busy() const { return pending_.has_value(); }

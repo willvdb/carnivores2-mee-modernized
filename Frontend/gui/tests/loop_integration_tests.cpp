@@ -29,8 +29,8 @@ int main(int argc, char** argv) {
         CHECK(advice.allowed); CHECK(advice.score->decimal=="100");
         CHECK(advice.requirement->decimal=="35"); CHECK(advice.remaining->decimal=="65");
         const auto expensive=context.alternative(selection,catalog::Group::weapons,U"weapons:1");
-        CHECK(!expensive.allowed); CHECK(expensive.requirement->decimal=="215");
-        CHECK(expensive.remaining->decimal=="-115"); CHECK(!expensive.diagnostic.empty());
+        CHECK(!expensive.allowed); CHECK(expensive.requirement->decimal=="235");
+        CHECK(expensive.remaining->decimal=="-135"); CHECK(!expensive.diagnostic.empty());
         CHECK(!context.alternative(selection,catalog::Group::weapons,U"missing").allowed);
         HuntLoop interactive(true); interactive.select(a);
         auto load=*interactive.begin(Operation::catalog);
@@ -43,6 +43,24 @@ int main(int argc, char** argv) {
         HuntLoop read_only; read_only.select(a); auto read_load=*read_only.begin(Operation::catalog);
         read_only.complete(read_load.id,{context,{}}); CHECK(read_only.advice()->allowed);
         CHECK(!read_only.can(Operation::prepare));
+        CHECK(interactive.toggle(catalog::Group::licenses,U"licenses:0"));
+        CHECK(!interactive.can(Operation::prepare));
+        CHECK(interactive.alternative(catalog::Group::weapons,U"weapons:2").can_change);
+        CHECK(interactive.toggle(catalog::Group::weapons,U"weapons:2"));
+        CHECK(!interactive.can(Operation::prepare));
+        CHECK(interactive.toggle(catalog::Group::licenses,U"licenses:0"));
+        CHECK(interactive.toggle(catalog::Group::licenses,U"licenses:1"));
+        CHECK(interactive.toggle(catalog::Group::equipment,U"equipment:0"));
+        CHECK(interactive.toggle(catalog::Group::equipment,U"equipment:1"));
+        CHECK(interactive.advice()->requirement->decimal=="65");
+        selection=interactive.selection();
+        CHECK(!interactive.toggle(catalog::Group::weapons,U"weapons:1"));
+        auto over=selection.with(catalog::Group::weapons,U"weapons:1");
+        interactive.loadout(over); CHECK(!interactive.can(Operation::prepare));
+        CHECK(interactive.toggle(catalog::Group::equipment,U"equipment:0")); // still over budget
+        CHECK(!interactive.can(Operation::prepare));
+        CHECK(interactive.toggle(catalog::Group::weapons,U"weapons:1"));
+        interactive.loadout(selection);
         demo.client.plan(a.id,selection);
         auto s1=demo.client.prepare(a.id,selection,demo.authorization);
         auto stale=demo.client.prepare(a.id,selection,demo.authorization);
@@ -75,6 +93,10 @@ int main(int argc, char** argv) {
         CHECK(interactive.state()==LoopState::accepted); CHECK(interactive.can(Operation::prepare));
         CHECK(interactive.details()==receipt.details);
         CHECK(interactive.advice()->score->decimal=="107");
+        CHECK(interactive.advice()->requirement->decimal=="65");
+        CHECK(interactive.selection().selected(catalog::Group::licenses).size()==2);
+        CHECK(interactive.selection().selected(catalog::Group::weapons).size()==2);
+        CHECK(interactive.selection().selected(catalog::Group::equipment).size()==2);
         auto s2=demo.client.prepare(a.id,selection,demo.authorization);
         CHECK(s2.id!=s1.id); CHECK(s2.generation==receipt.current_generation);
         auto failed=demo.client.run(stale.id,demo.authorization,cancel); CHECK(failed.state==U"failed");

@@ -19,6 +19,12 @@ bool HuntLoop::loadout(planning::Selection s) {
     selection_ = std::move(s); session_.reset(); preview_.reset(); state_ = LoopState::selection;
     evaluate_loadout(); ++version_; return true;
 }
+bool HuntLoop::toggle(catalog::Group group, std::u32string id) {
+    if (busy()) return false;
+    // The backend permits removals even when the remainder is invalid.
+    if (!alternative(group,id).can_change) return false;
+    return loadout(selection_.with(group,std::move(id)));
+}
 void HuntLoop::evaluate_loadout() {
     if (!context_) return;
     advice_ = context_->evaluate(selection_);

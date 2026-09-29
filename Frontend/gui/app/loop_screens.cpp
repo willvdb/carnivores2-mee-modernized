@@ -1,6 +1,7 @@
 #include "screens.hpp"
 #include <RmlUi/Core/Elements/ElementFormControlSelect.h>
 #include <RmlUi/Core/StringUtilities.h>
+#include <algorithm>
 namespace c2::frontend::gui::app {
 namespace {
 const std::vector<std::pair<const char*,Operation>> operations{
@@ -78,12 +79,14 @@ void Screens::bind_loop() {
         auto* ptr=&target;
         ctor.BindFunc(name,[ptr](Rml::Variant& v){v=*ptr;},[this,ptr](const Rml::Variant& v){
             if(model_.loop.busy()) return;
-            *ptr=v.Get<Rml::String>();
-            model_.loop.loadout(planning::Selection::hunt(to_utf32(loop_area_),{to_utf32(loop_license_)},
-                {to_utf32(loop_weapon_)},{loop_time_}));
+            const auto value=v.Get<Rml::String>();
+            const bool changed=ptr==&loop_area_ ? model_.loop.toggle(catalog::Group::areas,to_utf32(value))
+                                               : model_.loop.time({value});
+            if(changed) *ptr=value;
+            loop_model_.DirtyVariable(ptr==&loop_area_ ? "loop_area" : "loop_time");
         });
     };
-    field("loop_area",loop_area_); field("loop_license",loop_license_); field("loop_weapon",loop_weapon_); field("loop_time",loop_time_);
+    field("loop_area",loop_area_); field("loop_time",loop_time_);
     ctor.BindFunc("recovery_id",[this](Rml::Variant& v){v=recovery_id_;},[this](const Rml::Variant& v){recovery_id_=v.Get<Rml::String>();});
     for(const auto& pair:operations) {
         auto op=pair.second;
@@ -99,12 +102,20 @@ void Screens::bind_loop() {
         if(action=="load_session") {
             if(model_.loop.inspect_session(to_utf32(recovery_id_))) {
                 loop_association_.clear(); catalog_association_.clear();
-                loop_area_.clear(); loop_license_.clear(); loop_weapon_.clear();
+                loop_area_.clear();
                 if(callbacks_.loop_operation) callbacks_.loop_operation(Operation::inspect);
             }
             review_open_=true; return;
         }
         for(const auto& pair:operations) if(action==pair.first && callbacks_.loop_operation) callbacks_.loop_operation(pair.second);
+    });
+    ctor.BindEventCallback("toggle_loadout",[this](Rml::DataModelHandle,Rml::Event&,const Rml::VariantList& args){
+        if(args.size()!=2) return;
+        const auto group=args[0].Get<Rml::String>();
+        const auto id=to_utf32(args[1].Get<Rml::String>());
+        if(group=="licenses") model_.loop.toggle(catalog::Group::licenses,id);
+        else if(group=="weapons") model_.loop.toggle(catalog::Group::weapons,id);
+        else if(group=="equipment") model_.loop.toggle(catalog::Group::equipment,id);
     });
     loop_model_=ctor.GetModelHandle();
 }
@@ -153,26 +164,72 @@ void Screens::sync_loop() {
             selection_changed=selection_changed || selected!=previous_selection;
         };
         fill("loop-area",catalog::Group::areas,loop_area_);
-        fill("loop-license",catalog::Group::licenses,loop_license_);
-        fill("loop-weapon",catalog::Group::weapons,loop_weapon_);
-        if(new_association || selection_changed) model_.loop.loadout(planning::Selection::hunt(to_utf32(loop_area_),{to_utf32(loop_license_)},{to_utf32(loop_weapon_)},{loop_time_}));
+        if(new_association) {
+            auto first=[&](catalog::Group g) { const auto e=model_.loop.catalog()->entries(g);
+                return e.empty() ? std::vector<std::u32string>{} : std::vector<std::u32string>{e.front().id()}; };
+            model_.loop.loadout(planning::Selection::hunt(to_utf32(loop_area_),first(catalog::Group::licenses),first(catalog::Group::weapons),{loop_time_}));
+        } else if(selection_changed) model_.loop.loadout(model_.loop.selection().with(catalog::Group::areas,to_utf32(loop_area_)));
+        for(const auto& pair:std::vector<std::pair<const char*,catalog::Group>>{
+            {"licenses",catalog::Group::licenses},{"weapons",catalog::Group::weapons},{"equipment",catalog::Group::equipment}}) {
+            auto* list=console_->GetElementById(std::string("loop-")+pair.first);
+            if(!list) continue;
+            const auto entries=model_.loop.catalog()->entries(pair.second);
+            bool changed=list->GetNumChildren()!=static_cast<int>(entries.size());
+            if(!changed) for(std::size_t i=0;i<entries.size();++i)
+                changed=changed || list->GetChild(static_cast<int>(i))->GetAttribute<Rml::String>("data-id","")!=to_utf8(entries[i].id());
+            if(changed) {
+                std::string markup;
+                for(const auto& e:entries) {
+                    const auto id=Rml::StringUtilities::EncodeRml(to_utf8(e.id()));
+                    markup+="<button class=\"btn loadout-choice\" id=\"choice-"+id+"\" data-id=\""+id+
+                        "\" data-event-click=\"toggle_loadout('"+pair.first+"','"+id+"')\"></button>";
+                }
+                list->SetInnerRML(markup);
+            }
+        }
     }
     // Toggle existing option nodes; rebuilding the list loses dropdown focus.
     for(const auto& field:std::vector<std::pair<const char*,catalog::Group>>{
-            {"loop-area",catalog::Group::areas},{"loop-license",catalog::Group::licenses},{"loop-weapon",catalog::Group::weapons}}) {
+            {"loop-area",catalog::Group::areas}}) {
         auto* control=rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(console_->GetElementById(field.first));
         if(!control) continue;
         for(int i=0;i<control->GetNumOptions();++i) {
             auto* option=control->GetOption(i);
             const auto advice=model_.loop.alternative(field.second,to_utf32(option->GetAttribute<Rml::String>("value","")));
-            if(advice.allowed) option->RemoveAttribute("disabled");
+            if(advice.can_change) option->RemoveAttribute("disabled");
             else option->SetAttribute("disabled",Rml::String());
-            option->SetClass("disabled",!advice.allowed);
+            option->SetClass("disabled",!advice.can_change);
             option->SetAttribute("title",advice.diagnostic);
         }
     }
+    if(!model_.loop.catalog()) for(const char* id:{"loop-licenses","loop-weapons","loop-equipment"}) {
+        if(auto* list=console_->GetElementById(id)) for(int i=0;i<list->GetNumChildren();++i) {
+            list->GetChild(i)->SetAttribute("disabled",Rml::String());
+            list->GetChild(i)->SetClass("disabled",true);
+        }
+    }
+    if(model_.loop.catalog()) for(const auto& pair:std::vector<std::pair<const char*,catalog::Group>>{
+        {"licenses",catalog::Group::licenses},{"weapons",catalog::Group::weapons},{"equipment",catalog::Group::equipment}}) {
+        const auto selected=model_.loop.selection().selected(pair.second);
+        for(const auto& entry:model_.loop.catalog()->entries(pair.second)) {
+            auto* button=console_->GetElementById("choice-"+to_utf8(entry.id()));
+            if(!button) continue;
+            const bool checked=std::find(selected.begin(),selected.end(),entry.id())!=selected.end();
+            const auto advice=model_.loop.alternative(pair.second,entry.id());
+            const bool enabled=!model_.loop.busy() && model_.loop.association() && advice.can_change;
+            if(enabled) button->RemoveAttribute("disabled"); else button->SetAttribute("disabled",Rml::String());
+            button->SetClass("disabled",!enabled); button->SetClass("selected",checked);
+            button->SetAttribute("aria-pressed",checked ? "true" : "false");
+            std::string label=checked ? "[x] " : "[ ] ";
+            label+=to_utf8(model_.loop.label(pair.second,entry.id()));
+            label+=entry.price() ? " — "+entry.price()->decimal+" pts" : " — requirement unavailable";
+            if(!advice.can_change && !advice.diagnostic.empty()) label+=" — "+advice.diagnostic;
+            const auto encoded=Rml::StringUtilities::EncodeRml(label);
+            if(button->GetInnerRML()!=encoded) button->SetInnerRML(encoded);
+        }
+    }
     for(const char* name:{"source","busy","schema_one","loop_details","loop_error","loop_status","pins","loadout_budget","loadout_diagnostic",
-                          "association","loop_area","loop_license","loop_weapon","loop_time"}) loop_model_.DirtyVariable(name);
+                          "association","loop_area","loop_time"}) loop_model_.DirtyVariable(name);
     for(const auto& pair:operations) loop_model_.DirtyVariable(std::string("can_")+pair.first);
     if(review_open_ && !review_shown_) {
         loop_return_focus_=focused_id(); review_shown_=true;

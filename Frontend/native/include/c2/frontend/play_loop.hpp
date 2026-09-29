@@ -45,11 +45,13 @@ struct LoadoutAdvice {
     bool allowed = false;
     std::optional<planning::Integer> score, requirement, remaining;
     std::string diagnostic;
+    bool can_change = false; // alternative: add/replace eligible, or unconditional removal
 };
 class LoadoutContext {
 public:
     const catalog::Projection& catalog() const;
     const std::optional<std::u32string>& generation() const;
+    std::u32string label(catalog::Group, std::u32string_view id) const;
     LoadoutAdvice evaluate(const planning::Selection&) const;
     LoadoutAdvice alternative(const planning::Selection&, catalog::Group, std::u32string id) const;
 private:
