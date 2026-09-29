@@ -4,6 +4,7 @@
 // pending request identity. Contains no SDL, OpenGL, RmlUi types or widget
 // pointers; the binding layer owns elements and focus implementation.
 #include "c2/frontend/gui/source.hpp"
+#include "c2/frontend/gui/loop.hpp"
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -21,6 +22,7 @@ struct DataSource {
     enum class Kind { demo, supplied };
     Kind kind = Kind::demo;
     std::string directory;   // UTF-8 display path
+    bool allow_writes = false;
     std::string label() const;
 };
 struct DemoOption {
@@ -50,6 +52,7 @@ struct PreviewSummary {
 class PresentationModel {
 public:
     explicit PresentationModel(DataSource source);
+    HuntLoop loop;
 
     // --- data source and loading -------------------------------------------
     const DataSource& source() const noexcept { return source_; }
@@ -120,7 +123,7 @@ public:
     void cancel_setup();
 
     // --- change tracking ------------------------------------------------------
-    std::uint64_t version() const noexcept { return version_; }
+    std::uint64_t version() const noexcept { return version_ + loop.version(); }
 
 private:
     void touch() noexcept { ++version_; }

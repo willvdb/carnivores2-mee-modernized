@@ -2,6 +2,7 @@
 // Backend observations for the GUI, read through the real frontend core.
 // No SDL, OpenGL or RmlUi types. Strings are UTF-8 for presentation; the
 // identities are the backend's stable UUID strings, never display names.
+#include "c2/frontend/play_loop.hpp"
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -26,6 +27,7 @@ struct StoreSnapshot {
     bool manifest_present = true;
     int schema_version = 0;
     std::optional<std::string> active_hunter;
+    std::vector<play_loop::Association> associations;
     std::vector<HunterRow> hunters;
     std::vector<ExpeditionRow> expeditions;
 };

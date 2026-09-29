@@ -11,6 +11,7 @@
 # the legacy Windows menu are unchanged.
 
 add_library(c2_frontend_gui_model STATIC
+  model/src/loop.cpp
   model/src/source.cpp
   model/src/demo_store.cpp
   model/src/worker.cpp
@@ -34,6 +35,8 @@ if(BUILD_TESTING)
       target_compile_options(${name} PRIVATE -Wall -Wextra -Wpedantic)
     endif()
   endfunction()
+  c2_frontend_gui_test(c2-frontend-gui-loop-tests tests/loop_tests.cpp)
+  add_test(NAME frontend-gui-loop COMMAND c2-frontend-gui-loop-tests)
   c2_frontend_gui_test(c2-frontend-gui-model-tests tests/model_tests.cpp)
   add_test(NAME frontend-gui-model COMMAND c2-frontend-gui-model-tests)
   c2_frontend_gui_test(c2-frontend-gui-store-tests tests/store_tests.cpp)

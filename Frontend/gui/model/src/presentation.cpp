@@ -26,10 +26,10 @@ std::string short_id(const std::string& id) {
 std::string DataSource::label() const {
     if (kind == Kind::demo)
         return "Demo data: disposable authored fixture store, not your lodge (" + directory + ")";
-    return "Read-only store: " + directory + " (never modified by this evaluation)";
+    return (allow_writes ? "WRITABLE store: " : "Read-only store: ") + directory;
 }
 
-PresentationModel::PresentationModel(DataSource source) : source_(std::move(source)) {
+PresentationModel::PresentationModel(DataSource source) : loop(source.kind == DataSource::Kind::demo || source.allow_writes), source_(std::move(source)) {
     area_ = demo_areas().front().id;
     weapon_ = demo_weapons().front().id;
     time_ = demo_times().front().id;
