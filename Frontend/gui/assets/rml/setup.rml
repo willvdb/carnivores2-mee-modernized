@@ -1,0 +1,32 @@
+<rml>
+<head>
+    <title>Profile / Setup</title>
+    <link type="text/rcss" href="../rcss/theme.rcss"/>
+</head>
+<body data-model="setup" class="screen">
+    <div class="setup-root">
+        <div class="title">Profile / Setup <span class="badge">evaluation only</span></div>
+        <div class="notice">Edits change in-memory evaluation state only. Selecting a folder does not register it, import saves, discover installations, or load anything from it. No hunter or installation is written.</div>
+        <div class="field">
+            <label>Hunter name (temporary)</label>
+            <input id="name-input" type="text" data-value="draft_name" maxlength="64"/>
+            <div class="msg error">{{name_message}}</div>
+        </div>
+        <div class="field">
+            <label>Content folder (temporary; checked only for existence)</label>
+            <div class="hbox">
+                <input id="folder-input" type="text" data-value="draft_folder" style="min-width: 380dp;"/>
+                <button id="browse-button" class="btn" data-event-click="browse()" data-attrif-disabled="dialog_pending">Browse...</button>
+            </div>
+            <div class="msg" data-class-error="folder_error" data-class-ok="folder_ok">{{folder_message}}</div>
+            <div class="msg" data-if="dialog_pending">Native folder dialog is open. Cancel it or choose a folder.</div>
+            <div class="msg error" data-if="dialog_error != ''">{{dialog_error}}</div>
+        </div>
+        <div class="actions">
+            <button id="setup-confirm" class="btn primary" data-event-click="confirm()">Confirm</button>
+            <button id="setup-cancel" class="btn" data-event-click="cancel()">Cancel</button>
+        </div>
+        <div class="context" style="margin-top: 16dp;">Confirmed values: name "{{confirmed_name}}", folder "{{confirmed_folder}}". Shortcuts: Tab / Shift+Tab move between fields; Ctrl+A/C/X/V edit; Escape cancels.</div>
+    </div>
+</body>
+</rml>

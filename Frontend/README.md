@@ -2,8 +2,9 @@
 
 `c2-frontend-native` is the production C++ frontend CLI. Its backend lives in
 `native/` and builds independently of the game executable and the legacy Win32
-`Menu/`. The lodge and Expedition Console GUI are still future presentation
-layers; this directory does not yet provide that GUI.
+`Menu/`. An opt-in RmlUi evaluation GUI (`c2-frontend-gui`, `C2_FRONTEND_GUI=ON`)
+lives under `gui/`; it is an evaluation slice, not the player-facing product.
+See [docs/RMLUI_EVALUATION.md](docs/RMLUI_EVALUATION.md).
 
 The Python implementation is retained for reference, differential tests and
 developer tools, **not as a production runtime dependency**. The historical
@@ -103,6 +104,15 @@ The optional help target was renamed from `c2-frontend` to
 are unchanged. Future GUI and backend features belong on the native boundary.
 See the [cleanup record](docs/PYTHON_REFERENCE_CLEANUP.md) for the path map and
 validation evidence.
+
+## Optional GUI evaluation slice
+
+`gui/` holds a headless presentation model (always built; tests run in the
+ordinary configuration above) and, behind `C2_FRONTEND_GUI=ON`, the RmlUi +
+SDL3 + OpenGL executable `c2-frontend-gui`. With the option off nothing
+graphical is fetched or linked. Build, run, test and evaluation evidence are in
+[docs/RMLUI_EVALUATION.md](docs/RMLUI_EVALUATION.md); the artwork contract is
+[docs/ASSET_BRIEF.md](docs/ASSET_BRIEF.md).
 
 ## Contracts and implementation records
 

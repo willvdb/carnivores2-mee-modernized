@@ -1,0 +1,21 @@
+<rml>
+<head>
+    <title>Demo preview</title>
+    <link type="text/rcss" href="../rcss/theme.rcss"/>
+</head>
+<body data-model="preview" class="modal">
+    <div class="dialog">
+        <div class="dialog-title">Demo preview: nothing will be prepared or launched</div>
+        <div class="kv"><span class="k">Expedition</span><span class="v">{{expedition_label}}</span></div>
+        <div class="kv"><span class="k">Identity</span><span class="v">{{expedition_id}}</span></div>
+        <div class="kv"><span class="k">Locator</span><span class="v wrap">{{expedition_path}}</span></div>
+        <div class="kv"><span class="k">Hunter</span><span class="v">{{hunter_label}}</span></div>
+        <div class="kv"><span class="k">Area</span><span class="v">{{area}}</span></div>
+        <div class="kv"><span class="k">Weapon</span><span class="v">{{weapon}}</span></div>
+        <div class="kv"><span class="k">Time</span><span class="v">{{time_of_day}}</span></div>
+        <div class="kv"><span class="k">Source</span><span class="v wrap">{{data_source}}</span></div>
+        <div class="notes" style="margin-top: 10dp;"><div data-for="n : notes">• {{n}}</div></div>
+        <div class="actions"><button id="preview-close" class="btn primary" data-event-click="close()">Close</button></div>
+    </div>
+</body>
+</rml>

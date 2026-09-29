@@ -1,0 +1,25 @@
+<rml>
+<head>
+    <title>Lodge</title>
+    <link type="text/rcss" href="../rcss/theme.rcss"/>
+</head>
+<body data-model="lodge" class="screen">
+    <div id="lodge-letterbox">
+        <div id="lodge-stage">
+            <div id="lodge-art"></div>
+            <div class="art-missing" data-if="art_missing">Optional artwork missing: images/lodge_background.png (placeholder shown)</div>
+            <!-- Destination bounds are normalized stage percentages; see docs/ASSET_BRIEF.md. -->
+            <div id="dest-expeditions" class="hotspot" style="left: 8%; top: 52%; width: 24%; height: 18%;" data-event-click="go('expeditions')"><span class="label">Expeditions</span></div>
+            <div id="dest-profile" class="hotspot" style="left: 38%; top: 52%; width: 24%; height: 18%;" data-event-click="go('profile')"><span class="label">Profile / Setup</span></div>
+            <div id="dest-exit" class="hotspot" style="left: 68%; top: 52%; width: 24%; height: 18%;" data-event-click="go('exit')"><span class="label">Exit</span></div>
+            <div class="hotspot unavailable" style="left: 8%; top: 74%; width: 24%; height: 10%;"><span class="label">Trophies (not in this evaluation)</span></div>
+            <div class="hotspot unavailable" style="left: 38%; top: 74%; width: 24%; height: 10%;"><span class="label">Statistics (not in this evaluation)</span></div>
+            <div id="lodge-context" class="context">
+                <div>{{hunter_line}}</div>
+                <div>{{source_line}}</div>
+                <div>{{status_line}}</div>
+            </div>
+        </div>
+    </div>
+</body>
+</rml>
