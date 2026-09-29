@@ -218,8 +218,10 @@ Value plan_hunt(const Store& store, std::u32string_view association_id, const Va
     // snapshot_pins already requires a canonical SAV and excludes other names.
     if (captured.blobs.size() != 2)
         throw StoreError("hunt contract requires an existing complete SAV/SAB pair");
-    const auto policy = evaluate_pins(captured.pins, test_policy ? test_policy : PolicyEvaluator(hunt_policy));
-    *member(captured.pins, U"adapter") = string_value(std::u32string(planning::HUNT_POLICY_ID));
+    const auto policy = evaluate_pins(captured.pins, test_policy ? test_policy : PolicyEvaluator([](const auto& r,const auto& c,const auto& sl,const auto& se,const auto& sc) { return expanded_hunt_policy(r,c,sl,se,sc); }));
+    *member(captured.pins, U"adapter") = string_value(std::u32string(
+        is_text(policy.at(U"adapter"), planning::EXPANDED_HUNT_POLICY_ID)
+            ? planning::EXPANDED_HUNT_POLICY_ID : planning::HUNT_POLICY_ID));
     captured.pins.object.emplace_back(U"hunt_policy", policy);
     Value result = object_value();
     result.object = {{U"kind", ascii_value("genesis-hunt-plan-v1")}, {U"pins", std::move(captured.pins)},

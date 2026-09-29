@@ -181,21 +181,28 @@ int run_self_test(App& app) {
     ST(model.loop.state()==LoopState::validated);
     ST(model.loop.advice()->score->decimal=="100");
     ST(model.loop.advice()->requirement->decimal=="35");
-    auto* weapon=rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(screens.console()->GetElementById("loop-weapon"));
-    ST(weapon && weapon->GetNumOptions()==2);
-    if(weapon) {
-        ST(!weapon->GetOption(0)->HasAttribute("disabled"));
-        ST(weapon->GetOption(1)->HasAttribute("disabled"));
-        auto* retained_option=weapon->GetOption(0);
-        auto* time=rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(screens.console()->GetElementById("loop-time"));
-        time->Focus(true); time->SetValue("2"); settle(app);
-        ST(model.loop.can(Operation::prepare)); ST(!model.loop.busy());
-        ST(screens.focused_id()=="loop-time");
-        ST(weapon->GetOption(0)==retained_option);
-        weapon->ScrollIntoView(); weapon->Focus(true); weapon->Click(); settle(app);
-        ST(app.capture("04b-live-points-options"));
-        app.dispatch(Action::back); settle(app);
-    }
+    auto* retained_option=screens.console()->GetElementById("choice-weapons:0");
+    ST(retained_option && !retained_option->HasAttribute("disabled"));
+    ST(screens.console()->GetElementById("choice-weapons:1")->HasAttribute("disabled"));
+    activate(screens.console(),"choice-licenses:0"); // incomplete selection still permits additions
+    ST(!model.loop.can(Operation::prepare));
+    activate(screens.console(),"choice-weapons:2");
+    ST(!model.loop.can(Operation::prepare));
+    activate(screens.console(),"choice-licenses:0");
+    activate(screens.console(),"choice-licenses:1");
+    activate(screens.console(),"choice-equipment:0");
+    activate(screens.console(),"choice-equipment:1");
+    ST(model.loop.can(Operation::prepare));
+    ST(model.loop.advice()->requirement->decimal=="65");
+    ST(model.loop.advice()->remaining->decimal=="35");
+    ST(screens.focused_id()=="choice-equipment:1");
+    ST(screens.console()->GetElementById("choice-weapons:0")==retained_option);
+    ST(screens.console()->GetElementById("choice-licenses:1")->IsClassSet("selected"));
+    auto* time=rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(screens.console()->GetElementById("loop-time"));
+    time->Focus(true); time->SetValue("2"); settle(app);
+    ST(model.loop.can(Operation::prepare)); ST(!model.loop.busy());
+    ST(screens.focused_id()=="loop-time");
+    ST(app.capture("04b-expanded-loadout"));
     ST(app.capture("05-validated-intent"));
     activate(screens.console(),"prepare-button"); finish(); ST(model.loop.state()==LoopState::prepared);
     if(!model.loop.session()) return 1;
@@ -223,6 +230,8 @@ int run_self_test(App& app) {
     activate(screens.review(),"accept-button"); finish(); ST(model.loop.can(Operation::prepare));
     ST(app.capture("09-acceptance-receipt"));
     ST(model.loop.association()->current_generation!=g0);
+    ST(screens.console()->GetElementById("choice-weapons:0")==retained_option);
+    ST(model.loop.selection().selected(catalog::Group::equipment).size()==2);
     ST(model.loop.advice() && model.loop.advice()->score->decimal=="107");
     app.dispatch(Action::back); settle(app); ST(screens.focused_id()=="review-button");
     activate(screens.console(),"prepare-button"); finish(); ST(model.loop.state()==LoopState::prepared);

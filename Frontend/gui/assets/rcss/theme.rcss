@@ -222,3 +222,8 @@ body.modal { background-color: #00000099; display: flex; align-items: center; ju
 .evidence { max-height: 240dp; overflow-y: auto; background: #10100e; padding: 10dp; }
 .return-review { width: 88%; max-width: 1050dp; max-height: 90%; overflow-y: auto; }
 button:disabled { opacity: 0.45; }
+
+/* Stable checkable button rows; lists scroll with the existing console pane. */
+.loadout-list { display: block; margin-bottom: 8dp; }
+.loadout-choice { display: block; text-align: left; margin: 3dp 0; white-space: normal; }
+.loadout-choice.selected { border-color: #e6b450; background-color: #34301f; }

@@ -54,12 +54,13 @@ static void check_plan(const planning::GenesisPlan& plan, const Value& v) {
     require(plan.weapon_mask().has_value() == v.contains(U"weapon_mask") && (!plan.weapon_mask() || plan.weapon_mask()->decimal == v.at(U"weapon_mask").integer), "weapon mask");
     require(plan.diagnostic_codes() == codes(v.at(U"diagnostics")), "plan diagnostics");
 }
-static std::string genesis(const Value& r, bool hunt) {
+static std::string genesis(const Value& r, bool hunt, bool expanded = false) {
     auto root = content_internal::native_units(r.at(U"root").string);
     auto hint = r.contains(U"dialect_hint") ? r.at(U"dialect_hint").string : U"unknown";
     std::optional<catalog::Projection> projection{catalog::project(root, hint)};
     const Value &revision = r.at(U"revision"), &slot = r.at(U"slot"), &selection = r.at(U"selection"), &score = r.at(U"score");
-    auto evaluate = hunt ? pi::hunt_policy : pi::observer_policy;
+    auto evaluate = expanded ? static_cast<Value(*)(const Value&,const catalog::Projection&,const Value&,const Value&,const Value&)>(pi::expanded_hunt_policy)
+                            : hunt ? pi::hunt_policy : pi::observer_policy;
     std::string seam_bytes; std::optional<planning::Error> seam_error;
     try { seam_bytes = compat::display(evaluate(revision, *projection, slot, selection, score)); }
     catch (const planning::Error& e) { seam_error.emplace(e); }
@@ -74,14 +75,14 @@ static std::string genesis(const Value& r, bool hunt) {
     auto typed_selection = planning::PlanningAccess::selection(selection);
     if (r.contains(U"typed") && r.at(U"typed").boolean) {
         auto tod = planning::Integer{selection.at(U"time_of_day").integer};
-        auto built = hunt ? planning::Selection::hunt(selection.at(U"area").string, strings_of(selection.at(U"licenses")), strings_of(selection.at(U"weapons")), tod)
+        auto built = hunt ? planning::Selection::hunt(selection.at(U"area").string, strings_of(selection.at(U"licenses")), strings_of(selection.at(U"weapons")), tod, strings_of(selection.at(U"equipment")))
                           : planning::Selection::observer(selection.at(U"area").string, tod);
         require(built.export_json() == compat::display(selection), "typed selection export");
         typed_selection = built;
     }
     std::optional<planning::Integer> typed_score;
     if (score.kind == Kind::integer) typed_score = planning::Integer{score.integer};
-    auto policy = hunt ? planning::hunt_policy : planning::observer_policy;
+    auto policy = expanded ? planning::expanded_hunt_policy : hunt ? planning::hunt_policy : planning::observer_policy;
     if (slot.kind == Kind::integer) {
         std::optional<planning::GenesisPlan> retained;
         same_outcome(seam_bytes, seam_error ? &*seam_error : nullptr, [&] {
@@ -150,6 +151,11 @@ static std::string run(const Value& r) {
     const auto& op = r.at(U"op").string;
     if (op == U"observer") return genesis(r, false);
     if (op == U"hunt") return genesis(r, true);
+    if (op == U"hunt-v2") return genesis(r, true, true);
+    if (op == U"hunt-v2-advice") {
+        auto c=catalog::project(content_internal::native_units(r.at(U"root").string),U"mee-newer");
+        return compat::display(pi::expanded_hunt_policy(r.at(U"revision"),c,r.at(U"slot"),r.at(U"selection"),r.at(U"score"),true));
+    }
     if (op == U"launch") return launch(r);
     throw std::runtime_error("unknown test operation");
 }

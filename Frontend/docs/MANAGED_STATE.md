@@ -1,5 +1,11 @@
 # Explicit managed-state history and acceptance
 
+Current native selection policy: new hunts use [Genesis v2](GENESIS_HUNT.md),
+with multiple licenses/weapons and four supported accessories. Existing v1
+session pins retain their strict original semantics. The historical examples
+below retain their original versions; the current GUI boundary/evidence is in
+[HUNT_LOOP_GUI.md](HUNT_LOOP_GUI.md). No store schema version changed.
+
 This contract extends [the original state model](STATE_MODEL.md). Manifest schema
 **2** changes authority explicitly; schema 1 retains immutable-import semantics.
 Old frontends reject schema 2 before launching instead of selecting the original

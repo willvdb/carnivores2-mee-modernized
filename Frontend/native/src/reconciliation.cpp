@@ -121,7 +121,7 @@ Value reconcile_locked(const Store& store, const fs::path& root, Value& journal,
             const auto adapter = native_session::adapter_for(journal);
             if (schema == 4) current = native_session::return_pins(store, pins, probe, policies).pins;
             else current = native_session::native_pins(adapter, store, text(pins, U"association_id"), pins.at(U"selection"),
-                                                       probe, pins.at(U"codec"), policies).pins;
+                                                       probe, pins.at(U"codec"), policies, std::nullopt, text(pins,U"adapter")).pins;
             const Value spec = journal.at(U"execution");
             const Value evidence = probe_process::executable_evidence(path_of(spec.at(U"executable").at(U"path")));
             if (!schema::equal(evidence, spec.at(U"executable"))) diagnostics.array.push_back(code_only("selected-engine-changed-on-return"));

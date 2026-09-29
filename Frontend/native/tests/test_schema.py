@@ -43,3 +43,44 @@ print('400 semantic equality and Unicode case probes passed')
 for raw,code,prefix in [(b'\xff',1,b'invalid\n'),(b'['*1002,3,b'resource\n')]:
     p=subprocess.run([exe,'--manifest-stdin'],input=raw,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     assert p.returncode==code and p.stdout.startswith(prefix),(p.returncode,p.stdout,p.stderr)
+
+# Native v2-only provenance validation. The historical corpus/reference remains
+# unchanged; older implementations must reject v2 instead of broadening v1.
+import copy
+base = next(json.loads(c['json']) for c in cases if c['outcome'][os.name] == 'valid'
+            and any(a.get('managed_state', {}).get('receipts')
+                    for a in json.loads(c['json']).get('associations', {}).values()))
+expanded = copy.deepcopy(base)
+a = next(a for a in expanded['associations'].values() if a.get('managed_state', {}).get('receipts'))
+h = a['managed_state']
+r = next(iter(h['receipts'].values()))
+g = h['generations'][r['generation_id']]
+for record in (r, g):
+    record['policy'] = 'genesis-current-mee-hunt-v2'
+    record['execution']['argv'][7:9] = ['din=511', 'wep=255']
+    record['execution']['argv'][11:] = ['-camo', '-radar', '-scent', '-double']
+
+def expanded_valid(data):
+    result = subprocess.run([exe, '--batch'], input=(json.dumps(data)+'\n').encode(),
+                            stdout=subprocess.PIPE, check=True).stdout
+    return result.startswith(b'valid\t')
+
+assert expanded_valid(expanded)
+for bad_policy, mask_index, bad_mask, flags in [
+    ('genesis-current-mee-hunt-v1', None, None, None),
+    ('genesis-current-mee-hunt-v3', None, None, None),
+    (None, 7, 'din=512', None), (None, 8, 'wep=256', None),
+    (None, 7, 'din=0', None), (None, 8, 'wep=0', None),
+    (None, 7, 'din=03', None), (None, 8, 'wep=-1', None),
+    (None, None, None, ['-nightvision']), (None, None, None, ['-tranq']),
+    (None, None, None, ['-observ']), (None, None, None, ['-camo', '-camo']),
+    (None, None, None, ['-radar', '-camo'])]:
+    changed = copy.deepcopy(expanded)
+    h = next(a['managed_state'] for a in changed['associations'].values() if a.get('managed_state', {}).get('receipts'))
+    receipt = next(iter(h['receipts'].values()))
+    for record in (receipt, h['generations'][receipt['generation_id']]):
+        if bad_policy: record['policy'] = bad_policy
+        if mask_index is not None: record['execution']['argv'][mask_index] = bad_mask
+        if flags is not None: record['execution']['argv'][11:] = flags
+    assert not expanded_valid(changed), (bad_policy, bad_mask, flags)
+print('Native v2 receipt masks/flags validated; v1 authorization remains bounded')

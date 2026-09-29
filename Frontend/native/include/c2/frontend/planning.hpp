@@ -28,6 +28,7 @@ using catalog::Integer;
 // supplied manifest value (numeric equality, exact key set), not a hash check.
 inline constexpr std::u32string_view OBSERVER_POLICY_ID = U"genesis-current-mee-observer-v1";
 inline constexpr std::u32string_view HUNT_POLICY_ID = U"genesis-current-mee-hunt-v1";
+inline constexpr std::u32string_view EXPANDED_HUNT_POLICY_ID = U"genesis-current-mee-hunt-v2";
 inline constexpr std::u32string_view SCORE_MODIFIERS = U"smod=0.85,0.70,0.80,1.0,1.25,1.0";
 struct PinnedRevision { std::u32string_view algorithm, sha256; std::size_t file_count; std::uint64_t byte_count; };
 inline constexpr PinnedRevision GENESIS_REVISION{U"huntdat-sha256-v1",
@@ -56,7 +57,11 @@ class Selection {
 public:
     static Selection observer(std::u32string area, Integer time_of_day);
     static Selection hunt(std::u32string area, std::vector<std::u32string> licenses,
-                          std::vector<std::u32string> weapons, Integer time_of_day);
+                          std::vector<std::u32string> weapons, Integer time_of_day,
+                          std::vector<std::u32string> equipment = {});
+    std::vector<std::u32string> selected(catalog::Group) const;
+    Selection with(catalog::Group, std::u32string id) const; // replace area; toggle multi-select ID
+    Selection at_time(Integer) const;
     std::string export_json() const;
 private:
     struct Impl;
@@ -100,6 +105,10 @@ GenesisPlan observer_policy(const Revision&, const catalog::Projection&, const I
                             const Selection&, const std::optional<Integer>& score);
 GenesisPlan hunt_policy(const Revision&, const catalog::Projection&, const Integer& slot,
                         const Selection&, const std::optional<Integer>& score);
+
+// Current production policy. v1 remains callable for historical pinned sessions.
+GenesisPlan expanded_hunt_policy(const Revision&, const catalog::Projection&, const Integer& slot,
+                                 const Selection&, const std::optional<Integer>& score);
 
 // lodge.launch.prepare arguments (CLI --area/--license/--weapon/--equipment/--mode/--time).
 struct LaunchSelection {

@@ -1,5 +1,11 @@
 # Session lifecycle, journal schema 1
 
+Current native selection policy: new hunts use [Genesis v2](GENESIS_HUNT.md),
+with multiple licenses/weapons and four supported accessories. Existing v1
+session pins retain their strict original semantics. The historical examples
+below retain their original versions; the current GUI boundary/evidence is in
+[HUNT_LOOP_GUI.md](HUNT_LOOP_GUI.md). No store schema version changed.
+
 Current play-loop extension: [MANAGED_STATE.md](MANAGED_STATE.md) explicitly versions
 accepted authority as manifest schema 2 and generation-pinned normal hunts as
 journal schema 4. [GENESIS_HUNT.md](GENESIS_HUNT.md) defines candidate-only schema 3.
