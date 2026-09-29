@@ -56,8 +56,8 @@ jobs:
             libwayland-dev libxkbcommon-dev libegl1-mesa-dev libgl1-mesa-dev libgl1-mesa-dri libdecor-0-dev
       - name: Configure with the GUI enabled (pinned SDL3 and RmlUi)
         run: cmake -S Frontend -B build/gui -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DC2_FRONTEND_GUI=ON
-      - name: Build the GUI, the headless model and their tests
-        run: cmake --build build/gui --config Release --parallel 2 --target c2-frontend-gui c2-frontend-gui-model-tests c2-frontend-gui-store-tests c2-frontend-gui-worker-tests
+      - name: Build everything (the install rules also stage the CLI executables)
+        run: cmake --build build/gui --config Release --parallel 2
       - name: Headless model and real-core tests
         run: ctest --test-dir build/gui -C Release -R "frontend-gui-(model|store|worker|help)" --output-on-failure --no-tests=error
       - name: Real RmlUi self-test with the offscreen driver (Linux)
