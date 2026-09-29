@@ -37,6 +37,19 @@ void Screens::bind_loop() {
             "\nPinned generation: "+to_utf8(s->generation.value_or(U"unavailable"))+
             "\nChanged members: "+(s->changed_members ? std::to_string(s->changed_members->size())+" observed" : "unavailable")+
             "\nLogs and evidence: "+model_.source().directory+"/sessions/"+to_utf8(s->id);
+        if(const auto& s=model_.loop.session()) {
+            auto observations=[&](const char* stage,const auto& members) {
+                out+="\n"+std::string(stage)+": "+(members ? "observed" : "unavailable");
+                if(members) for(const auto& m:*members) {
+                    out+="\n  "+to_utf8(m.member);
+                    if(m.score) out+=" — raw score "+m.score->decimal;
+                    if(m.rank) out+="; raw rank "+m.rank->decimal;
+                }
+            };
+            observations("Before",s->before); observations("Returned",s->after);
+            for(const auto& d:s->diagnostics) out+="\n"+to_utf8(d.code)+": "+to_utf8(d.message);
+        }
+        if(const auto& p=model_.loop.preview()) for(const auto& d:p->diagnostics) out+="\n"+to_utf8(d.code)+": "+to_utf8(d.message);
         if(const auto& p=model_.loop.preview()) out+="\nPreview: "+to_utf8(p->status)+"\nExpected predecessor: "+
             to_utf8(p->expected_generation)+"\nCandidate digest: "+to_utf8(p->candidate_sha256);
         v=out;

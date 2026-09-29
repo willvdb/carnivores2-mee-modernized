@@ -31,6 +31,8 @@ int main(int argc, char** argv) {
         auto returned=demo.client.run(s1.id,demo.authorization,cancel);
         CHECK(returned.state==U"returned");
         auto candidate=demo.client.reconcile(s1.id); CHECK(candidate.state==U"candidate");
+        CHECK(candidate.before.has_value()); CHECK(candidate.after.has_value());
+        CHECK(candidate.before->size()==2); CHECK(candidate.after->size()==2);
         CHECK(candidate.changed_members.has_value());
         CHECK(candidate.changed_members->size()==1);
         CHECK(demo.client.inspect(s1.id).state==U"candidate");

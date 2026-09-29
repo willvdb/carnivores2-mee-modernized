@@ -23,6 +23,19 @@ Evidence evidence(const Value& v) {
             e.diagnostics.push_back({text(d, U"code"), text(d, U"message")});
     return e;
 }
+std::optional<std::vector<NativeObservation>> observations(const Value& v, std::u32string_view key) {
+    if (!v.contains(key) || v.at(key).kind != compat::Kind::object) return std::nullopt;
+    std::vector<NativeObservation> out;
+    for (const auto& member : v.at(key).object) {
+        NativeObservation o; o.member = member.first;
+        auto number = [&](std::u32string_view name) -> std::optional<planning::Integer> {
+            if (!member.second.contains(name) || member.second.at(name).kind != compat::Kind::integer) return std::nullopt;
+            return planning::Integer{member.second.at(name).integer};
+        };
+        o.score = number(U"score"); o.rank = number(U"rank"); out.push_back(std::move(o));
+    }
+    return out;
+}
 Session session(const Value& v) {
     Session s;
     static_cast<Evidence&>(s) = evidence(v);
@@ -30,9 +43,11 @@ Session session(const Value& v) {
     if (v.contains(U"pins")) {
         const auto& pins = v.at(U"pins");
         s.association_id = text(pins, U"association_id");
+        s.before = observations(pins, U"source_observation");
         auto g = text(pins, U"generation_id");
         if (!g.empty()) s.generation = g;
     }
+    s.after = observations(v, U"returned_observation");
     if (v.contains(U"reconciliation")) {
         const auto& r = v.at(U"reconciliation");
         auto status = text(r, U"comparison_status");
@@ -80,7 +95,8 @@ catalog::Projection Client::catalog(std::u32string_view id) const {
 }
 Plan Client::plan(std::u32string_view a, const planning::Selection& selection) const {
     auto v = planning_store::plan_hunt(impl_->store,a,planning::PlanningAccess::value(selection),impl_->probe,impl_->policies.hunt);
-    Plan p; static_cast<Evidence&>(p) = evidence(v); return p;
+    Plan p; static_cast<Evidence&>(p) = evidence(v);
+    p.process_launch_allowed = v.at(U"process_launch_allowed").boolean; return p;
 }
 Session Client::prepare(std::u32string_view a, const planning::Selection& selection, const Authorization& auth, unsigned timeout) const {
     require_writes();

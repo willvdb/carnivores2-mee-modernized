@@ -18,12 +18,17 @@ struct Evidence {
     std::string details;
 };
 struct Plan : Evidence { bool process_launch_allowed = false; };
+struct NativeObservation {
+    std::u32string member;
+    std::optional<planning::Integer> score, rank; // raw native values, never normalized
+};
 struct Session : Evidence {
     std::u32string id, state, association_id;
     std::optional<std::u32string> generation;
     // Missing/null observation differs from an observed empty list.
     std::optional<std::vector<std::u32string>> changed_members;
     std::optional<std::u32string> comparison_status;
+    std::optional<std::vector<NativeObservation>> before, after;
 };
 struct Preview : Evidence {
     bool allowed = false;
