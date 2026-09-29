@@ -5,6 +5,7 @@ using namespace c2::frontend::gui;
 int main() {
     HuntLoop loop(true);
     CHECK(!loop.can(Operation::accept));
+    loop.decline(); CHECK(loop.state()==LoopState::selection);
     CHECK(loop.select({U"association",U"hunter",U"instance",U"personal",U"managed",U"managed-state-history",U"g0"}));
     auto plan = *loop.begin(Operation::plan);
     CHECK(!loop.complete(plan.id+1, {play_loop::Plan{}, {}}));

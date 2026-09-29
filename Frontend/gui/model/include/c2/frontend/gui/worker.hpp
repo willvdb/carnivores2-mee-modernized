@@ -8,6 +8,7 @@
 #include <deque>
 #include <functional>
 #include <mutex>
+#include <memory>
 #include <thread>
 #include <utility>
 

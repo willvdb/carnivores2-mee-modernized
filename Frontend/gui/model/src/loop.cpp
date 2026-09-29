@@ -83,7 +83,7 @@ bool HuntLoop::complete(std::uint64_t id, LoopResult result) {
 }
 void HuntLoop::cancel() { if (busy()) { cancel_->store(true); ++version_; } }
 void HuntLoop::decline() {
-    if (busy()) return;
+    if (busy() || !session_) return;
     preview_.reset(); state_ = LoopState::declined; ++version_;
 }
 LoopResult execute_loop(const play_loop::Client& client, const LoopRequest& r,
