@@ -564,9 +564,71 @@ def launch_cases(base):
     assert {'engine-evidence-changed', 'engine-review-required'} <= set(codes(result)) and result['value']['capabilities']['bundled_engine_evidence'] == 'none'
 
 
+def expanded_cases(base):
+    # Native-only v2 characterization; the unchanged reference continues to test v1.
+    root = genesis_root(base, 'expanded', acces_prices=[10, 100, 20, 50], ais={i: 10 for i in range(9)})
+    def check(selection=None, score=1000, **kwargs):
+        request = dict(op='hunt-v2', root=str(root), revision=GENESIS_REVISION, slot=0,
+                       selection=selection or HUNT, score=score, typed=True)
+        request.update(kwargs)
+        return NATIVE(request)
+    for mask in (1, 3, 257, 511):
+        for weapons in (1, 3, 129, 255):
+            for equipment in range(16):
+                chosen = dict(HUNT, licenses=[f'licenses:{i}' for i in range(9) if mask & (1 << i)],
+                              weapons=[f'weapons:{i}' for i in range(8) if weapons & (1 << i)],
+                              equipment=[f'equipment:{i}' for i in range(4) if equipment & (1 << i)])
+                requirement = 5 + mask.bit_count()*10 + weapons.bit_count()*15 + sum(
+                    price for i, price in enumerate((10, 100, 20, 50)) if equipment & (1 << i))
+                result = check(chosen, requirement)
+                assert result['ok'], result
+                p = result['value']
+                assert p['adapter'] == 'genesis-current-mee-hunt-v2'
+                assert (p['license_mask'], p['weapon_mask'], p['score_requirement']) == (mask, weapons, requirement)
+                assert p['score_mutation'] == 'none' and not p['process_launch_allowed']
+                assert p['candidate_argv'][2:4] == [f'din={mask}', f'wep={weapons}']
+                assert p['candidate_argv'][6:] == [flag for i, flag in enumerate(
+                    ('-camo', '-radar', '-scent', '-double')) if equipment & (1 << i)]
+                assert not check(chosen, requirement-1)['ok']
+    for group, bad in [('licenses', []), ('weapons', []), ('licenses', ['licenses:9']),
+                       ('licenses', ['licenses:10']), ('weapons', ['weapons:8']),
+                       ('equipment', ['equipment:4']), ('equipment', ['-nightvision']),
+                       ('equipment', ['-tranq']), ('equipment', ['-survival']),
+                       ('area', 'areas:8'), ('time_of_day', -1), ('time_of_day', 3), ('mode', 'observer')]:
+        assert not check(dict(HUNT, **{group: bad}))['ok'], (group, bad)
+    for group in ('licenses', 'weapons', 'equipment'):
+        assert not check(dict(HUNT, **{group: [group+':0']*2}))['ok']
+        assert not check(dict(HUNT, **{group: ['unknown']}))['ok']
+    # Partial advice has the same prices and constraints but does not require a
+    # complete launch selection. A zero mask here never authorizes preparation.
+    for chosen, requirement in [(dict(HUNT, licenses=[], weapons=[]), 5),
+                                (dict(HUNT, licenses=[]), 20),
+                                (dict(HUNT, weapons=[], equipment=['equipment:0']), 25)]:
+        result = check(chosen, requirement, op='hunt-v2-advice')
+        assert result['ok'] and result['value']['score_requirement'] == requirement, result
+        assert not check(chosen, requirement-1, op='hunt-v2-advice')['ok']
+        assert not check(chosen, requirement)['ok']
+    for score in (-1, 0, 29, 2147483648, None, True):
+        assert not check(score=score)['ok']
+    assert check(score=2147483647)['ok']
+    assert not check(slot=8)['ok']
+    assert not check(revision={**GENESIS_REVISION, 'byte_count': 1})['ok']
+    for name, kw in [('bounds',dict(licenses=10)), ('weapons',dict(weapons=10)),
+                     ('equipment',dict(acces_prices=[1]*5)), ('modifier',dict(accessories=True)),
+                     ('price',dict(acces_prices=[-1]*4)), ('overflow',dict(acces_prices=[2147483647]*4))]:
+        badroot = genesis_root(base, 'expanded-'+name, **kw)
+        assert not check(dict(HUNT,equipment=['equipment:0']),root=str(badroot))['ok']
+    # Historical v1 must still reject multi-selection and equipment.
+    for chosen in (dict(HUNT,licenses=['licenses:0','licenses:1']), dict(HUNT,equipment=['equipment:0'])):
+        assert not NATIVE(dict(op='hunt',root=str(root),revision=GENESIS_REVISION,slot=0,
+                              selection=chosen,score=1000,typed=True))['ok']
+    print('Native v2: 256 mask/equipment combinations, thresholds, bounds and frozen-v1 refusal passed')
+
+
 if __name__ == '__main__':
     with tempfile.TemporaryDirectory(prefix='c2-planning-') as temp:
         genesis_cases(Path(temp))
+        expanded_cases(Path(temp))
         launch_cases(Path(temp))
     NATIVE.close()
     print(f'{CASES} planning oracle cases; exact presentation bytes, error kinds/messages and typed handles')

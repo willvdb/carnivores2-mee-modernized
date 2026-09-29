@@ -41,4 +41,5 @@ int main(int argc,char** argv) {
         TargetDino, WeaponPres, OptDayNight, ObservMode?"true":"false",
         (DoubleAmmo||NightVisionMode||RadarMode||ScentMode||CamoMode||Tranq)?"true":"false",
         ScoreMod_Camo,ScoreMod_Radar,ScoreMod_Scent,ScoreMod_Double,ScoreMod_Tranq,ScoreMod_Observer);
+    return 0;
 }

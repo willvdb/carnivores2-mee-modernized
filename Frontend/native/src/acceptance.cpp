@@ -153,14 +153,15 @@ Candidate validate_candidate_checks(const Store& store, Value& data, const Value
                 && is_text(get(rec, U"promotion"), U"explicit-only") && is_text(get(rec, U"comparison_status"), U"complete")
                 && schema::equal(get(rec, U"observation"), observation), "incomplete saved observations");
     }
-    require(is_text(get(pins, U"adapter"), POLICY_ID) && is_text(get(item(pins, U"hunt_policy"), U"adapter"), POLICY_ID),
+    require((is_text(get(pins, U"adapter"), POLICY_ID) || is_text(get(pins,U"adapter"), planning::EXPANDED_HUNT_POLICY_ID))
+            && schema::equal(get(pins,U"adapter"), get(item(pins,U"hunt_policy"),U"adapter")),
             "unsupported native policy provenance");
     // Fresh content/association/profile/codec/selection checks; no engine query.
     {
         const Value& id = item(*a, U"id");
         if (id.kind != Kind::string) throw Malformed("association id");
         const auto current = native_session::native_pins(native_session::Adapter::continuation, store, id.string,
-            item(pins, U"selection"), probe, item(pins, U"codec"), policies);
+            item(pins, U"selection"), probe, item(pins, U"codec"), policies, std::nullopt, item(pins,U"adapter").string);
         require(schema::equal(current.pins, pins), "association, hunter, slot, content, policy or source pins changed");
     }
     const Value& jid = item(j, U"id");
@@ -433,7 +434,7 @@ Value accept_candidate(const Store& store, std::u32string_view identity, std::u3
     receipt.object = {{U"schema_version", integer_value("1")}, {U"association_id", string_value(association_id)},
         {U"session_id", string_value(std::u32string(identity))}, {U"generation_id", ascii_value(gid)},
         {U"predecessor", string_value(std::u32string(expected_generation))}, {U"members", candidate.members},
-        {U"revision", pins.at(U"revision")}, {U"policy", string_value(std::u32string(POLICY_ID))},
+        {U"revision", pins.at(U"revision")}, {U"policy", pins.at(U"adapter")},
         {U"execution", j.at(U"execution")}, {U"accepted_at", ascii_value(created)},
         {U"candidate_sha256", string_value(std::u32string(expected_candidate_sha256))},
         {U"acceptance", ascii_value("explicit")}};
@@ -445,7 +446,7 @@ Value accept_candidate(const Store& store, std::u32string_view identity, std::u3
         {U"predecessor", string_value(std::u32string(expected_generation))}, {U"source_session", string_value(std::u32string(identity))},
         {U"kind", ascii_value("accepted-native-hunt")}, {U"created_at", ascii_value(created)}, {U"members", candidate.members},
         {U"provenance", provenance(a)}, {U"snapshot", string_value(U"generations/" + association_id + U"/" + widen(gid))},
-        {U"policy", string_value(std::u32string(POLICY_ID))}, {U"revision", pins.at(U"revision")}, {U"execution", j.at(U"execution")}};
+        {U"policy", pins.at(U"adapter")}, {U"revision", pins.at(U"revision")}, {U"execution", j.at(U"execution")}};
     assign(generations, widen(gid), std::move(record));
     assign(*item_ptr(h, U"receipts"), identity, receipt);
     assign(h, U"current_generation", ascii_value(gid));

@@ -45,7 +45,8 @@ Value workspace_findings(const std::filesystem::path& root, bool returning);
 planning_store::PinSnapshot native_pins(Adapter, const Store&, std::u32string_view association_id,
     const Value& selection, const std::optional<std::filesystem::path>& probe,
     const std::optional<Value>& expected_codec, const session_policy::Policies&,
-    const std::optional<std::u32string>& generation = std::nullopt);
+    const std::optional<std::u32string>& generation = std::nullopt,
+    std::u32string_view policy_id = {});
 // native_continuation.return_pins: compares against the actually pinned generation.
 planning_store::PinSnapshot return_pins(const Store&, const Value& pins,
     const std::optional<std::filesystem::path>& probe, const session_policy::Policies&);

@@ -275,6 +275,92 @@ Value hunt_policy(const Value& revision, const catalog::Projection& projection, 
         {U"diagnostics", std::move(diagnostics)}};
     return out;
 }
+// v1 above is deliberately frozen: historical session pins keep their authorization.
+Value expanded_hunt_policy(const Value& revision, const catalog::Projection& projection,
+                          const Value& slot, const Value& selection, const Value& score, bool partial) {
+    const Value& catalog = *catalog::projection_value(projection);
+    check_structure(catalog, "Genesis hunt refuses an unpinned content revision",
+        "Genesis hunt requires observed current-MEE script evidence", "Genesis hunt catalog differs from pinned audit structure", revision);
+    if (!exact_int(slot) || !in_range_eight(slot) || selection.kind != Kind::object || !selection_keys_match(selection)
+        || !is_text(selection.at(U"mode"), U"hunt") || selection.at(U"area").kind != Kind::string
+        || !time_of_day_ok(selection.at(U"time_of_day"))) throw Error("hunt v2 requires one area, dawn/day/night and slot 0..7");
+    if (schema::truth(catalog.at(U"score_modifier_observations")) || has_code(catalog.at(U"diagnostics"),
+        {U"unclosed-block", U"unmatched-brace", U"dialect-conflict", U"explicit-areas-uninterpreted", U"surplus-price"}))
+        throw Error("ambiguous Genesis catalog/price/modifier policy requires review");
+    std::string cost = "0";
+    std::uint32_t din = 0, wep = 0;
+    std::u32string stem;
+    std::set<std::size_t> equipment;
+    for (const auto& group : {U"areas", U"licenses", U"weapons", U"equipment"}) {
+        const std::u32string g(group);
+        const auto& entries = catalog.at(g).array;
+        for (std::size_t i=0; i<entries.size(); ++i) {
+            const auto& e=entries[i];
+            if (e.kind!=Kind::object || !e.contains(U"id") || !is_text(e.at(U"id"),g+U":"+digits(i))
+                || !e.contains(U"ordinal") || !exact_int(e.at(U"ordinal")) || e.at(U"ordinal").integer!=std::to_string(i))
+                throw Error("ambiguous or stale catalog ordering");
+        }
+        auto ids = g==U"areas" ? array_value() : selection.at(g);
+        if (g==U"areas") ids.array.push_back(selection.at(U"area"));
+        if (ids.kind!=Kind::array) throw Error("hunt selections must be catalog ID lists");
+        if (!partial && (g==U"licenses" || g==U"weapons") && ids.array.empty())
+            throw Error("hunt requires at least one catalog license and one weapon");
+        std::set<std::u32string> seen;
+        for (const auto& id:ids.array) {
+            if (id.kind!=Kind::string || !seen.insert(id.string).second) throw Error("duplicate or invalid catalog selection");
+            std::size_t i=0;
+            for (;i<entries.size();++i) if (schema::equal(entries[i].at(U"id"),id)) break;
+            if (i==entries.size()) throw Error("unknown or ambiguous catalog selection");
+            const auto& e=entries[i];
+            if (g==U"areas") {
+                if (!e.contains(U"launch_stem") || e.at(U"launch_stem").kind!=Kind::string)
+                    throw Error("selected area has no unambiguous supported resource pair");
+                stem=e.at(U"launch_stem").string;
+                if (stem!=U"area"+digits(i+1) && !(i==5 && stem==U"external"))
+                    throw Error("selected area has no unambiguous supported resource pair");
+            } else if (g==U"equipment") {
+                if (i>=4 || !e.contains(U"kind") || !is_text(e.at(U"kind"),U"native-accessory-slot"))
+                    throw Error("unsupported equipment slot");
+                equipment.insert(i);
+            } else {
+                if (!e.contains(U"label") || e.at(U"label").kind!=Kind::string || schema::blank(e.at(U"label").string))
+                    throw Error("selected catalog entry has an unresolved label");
+                if (i>=10) throw Error("selection exceeds engine mask bounds");
+                if (g==U"licenses") {
+                    if (!e.contains(U"ai") || !exact_int(e.at(U"ai")) || compare_decimal(e.at(U"ai").integer,"10")<0)
+                        throw Error("selected catalog entry is not a huntable license");
+                    din |= std::uint32_t{1} << i;
+                } else wep |= std::uint32_t{1} << i;
+            }
+            if (!e.contains(U"price") || !exact_int(e.at(U"price")) || compare_decimal(e.at(U"price").integer,"0")<0
+                || compare_decimal(e.at(U"price").integer,"2147483647")>0) throw Error("unresolved or out-of-range listed price");
+            cost=add_decimal(cost,e.at(U"price").integer);
+        }
+    }
+    if (!exact_int(score) || compare_decimal(score.integer,"0")<0 || compare_decimal(score.integer,"2147483647")>0
+        || compare_decimal(cost,score.integer)>0) throw Error("selection exceeds the native score requirement");
+    auto argv=argv_value({U"reg="+decimal_text(slot.integer),U"prj=huntdat/areas/"+stem,
+        U"din="+digits(din),U"wep="+digits(wep),U"dtm="+decimal_text(selection.at(U"time_of_day").integer),std::u32string(planning::SCORE_MODIFIERS)});
+    const char32_t* flags[]={U"-camo",U"-radar",U"-scent",U"-double"};
+    for (auto i:equipment) argv.array.push_back(string_value(flags[i]));
+    auto diagnostics=array_value();
+    for(auto code:{U"experimental-native-validation-required",U"native-menu-rank-disagreement-preserved"}) {
+        auto d=object_value(); d.object={{U"code",string_value(code)}}; diagnostics.array.push_back(std::move(d));
+    }
+    auto out=object_value();
+    out.object={{U"adapter",string_value(std::u32string(planning::EXPANDED_HUNT_POLICY_ID))},{U"revision",pinned_revision()},
+        {U"selection",selection},{U"native_slot",slot},{U"candidate_argv",std::move(argv)},
+        {U"license_mask",integer_value(std::to_string(din))},{U"weapon_mask",integer_value(std::to_string(wep))},
+        {U"score_requirement",integer_value(cost)},{U"score_mutation",string_value(U"none")},
+        {U"rank_policy",string_value(U"native-observation-no-rank-gate")},{U"equipment_policy",string_value(U"pinned-four-accessory-slots")},
+        {U"mask_policy",string_value(U"multiple-ordinal-bits")},{U"process_launch_allowed",boolean_value(false)},
+        {U"diagnostics",std::move(diagnostics)}};
+    return out;
+}
+Value expanded_hunt_policy(const Value& r, const catalog::Projection& c, const Value& slot, const Value& s, const Value& score) {
+    return expanded_hunt_policy(r,c,slot,s,score,false);
+}
+
 }
 namespace c2::frontend::planning {
 using compat::Kind;
@@ -313,10 +399,35 @@ Selection Selection::observer(std::u32string area, Integer time_of_day) {
         {U"licenses", pi::array_value()}, {U"weapons", pi::array_value()}, {U"equipment", pi::array_value()}};
     return PlanningAccess::selection(std::move(v));
 }
-Selection Selection::hunt(std::u32string area, std::vector<std::u32string> licenses, std::vector<std::u32string> weapons, Integer time_of_day) {
+Selection Selection::hunt(std::u32string area, std::vector<std::u32string> licenses, std::vector<std::u32string> weapons, Integer time_of_day, std::vector<std::u32string> equipment) {
     auto v = pi::object_value();
     v.object = {{U"area", pi::string_value(std::move(area))}, {U"licenses", strings(licenses)}, {U"weapons", strings(weapons)},
-        {U"equipment", pi::array_value()}, {U"mode", pi::string_value(U"hunt")}, {U"time_of_day", checked_integer(time_of_day)}};
+        {U"equipment", strings(equipment)}, {U"mode", pi::string_value(U"hunt")}, {U"time_of_day", checked_integer(time_of_day)}};
+    return PlanningAccess::selection(std::move(v));
+}
+std::vector<std::u32string> Selection::selected(catalog::Group group) const {
+    const auto key=group==catalog::Group::licenses ? U"licenses" : group==catalog::Group::weapons ? U"weapons" : U"equipment";
+    if (group==catalog::Group::areas) return {impl_->value.at(U"area").string};
+    return texts(impl_->value.at(key));
+}
+Selection Selection::with(catalog::Group group, std::u32string id) const {
+    auto v=impl_->value;
+    if (group==catalog::Group::areas) {
+        for (auto& f:v.object) if(f.first==U"area") f.second=pi::string_value(std::move(id));
+    } else {
+        const auto key=group==catalog::Group::licenses ? U"licenses" : group==catalog::Group::weapons ? U"weapons" : U"equipment";
+        for (auto& f:v.object) if(f.first==key) {
+            auto& ids=f.second.array;
+            const bool exists=std::any_of(ids.begin(),ids.end(),[&](const auto& x){return x.string==id;});
+            if(exists) ids.erase(std::remove_if(ids.begin(),ids.end(),[&](const auto& x){return x.string==id;}),ids.end());
+            else ids.push_back(pi::string_value(std::move(id)));
+        }
+    }
+    return PlanningAccess::selection(std::move(v));
+}
+Selection Selection::at_time(Integer time) const {
+    auto v=impl_->value;
+    for(auto& f:v.object) if(f.first==U"time_of_day") f.second=checked_integer(time);
     return PlanningAccess::selection(std::move(v));
 }
 GenesisPlan::GenesisPlan(std::shared_ptr<const Impl> p) : impl_(std::move(p)) {}
@@ -338,4 +449,8 @@ GenesisPlan observer_policy(const Revision& revision, const catalog::Projection&
 GenesisPlan hunt_policy(const Revision& revision, const catalog::Projection& catalog, const Integer& slot, const Selection& selection, const std::optional<Integer>& score) {
     return PlanningAccess::plan(pi::hunt_policy(PlanningAccess::value(revision), catalog, checked_integer(slot), PlanningAccess::value(selection), score_value(score)));
 }
+GenesisPlan expanded_hunt_policy(const Revision& r,const catalog::Projection& c,const Integer& slot,const Selection& s,const std::optional<Integer>& score) {
+    return PlanningAccess::plan(pi::expanded_hunt_policy(PlanningAccess::value(r),c,checked_integer(slot),PlanningAccess::value(s),score_value(score)));
+}
+
 }

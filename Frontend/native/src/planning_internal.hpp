@@ -53,6 +53,8 @@ bool is_text(const Value&, std::u32string_view);
 // Supplied-value policy evaluation in the reference argument order.
 Value observer_policy(const Value& revision, const catalog::Projection&, const Value& slot,
                       const Value& selection, const Value& score);
+Value expanded_hunt_policy(const Value&, const catalog::Projection&, const Value&, const Value&, const Value&);
+Value expanded_hunt_policy(const Value&, const catalog::Projection&, const Value&, const Value&, const Value&, bool partial);
 Value hunt_policy(const Value& revision, const catalog::Projection&, const Value& slot,
                   const Value& selection, const Value& score);
 // Supplied-value launch stage one; `arguments` is an object with area,

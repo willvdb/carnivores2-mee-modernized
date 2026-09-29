@@ -145,7 +145,8 @@ Value imported(const Value &a) {
     });
     return v;
 }
-bool execution(const Value &spec, const Value &slot) {
+bool execution(const Value &spec, const Value &slot, const Value &policy) {
+    const bool expanded = is(policy, U"genesis-current-mee-hunt-v2");
     static const Value capability = compat::parse(
         R"({"contract":"c2-engine-session","version":1,"state":"sav-sab-pair","layout":"state-config-output-v1","performance_capture":false})");
     static const S config_digest =
@@ -167,7 +168,7 @@ bool execution(const Value &spec, const Value &slot) {
         get(contract, U"performance_capture").kind != Kind::boolean ||
         !false_value(get(spec, U"shell")) || !duration ||
         !is(get(spec, U"config_sha256"), config_digest) || !clean_text(get(spec, U"cwd")) ||
-        !arr(argv) || argv.array.size() != 11)
+        !arr(argv) || argv.array.size() < 11 || argv.array.size() > (expanded ? 15u : 11u))
         return false;
     for (const auto &arg : argv.array)
         if (!clean_text(arg))
@@ -194,6 +195,20 @@ bool execution(const Value &spec, const Value &slot) {
     for (int bit = 0; bit < 8; ++bit)
         if (is(argv.array[8], U"wep=" + ascii(std::to_string(1 << bit))))
             wep = true;
+    if (expanded) {
+        // Exact canonical decimal masks; bounded to the unchanged pinned catalog.
+        for (unsigned mask=1; mask<=511; ++mask)
+            if (is(argv.array[7], U"din=" + ascii(std::to_string(mask)))) din=true;
+        for (unsigned mask=1; mask<=255; ++mask)
+            if (is(argv.array[8], U"wep=" + ascii(std::to_string(mask)))) wep=true;
+        const S flags[]={U"-camo",U"-radar",U"-scent",U"-double"};
+        std::size_t next=0;
+        for (std::size_t arg=11; arg<argv.array.size(); ++arg) {
+            while(next<4 && argv.array[arg].string!=flags[next]) ++next;
+            if(next==4) return false; // unknown, repeated or out-of-order flag
+            ++next;
+        }
+    }
     return din && wep && one(argv.array[9], {U"dtm=0", U"dtm=1", U"dtm=2"}) &&
            is(argv.array[10], U"smod=0.85,0.70,0.80,1.0,1.25,1.0");
 }
@@ -252,9 +267,9 @@ std::set<S> history(const Value &a) {
         for (auto k : {U"predecessor", U"members"})
             ok = ok && equal(get(r, k), get(g, k));
         ok = ok && equal(get(r, U"accepted_at"), get(g, U"created_at")) &&
-             is(get(r, U"policy"), U"genesis-current-mee-hunt-v1") &&
+             (is(get(r, U"policy"), U"genesis-current-mee-hunt-v1") || is(get(r,U"policy"),U"genesis-current-mee-hunt-v2")) &&
              equal(get(g, U"policy"), get(r, U"policy")) &&
-             execution(get(g, U"execution"), get(a, U"filename_slot")) &&
+             execution(get(g, U"execution"), get(a, U"filename_slot"), get(g,U"policy")) &&
              equal(get(g, U"execution"), get(r, U"execution")) &&
              equal(get(g, U"revision"), get(a, U"revision")) &&
              equal(get(r, U"revision"), get(a, U"revision")) &&

@@ -89,7 +89,7 @@ std::vector<Command> commands() {
     c.push_back({{"native-observer", "prepare"}, {"id"}, prepare, {}});
     c.push_back({{"native-observer", "run"}, {"id"}, observer_trust, {}});
     const std::vector<Option> selection{{"--area", Type::text, false, true}, {"--license", Type::text, true, true},
-        {"--weapon", Type::text, true, true}, time_option()};
+        {"--weapon", Type::text, true, true}, {"--equipment", Type::text, true}, time_option()};
     const std::vector<Option> hunt_trust{{"--engine", Type::path, false, true},
         {"--trusted-engine-sha256", Type::text, false, true}, {"--experimental-native-hunt", Type::flag, false, true}};
     auto hunt_prepare = selection;
@@ -459,7 +459,7 @@ Value selection_value(const Arguments& a, std::u32string_view mode) {
     auto selection = object();
     if (mode == U"hunt") {
         selection.object = {{U"area", string_value(a.string("--area", ""))}, {U"licenses", a.strings("--license")},
-            {U"weapons", a.strings("--weapon")}, {U"equipment", array()}, {U"mode", ascii("hunt")},
+            {U"weapons", a.strings("--weapon")}, {U"equipment", a.strings("--equipment")}, {U"mode", ascii("hunt")},
             {U"time_of_day", a.integer("--time", "1")}};
     } else {
         selection.object = {{U"area", string_value(a.string("--area", ""))}, {U"mode", ascii("observer")},
@@ -664,7 +664,7 @@ const char* usage =
     "  session inspect|run|reconcile|recover ID\n"
     "  native-observer prepare ID --engine PATH --trusted-engine-sha256 H --experimental-native-observer --area A [--time T] [--timeout S]\n"
     "  native-observer run ID --engine PATH --trusted-engine-sha256 H --experimental-native-observer\n"
-    "  native-hunt plan ID --area A --license L... --weapon W... [--time T]\n"
+    "  native-hunt plan ID --area A --license L... --weapon W... [--equipment E]... [--time T]\n"
     "  native-hunt prepare ID --area A --license L... --weapon W... --engine PATH --trusted-engine-sha256 H --experimental-native-hunt [--timeout S]\n"
     "  native-hunt run ID --engine PATH --trusted-engine-sha256 H --experimental-native-hunt | native-hunt inspect ID\n"
     "  managed-state upgrade | inspect ASSOCIATION | preview ID --expected-generation G\n"

@@ -355,7 +355,7 @@ Value workspace_findings(const fs::path& root, bool returning) {
 }
 planning_store::PinSnapshot native_pins(Adapter adapter, const Store& store, std::u32string_view association_id,
     const Value& selection, const std::optional<fs::path>& probe, const std::optional<Value>& expected_codec,
-    const session_policy::Policies& policies, const std::optional<std::u32string>& generation) {
+    const session_policy::Policies& policies, const std::optional<std::u32string>& generation, std::u32string_view policy_id) {
     if (generation && adapter != Adapter::continuation)
         throw std::invalid_argument("generation is only accepted by the continuation adapter");
     auto captured = planning_store::snapshot_pins(store, association_id, selection, probe, expected_codec,
@@ -371,10 +371,17 @@ planning_store::PinSnapshot native_pins(Adapter adapter, const Store& store, std
     // A missing score is the reference KeyError, never a fabricated zero.
     const Value& score = captured.pins.at(U"source_observation").at(save).at(U"score");
     const planning_store::PolicyEvaluator& test_policy = adapter == Adapter::observer ? policies.observer : policies.hunt;
+    if (!policy_id.empty() && policy_id != planning::OBSERVER_POLICY_ID && policy_id != planning::HUNT_POLICY_ID
+        && policy_id != planning::EXPANDED_HUNT_POLICY_ID) throw StoreError("unsupported native policy provenance");
+    const planning_store::PolicyEvaluator expanded = [](const auto& r,const auto& c,const auto& sl,const auto& se,const auto& sc) {
+        return expanded_hunt_policy(r,c,sl,se,sc);
+    };
     const planning_store::PolicyEvaluator production = adapter == Adapter::observer
-        ? planning_store::PolicyEvaluator(observer_policy) : planning_store::PolicyEvaluator(hunt_policy);
+        ? planning_store::PolicyEvaluator(observer_policy) : policy_id == planning::HUNT_POLICY_ID
+        ? planning_store::PolicyEvaluator(hunt_policy) : expanded;
     const Value policy = (test_policy ? test_policy : production)(captured.pins.at(U"revision"), projection, slot, selection, score);
-    assign(captured.pins, U"adapter", string_value(std::u32string(adapter == Adapter::observer ? planning::OBSERVER_POLICY_ID : planning::HUNT_POLICY_ID)));
+    assign(captured.pins, U"adapter", adapter == Adapter::observer
+        ? string_value(std::u32string(planning::OBSERVER_POLICY_ID)) : policy.at(U"adapter"));
     assign(captured.pins, policy_key(adapter), policy);
     return captured;
 }
@@ -383,7 +390,7 @@ planning_store::PinSnapshot return_pins(const Store& store, const Value& pins, c
     // Historical evidence is compared with its actual pinned generation, even
     // after the head advances. Acceptance separately requires the current head.
     return native_pins(Adapter::continuation, store, text(pins, U"association_id"), pins.at(U"selection"), probe,
-                       pins.at(U"codec"), policies, text(pins, U"generation_id"));
+                       pins.at(U"codec"), policies, text(pins, U"generation_id"), text(pins,U"adapter"));
 }
 Value execution_spec(Adapter adapter, const fs::path& root, const Value& pins, const Value& evidence,
                      const Value& capability, const Value& timeout) {

@@ -103,7 +103,7 @@ void native_preflight(const Store& store, const fs::path& root, const Value& jou
     const Value& pins = journal.at(U"pins");
     if (!schema::equal(evidence, spec.at(U"executable"))) throw StoreError("selected engine differs from the prepared trusted engine");
     const auto current = native_session::native_pins(adapter, store, text(pins, U"association_id"), pins.at(U"selection"), probe,
-                                                     pins.at(U"codec"), policies);
+                                                     pins.at(U"codec"), policies, std::nullopt, text(pins,U"adapter"));
     if (!schema::equal(current.pins, pins)) throw StoreError("native identity/content/policy/source pins changed");
     // Re-query only the same explicitly trusted, unchanged binary.
     const Value contract = native_session::query_contract(evidence, policies.query_parent);
