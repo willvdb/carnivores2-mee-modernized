@@ -10,5 +10,7 @@ namespace c2::frontend::session_policy {
 struct Policies {
     planning_store::PolicyEvaluator observer; // lodge.genesis.observer_policy
     planning_store::PolicyEvaluator hunt;     // lodge.genesis_hunt.hunt_policy
+    // Owned demo-only query scratch root; production leaves this unset.
+    std::optional<std::filesystem::path> query_parent;
 };
 }

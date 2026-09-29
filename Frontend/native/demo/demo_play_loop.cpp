@@ -53,6 +53,8 @@ Demo create_demo(const std::filesystem::path& probe, const std::filesystem::path
         store_ops::upgrade_store(store);
         Client client(store,probe,true);
         session_policy::Policies policies;
+        fs::create_directory(root/"queries");
+        policies.query_parent=root/"queries";
         policies.hunt=[](const compat::Value&,const catalog::Projection&,const compat::Value& slot,
                          const compat::Value& selection,const compat::Value&) {
             auto argv=array_value();

@@ -37,7 +37,7 @@ bool supported_contract(const Value&);
 // trusted_engine: experimental gate, digest format, executable_evidence, safe_path, hash equality.
 Value trusted_engine(const std::filesystem::path& engine, const Value& digest, bool experimental);
 // query_contract: only after explicit trust; runs `<engine> --session-capabilities`.
-Value query_contract(const Value& evidence);
+Value query_contract(const Value& evidence, const std::optional<std::filesystem::path>& parent = std::nullopt);
 // workspace_findings as a list of diagnostic objects (never authorizes state access).
 Value workspace_findings(const std::filesystem::path& root, bool returning);
 // Adapter native_pins (observer: snapshot_pins observer; hunt: mode hunt;
