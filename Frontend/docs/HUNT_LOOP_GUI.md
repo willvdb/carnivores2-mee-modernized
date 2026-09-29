@@ -12,7 +12,8 @@ presentation code. Exceptions retain the backend diagnostic messages.
 | Hunter / expedition reads | `Store::read`, `Manifest::hunters/expeditions/active_hunter` | reused; viewing selection is local |
 | Association selection | none | `play_loop::associations` includes origin, ownership, authority, current generation |
 | Catalog | `catalog::project` | reused |
-| Plan | pure `planning::Selection`, policy and launch evaluation | `Client::plan` calls fresh store-backed `plan_hunt` |
+| Live loadout advice | pure revision-pinned hunt policy | `Client::loadout_context`, immutable `LoadoutContext::evaluate/alternative`; no full content hash or launch permission |
+| Plan (CLI / explicit API) | pure `planning::Selection`, policy and launch evaluation | `Client::plan` calls fresh store-backed `plan_hunt` |
 | History | `Manifest::resolve_generation` | reused |
 | Explicit schema upgrade | none | `Client::upgrade` |
 | Prepare | none | `Client::prepare` |
@@ -30,7 +31,7 @@ The CLI is unchanged and continues to use its existing implementation.
 ## Screen flow and ownership
 
 Lodge → Expedition Console → select an association by UUID → choose catalog area,
-license, weapon and time → Validate loadout → Prepare fresh session → Run prepared
+license, weapon and time → live points/eligibility → Prepare fresh session → Run prepared
 session → Return review → Inspect → Preview acceptance → Accept reviewed candidate.
 Decline retains the candidate without advancing authority. After acceptance,
 Prepare fresh session creates a new UUID pinned to the accepted generation.
@@ -60,7 +61,7 @@ committed acceptance; orphan generations remain non-authoritative. A schema-1
 store displays an explicit upgrade action and the backup filename; the operation's
 backend result includes its backup and new G0 identities. Reading never upgrades.
 
-All operations use the single owned Worker thread; model request IDs reject stale
+Filesystem operations use the single owned Worker thread; model request IDs reject stale
 completions. Prepare and run therefore do not block RmlUi. Back can leave a pending
 operation safely; it does not imply cancellation or acceptance. Cancel run sets a
 shared atomic token, passed both to the supervisor cancellation path and prelaunch
@@ -160,11 +161,11 @@ workspaces. Logs are not streamed into the GUI. Demo evidence is disposable.
 The backend still limits production hunts to the pinned Genesis revision and
 existing supported selection policy. Unsupported content, stale pins, missing or
 corrupt snapshots, unclean returns and incomplete observations remain blocked or
-quarantined. No policy, disk schema, native codec or network format was changed.
+quarantined. No production policy, disk schema, native codec or network format was changed.
 
 Legend: **S** = automated real-document self-test; **I** = real-core integration;
-**U** = untested interactively, manual steps below. No live-session observations
-are claimed for this milestone.
+**U** = untested interactively, manual steps below. No agent-observed live-session observations
+are claimed for the automated milestone below. A later user-reported real hunt is recorded separately.
 
 | Check | Evidence / manual steps |
 | --- | --- |
@@ -228,3 +229,60 @@ the later commits. The GUI CI jobs now explicitly include both loop model and
 real-core integration tests in their focused selection. Development helper lookup
 supports both single-configuration and multi-configuration build layouts; building
 the GUI target explicitly also builds its codec and demo helpers.
+
+## Live loadout advice follow-up
+
+Code commit `75b46b0` removes the separate Validate loadout button. Association
+selection loads a read-only snapshot of the catalog and the current managed
+native score, then selection changes evaluate the existing backend hunt policy
+entirely in memory. There is no HUNTDAT fingerprint, file access, helper process,
+worker task or JSON parsing on a selection change. The original CLI plan and
+all prepare/run/reconcile/preview/accept checks remain unchanged.
+
+The Console displays available points, each option's listed requirement, the
+combined selection requirement, and remaining selection budget. Requirements
+are eligibility thresholds, not an entry fee or a deduction. Alternative options
+are checked against the other current selections; rejected options stay visible
+but disabled. Their existing option nodes are retained as eligibility changes.
+A manual Refresh points and options action reloads the snapshot. Acceptance
+invalidates the old score and automatically reloads from the accepted generation,
+while preserving the receipt. Advice never authorizes a launch: external changes
+may make a displayed estimate stale, and preparation still verifies fresh evidence.
+
+`LoadoutContext` owns its immutable projection, recorded revision, slot, score,
+generation and backend evaluator. It is neither persisted nor accepted by prepare
+as proof. A second pure policy evaluation with the maximum supported native score
+can observe the requirement for an unaffordable selection; only evaluation with
+the actual score determines eligibility. Supplied stores always use the production
+policy. The owned demo has an explicitly unaffordable second fixture weapon to
+exercise disabled options; its policy double is unavailable to supplied stores.
+
+Current production limits remain **one map, one dinosaur license, one weapon,
+one time of day, no equipment**. The intended later Carnivores-style menu uses
+single selection for map/time and multiple selection for dinosaurs, weapons and
+equipment. That UI and the corresponding backend policy expansion remain future
+work; this change neither exposes nor silently authorizes unsupported selections.
+Dropdowns are retained for this iteration, with cost-first labels and wider controls.
+
+Validation for `75b46b0`:
+
+- GUI-off Debug with Python 3.12: 51/51 pass, including CLI differential suites.
+- GUI-off Release with Python disabled: build passes.
+- System SDL3 GUI: 7/7 focused tests pass; offscreen self-test and captures pass.
+- Pinned SDL3 Release: build/install pass; staged offscreen self-test from `/tmp` passes.
+- Additional integration checks pass for pure evaluation without content files,
+  drift refusal during prepare despite cached advice, affordability and alternative
+  options, stale completion rejection, read-only behavior, production rejection
+  of the fixture policy, and accepted-generation score refresh retaining the receipt.
+- Captures visually inspected under `build/gui-captures/live-budget/`, including
+  `04b-live-points-options.png`. Logs are `build/live-budget-*.log` (local only).
+- A read-only Release measurement against the configured real Genesis test store
+  took **39.4 ms** to load the context and **0.0071 ms** per pure evaluation averaged
+  over 1001 calls. This is a local measurement, not a cross-machine performance
+  guarantee. No hunt or store mutation was performed by the timing probe.
+
+Live evidence remains separate: the user reported that their first real Genesis
+hunt through the GUI worked, before this follow-up. No agent-observed controls,
+normal-return details, acceptance or accepted-generation continuation are inferred
+from that report. This follow-up's visual/input evidence is the automated offscreen
+self-test; manual physical-controller and real-hunt checks remain open.
