@@ -17,6 +17,7 @@ public:
     // Stops accepting work, lets the running job finish, joins the thread and
     // discards queued completions. Nothing is detached.
     ~Worker();
+    void shutdown(); // join before releasing stores, documents or SDL
     Worker(const Worker&) = delete;
     Worker& operator=(const Worker&) = delete;
 

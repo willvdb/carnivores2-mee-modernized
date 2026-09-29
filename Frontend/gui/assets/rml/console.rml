@@ -39,6 +39,7 @@
                         <div class="hunter-row" data-for="h : hunters" data-attr-id="'hunter-' + h.id" data-class-selected="h.selected" data-event-click="view_hunter(h.id)">{{h.name}} …{{h.short_id}}{{h.suffix}}</div>
                         <div class="state" data-if="hunters.size == 0">No hunters in this store.</div>
                     </div>
+                </div>
                     <div class="loop-console">
                         <div class="section-title">Hunt preparation</div>
                         <div class="explain">{{source}}</div>
@@ -61,11 +62,10 @@
                         <div class="pins">{{pins}}</div>
                         <div data-if="schema_one" class="explain">Schema 1: reading does not upgrade. Explicit upgrade creates lodge.schema-1.backup.json and generation-zero identities; its backend result is shown below.
                             <button id="upgrade-button" class="btn" data-attrif-disabled="!can_upgrade" data-event-click="operate('upgrade')">Upgrade managed metadata</button></div>
-                        <div class="field"><label>Inspect retained session UUID</label><input id="session-id" type="text" data-value="recovery_id"/></div>
+                        <div class="field"><label>Inspect retained session UUID</label><input id="session-id" class="text" type="text" data-value="recovery_id"/></div>
                         <button id="inspect-session" class="btn" data-attrif-disabled="busy" data-event-click="operate('load_session')">Inspect retained session</button>
                         <div class="evidence">{{loop_details}}</div>
                     </div>
-                </div>
             </div>
         </div>
     </div>

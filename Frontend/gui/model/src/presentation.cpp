@@ -50,6 +50,7 @@ bool PresentationModel::complete_load(RequestId id, SnapshotResult result) {
     if (id != load_request_ || load_state_ != LoadState::loading) return false;
     if (result.ok()) {
         snapshot_ = std::move(result.snapshot);
+        loop.observe_associations(snapshot_->associations);
         load_state_ = LoadState::ready;
         load_error_.clear();
         // Selections are identities; drop any that the fresh observation lacks.

@@ -5,6 +5,12 @@ bool HuntLoop::select(play_loop::Association a) {
     catalog_.reset(); association_ = std::move(a); session_.reset(); preview_.reset();
     state_ = LoopState::selection; details_.clear(); error_.clear(); ++version_; return true;
 }
+void HuntLoop::observe_associations(const std::vector<play_loop::Association>& rows) {
+    if (!association_) return;
+    for (const auto& a : rows) if (a.id == association_->id) {
+        association_ = a; ++version_; return;
+    }
+}
 bool HuntLoop::loadout(planning::Selection s) {
     if (busy()) return false;
     selection_ = std::move(s); session_.reset(); preview_.reset(); state_ = LoopState::selection;

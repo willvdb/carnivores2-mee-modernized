@@ -11,6 +11,7 @@
         <button id="inspect-button" class="btn" data-attrif-disabled="!can_inspect" data-event-click="operate('inspect')">Inspect</button>
         <button id="acceptance-preview" class="btn" data-attrif-disabled="!can_preview" data-event-click="operate('preview')">Preview acceptance</button>
         <button id="accept-button" class="btn primary" data-attrif-disabled="!can_accept" data-event-click="operate('accept')">Accept reviewed candidate</button>
+        <button id="review-cancel-run" class="btn" data-attrif-disabled="!busy" data-event-click="operate('cancel')">Cancel run</button>
         <button id="decline-button" class="btn" data-attrif-disabled="busy" data-event-click="operate('decline')">Decline</button>
         <button id="recover-button" class="btn" data-attrif-disabled="!can_recover" data-event-click="operate('recover')">Recover session</button>
         <button id="recover-acceptance" class="btn" data-attrif-disabled="!can_recover_acceptance" data-event-click="operate('recover_acceptance')">Recover receipt</button>

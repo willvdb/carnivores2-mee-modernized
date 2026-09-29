@@ -4,7 +4,9 @@
 namespace c2::frontend::gui {
 Worker::Worker() : thread_([this] { run(); }) {}
 
-Worker::~Worker() {
+Worker::~Worker() { shutdown(); }
+
+void Worker::shutdown() {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         stopping_ = true;

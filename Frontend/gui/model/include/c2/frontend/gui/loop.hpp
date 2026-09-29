@@ -21,6 +21,7 @@ class HuntLoop {
 public:
     explicit HuntLoop(bool writable = false) : writable_(writable) {}
     bool select(play_loop::Association);
+    void observe_associations(const std::vector<play_loop::Association>&);
     bool loadout(planning::Selection);
     bool inspect_session(std::u32string id); // explicit UUID, including historical/blocked sessions
     std::optional<LoopRequest> begin(Operation);

@@ -34,6 +34,10 @@ int main(int argc, char** argv) {
         std::puts(scenario == "bad-contract" ? "{\"version\":99}" : EngineSession::Capability); return 0;
     }
     if (result != EngineSession::Startup::Ready) { std::fprintf(stderr,"%s\n",error.c_str()); return 2; }
+#ifdef C2_GUI_DEMO_FIXTURE
+    // Keep the owned child observable long enough to exercise cancellation.
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+#endif
     if (scenario == "hang") std::this_thread::sleep_for(std::chrono::seconds(60));
     if (scenario == "nonzero") return 7;
     const auto name = "trophy0" + std::to_string(EngineSession::Slot()) + ".sav";

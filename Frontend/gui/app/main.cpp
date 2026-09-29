@@ -7,7 +7,11 @@
 namespace {
 void usage() {
     std::cout << "c2-frontend-gui [--store DIR] [--assets DIR] [--size WxH] [--self-test] [--help]\n"
-                 "  --store DIR   open an existing lodge store read-only (never created, upgraded or written)\n"
+                 "  --store DIR   open an existing lodge store read-only by default\n"
+                 "  --allow-writes permit explicit prepare/run/accept/recovery/upgrade on --store\n"
+                 "  --engine PATH --trusted-engine-sha256 HEX --experimental-native-hunt\n"
+                 "                explicit trusted engine authorization for supplied stores\n"
+                 "  --probe PATH  profile helper (default beside executable)\n"
                  "  --assets DIR  asset root override (else C2_FRONTEND_GUI_ASSETS, then the install layout)\n"
                  "  --size WxH    initial window size in window coordinates (default 1280x720)\n"
                  "  --self-test   drive the real RmlUi screens headlessly and exit non-zero on failure\n"
@@ -28,6 +32,14 @@ int main(int argc, char** argv) {
         };
         if (arg == "--help" || arg == "-h") { usage(); return 0; }
         if (arg == "--store") { options.store = std::filesystem::u8path(value("--store")); continue; }
+        if (arg == "--allow-writes") { options.allow_writes = true; continue; }
+        if (arg == "--probe") { options.probe = std::filesystem::u8path(value("--probe")); continue; }
+        if (arg == "--engine") { options.authorization.engine = std::filesystem::u8path(value("--engine")); continue; }
+        if (arg == "--trusted-engine-sha256") {
+            auto digest = std::string(value("--trusted-engine-sha256"));
+            options.authorization.trusted_sha256 = std::u32string(digest.begin(),digest.end()); continue;
+        }
+        if (arg == "--experimental-native-hunt") { options.authorization.experimental_native_hunt = true; continue; }
         if (arg == "--assets") { options.assets = std::filesystem::u8path(value("--assets")); continue; }
         if (arg == "--self-test") { options.self_test = true; continue; }
         if (arg == "--capture") { options.capture_dir = std::filesystem::u8path(value("--capture")); continue; }
@@ -40,6 +52,7 @@ int main(int argc, char** argv) {
         usage();
         return 2;
     }
+    if (options.self_test && options.store) { std::cerr << "--self-test requires the owned demo store\n"; return 2; }
     const bool self_test = options.self_test;
     App app(options);
     std::string error;

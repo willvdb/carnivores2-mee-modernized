@@ -3,6 +3,9 @@
 #include "check.hpp"
 #include <fstream>
 #include <map>
+#include <thread>
+#include <chrono>
+#include "c2/frontend/gui/worker.hpp"
 using namespace c2::frontend;
 using namespace c2::frontend::gui;
 std::map<std::string,std::string> bytes(const std::filesystem::path& root) {
@@ -43,6 +46,31 @@ int main(int argc, char** argv) {
         try { demo.client.run(s2.id,demo.authorization,cancel); CHECK(false); }
         catch (const std::exception&) {}
         CHECK(demo.client.inspect(s2.id).state==U"prepared");
+        cancel=false;
+        std::thread canceller([&] {
+            const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+            while(std::chrono::steady_clock::now()<deadline) {
+                if(demo.client.inspect(s2.id).state==U"running") {cancel=true; return;}
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            cancel=true;
+        });
+        auto cancelled=demo.client.run(s2.id,demo.authorization,cancel);
+        canceller.join();
+        CHECK(cancelled.state==U"returned");
+        auto quarantine=demo.client.reconcile(s2.id); CHECK(quarantine.state==U"quarantined");
+        CHECK(demo.client.inspect(s2.id).state==U"quarantined");
+        CHECK(!demo.client.preview(s2.id,*s2.generation).allowed);
+        // Joined shutdown during a real core run, with the completion discarded.
+        auto s3=demo.client.prepare(a.id,selection,demo.authorization);
+        Worker worker; std::atomic<bool> stop{false}, started{false};
+        bool completion=false;
+        worker.submit([&] { started=true; try { demo.client.run(s3.id,demo.authorization,stop); } catch(const std::exception&) {} },
+                      [&] { completion=true; });
+        while(!started) std::this_thread::yield();
+        auto shutdown_start=std::chrono::steady_clock::now(); stop=true; worker.shutdown();
+        CHECK(std::chrono::steady_clock::now()-shutdown_start<std::chrono::seconds(10));
+        CHECK(!completion); CHECK(worker.pending_completions()==0);
         auto before=bytes(demo.directory);
         play_loop::Client ro(Store(demo.directory),std::filesystem::path(argv[1]));
         ro.inspect(s1.id); ro.preview(s1.id,*s1.generation);
