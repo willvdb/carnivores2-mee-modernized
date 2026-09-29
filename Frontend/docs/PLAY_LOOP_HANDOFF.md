@@ -1,5 +1,11 @@
 # Backend play loop → Expedition Console
 
+Current native selection policy: new hunts use [Genesis v2](GENESIS_HUNT.md),
+with multiple licenses/weapons and four supported accessories. Existing v1
+session pins retain their strict original semantics. The historical examples
+below retain their original versions; the current GUI boundary/evidence is in
+[HUNT_LOOP_GUI.md](HUNT_LOOP_GUI.md). No store schema version changed.
+
 The implemented loop is: select association → validate one area/license/weapon →
 prepare isolated hunt → explicit trusted launch → inspect candidate → preview →
 explicit acceptance → prepare again from the accepted generation. No GUI, server,

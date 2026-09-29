@@ -1,4 +1,72 @@
-# Pinned Genesis normal hunt v1
+# Pinned Genesis normal hunt policies
+
+## Current native policy: v2
+
+New native plans/preparations use `genesis-current-mee-hunt-v2`, at the **same**
+content revision recorded below. The source audit is
+[EXPANDED_LOADOUT_AUDIT.md](EXPANDED_LOADOUT_AUDIT.md).
+
+- One area and one time (0/1/2), one or more distinct catalog licenses (0..8),
+  one or more distinct weapons (0..7), and any subset of equipment:0..3.
+- Equipment identities map to camouflage, radar, cover scent, double ammo,
+  respectively. The pinned Menu prices are 10, 100, 20, 50. The policy uses the
+  catalog's evidenced prices, never invented defaults. All four can combine.
+  Flags are `-camo`, `-radar`, `-scent`, `-double` in that canonical order.
+- Area + every selected license/weapon/equipment price is the eligibility
+  threshold. It is not a frontend fee. Native score/rank/options are not edited.
+- Multiple ordinal bits are ORed (maximum din=511, wep=255); only the engine
+  shifts din by 10. Grouped licenses remain catalog groups, not individual species.
+- Camouflage, radar and scent apply native award factors .85, .70 and .80;
+  effects stack and the engine truncates the award. Double ammo changes reserve
+  shots/magazines, not score. No frontend prediction rewrites native awards.
+- Empty license/weapon selections are supported while editing, but not for
+  preparation. Unknown/duplicate IDs, unsupported slots, ambiguous/unpriced
+  entries, alternate revisions, arbitrary flags and other modes are refused.
+- Night vision and tranquilizers are engine/Menu features with no catalog IDs
+  in this pinned four-slot projection. They are not exposed, priced or aliased.
+  Physical weapon switching, equipment effects and accepted gameplay continuation
+  still need the human checks in HUNT_LOOP_GUI.md.
+
+`planning::expanded_hunt_policy` is the current pure typed policy;
+`planning::hunt_policy` retains strict v1 semantics for compatibility.
+`Selection::hunt` accepts equipment as its final optional vector;
+`Selection::with` replaces the area or toggles one ID, and `at_time` replaces time.
+`LoadoutContext::alternative` now means the proposed toggle (area replacement).
+Its `can_change` describes whether that edit is eligible; `allowed` describes
+whether the resulting complete loadout is ready. Removal always remains possible.
+Partial advice quotes the native sum even with an empty license/weapon group.
+Advice is in-memory only, never accepted as launch permission.
+
+CLI example (native, supplied store and probe):
+
+```sh
+c2-frontend-native --store TASK_STORE --probe PROBE native-hunt plan ASSOCIATION \
+  --area areas:0 --license licenses:0 --license licenses:1 \
+  --weapon weapons:0 --weapon weapons:1 --equipment equipment:0 --equipment equipment:2 --time 1
+```
+
+Use the same repeated selection flags with `native-hunt prepare`, plus the existing
+engine/hash/experimental authorization. Run/preview/explicit accept are unchanged.
+The independently retained Python reference remains v1; v2 behavior is tested by
+native-only characterization, while existing v1 differential suites stay intact.
+
+## Prepared-session and saved-history compatibility
+
+No codec, disk, wire or store schema version/field changes. The plan/session
+envelope kinds retain their existing versions; the policy ID versions semantics. Existing schema-3/4
+session pins explicitly select **their recorded** v1 or v2 policy during run,
+reconciliation and acceptance. Strict v1 validation is unchanged: no multi-bit
+loadouts/equipment can acquire v1 authorization. Fresh sessions use v2 and never
+reuse/retarget historical pins. Acceptance records the actual pinned policy in
+existing generation/receipt fields, whose validation permits only the corresponding
+bounded masks and flags. Old frontends reject v2 histories; they must not be used
+to continue a store after v2 acceptance. Stale/blocked/quarantined sessions remain
+inspectable, and all existing explicit acceptance and trust checks remain required.
+
+## Historical v1 contract
+
+The following is the original v1 record, retained for old sessions and the Python
+reference. Its single-selection limitation does not describe new native hunts.
 
 `genesis-current-mee-hunt-v1` supports only the exact `huntdat-sha256-v1`
 revision `9c6fc5221744ad8e9a74689d308ba572b6aefe6cd6c317e030e5774757c2bf65`

@@ -31,7 +31,7 @@ The CLI is unchanged and continues to use its existing implementation.
 ## Screen flow and ownership
 
 Lodge → Expedition Console → select an association by UUID → choose catalog area,
-license, weapon and time → live points/eligibility → Prepare fresh session → Run prepared
+licenses, weapons, equipment and time → live points/eligibility → Prepare fresh session → Run prepared
 session → Return review → Inspect → Preview acceptance → Accept reviewed candidate.
 Decline retains the candidate without advancing authority. After acceptance,
 Prepare fresh session creates a new UUID pinned to the accepted generation.
@@ -230,7 +230,7 @@ real-core integration tests in their focused selection. Development helper looku
 supports both single-configuration and multi-configuration build layouts; building
 the GUI target explicitly also builds its codec and demo helpers.
 
-## Live loadout advice follow-up
+## Live loadout advice follow-up (historical v1)
 
 Code commit `75b46b0` removes the separate Validate loadout button. Association
 selection loads a read-only snapshot of the catalog and the current managed
@@ -257,7 +257,7 @@ the actual score determines eligibility. Supplied stores always use the producti
 policy. The owned demo has an explicitly unaffordable second fixture weapon to
 exercise disabled options; its policy double is unavailable to supplied stores.
 
-Current production limits remain **one map, one dinosaur license, one weapon,
+At `75b46b0`, production limits were **one map, one dinosaur license, one weapon,
 one time of day, no equipment**. The intended later Carnivores-style menu uses
 single selection for map/time and multiple selection for dinosaurs, weapons and
 equipment. That UI and the corresponding backend policy expansion remain future
@@ -286,3 +286,99 @@ hunt through the GUI worked, before this follow-up. No agent-observed controls,
 normal-return details, acceptance or accepted-generation continuation are inferred
 from that report. This follow-up's visual/input evidence is the automated offscreen
 self-test; manual physical-controller and real-hunt checks remain open.
+
+
+## Expanded loadout milestone (2026-09-29)
+
+Branch `frontend/expanded-loadout`, based on open PR #33's `766a6d2` head.
+This is a dependent follow-up, not a merge into main. Final tested code:
+`3225b7395d37bc265fdd4f1c2776115cd8196a9f`; later commits are documentation only.
+
+Production native hunts now use [Genesis v2](GENESIS_HUNT.md): 1..9 catalog
+licenses, 1..8 weapons, any subset of the four pinned equipment entries, one map
+and one time. No content revision, native codec or store format changed. See the
+[source audit](EXPANDED_LOADOUT_AUDIT.md) for masks, switching, prices, options and
+scoring evidence, and GENESIS_HUNT.md for strict compatibility with v1 pins.
+
+The Console uses visible checkable button lists for licenses, weapons and
+equipment. Native IDs remain identities; labels and positions never determine
+selection. Each row shows its requirement, selected state and disabled reason.
+Budget appears above the loadout and near the action buttons. Selected choices
+remain removable when the loadout is invalid/over budget or its advice snapshot
+needs refresh. Affordable additions to an incomplete loadout are possible;
+Prepare requires complete eligibility. Policy and arithmetic stay in native core.
+Rows remain stable through selection, time changes and accepted-generation refresh.
+Map/time retain dropdowns; Back precedence, controller navigation and lodge assets
+are unchanged. Refresh/acceptance and all preparation/run trust gates remain fresh.
+
+Automated evidence (authored fixtures are **not** real equipment/gameplay evidence):
+
+| Check at tested code SHA | Result |
+| --- | --- |
+| GUI off Debug, Python 3.12, full CLI/reference/differential suite | 52/52 pass |
+| GUI off Release, Python discovery disabled | Build passes |
+| System SDL3 GUI, focused tests and real-document capture | 7/7 pass; capture self-test passes, images visually inspected |
+| Pinned SDL3 Release, staged execution from `/tmp` with restricted PATH | Build/install/self-test pass; staged asset path verified |
+| Pure v2 mask/equipment combinations | 256 combinations, exact thresholds and insufficient-score refusals |
+| Engine source characterization | Actual CommandLine, SubmitDinoScore and refillWeapons bodies; all 16 supported equipment subsets, mask bounds/shift, stacked/truncated awards, possession and double ammo |
+| Historical compatibility | Unchanged v1 oracle/differential tests; v2 receipt masks/flags rejected as v1; unknown/duplicate flags and out-of-bounds masks refused |
+| Expanded real-core fixture loop | Multi-license/weapon/equipment preparation, return, explicit acceptance, score refresh, prepare again; stale/cancel/read-only/digest gates retained |
+| Headless model / real document | Empty-group editing, add/remove, removal while still over budget, disabled additions, stale completion rejection, focus/node retention, accepted score 100→107 and retained selection |
+
+Final commands are the Exact commands above, with `-DC2_FRONTEND_GUI=OFF` explicit
+for headless builds and the Python 3.12 executable also supplied to `gui-dev`.
+Additional/updated commands:
+
+```sh
+ctest --test-dir build/hunt-loop-debug --parallel 6 --output-on-failure
+ctest --test-dir build/gui-dev -R frontend-gui- --output-on-failure
+SDL_VIDEODRIVER=offscreen build/gui-dev/gui/c2-frontend-gui --self-test \
+  --capture build/gui-captures/expanded-loadout
+cmake --install build/gui-fetch --prefix "$PWD/build/hunt-loop-stage"
+(cd /tmp && PATH=/usr/bin:/bin SDL_VIDEODRIVER=offscreen \
+  /home/willvdb/code/games/carnivores2-mee-modernized/build/hunt-loop-stage/bin/c2-frontend-gui --self-test)
+```
+
+Logs are under `build/expanded-loadout-evidence/`; captures are under
+`build/gui-captures/expanded-loadout/` (ignored, not distributed). The only
+intentional policy-output differences are native v2 plans/argv/requirements and
+v2 provenance acceptance. Python stays v1; no oracle is weakened to accept v2.
+
+### Real installation and manual follow-up
+
+Read-only inspection found the configured live store, five retained v1 candidate
+sessions and two generations. Nothing was deleted, retargeted or automatically
+accepted. That metadata is not a claim that a human verified acceptance/continuation.
+The user's earlier successful real hunt and live-affordability report remains
+separate from this milestone's automated evidence.
+
+A production read-only plan using two licenses/two weapons, camouflage and scent
+matched the unchanged pinned fingerprint and returned din=3, wep=3 and requirement
+180 at the tested code SHA. The entire supplied store and installed SAV/SAB pair
+were hashed before/after and stayed byte-identical. No engine launch or acceptance
+occurred. No native profile bytes were altered
+to enable equipment. Full equipment behavior is source-characterized, not played.
+
+Human checklist for the existing isolated launcher (or a separate disposable store):
+
+1. Run `build/genesis-live-tncg13ow/launch-gui.sh` after reviewing its explicit
+   engine/hash/store settings. It uses the newly built pinned GUI. Keep the real
+   installation closed to other writers. Preserve existing sessions/generations.
+2. Select two affordable catalog licenses and two weapons. Add affordable equipment
+   singly and in combinations; confirm budget and labels. Deselect everything,
+   then add it back; Prepare must require at least one license and weapon.
+3. Prepare fresh, run, enter the world. Verify selected weapon possession and
+   switching with number keys, subject to animation/ammunition/underwater rules.
+   Check double-ammo reserves, radar, scent/camouflage effects as observable.
+   Do not manufacture points to unlock unaffordable combinations; leave those untested.
+4. Return normally, inspect observed native changes and compare protected native
+   hashes. Preview the candidate; accept only if you choose to accept that exact
+   digest/predecessor. Process exit alone never advances authority.
+5. After explicit acceptance, confirm score refresh and a fresh session UUID pinned
+   to the accepted generation. Play the continuation and record actual observations.
+6. Record build/engine/content hashes, selections and platform. Physical-controller,
+   live Wayland and Windows interaction for this expansion remain untested here.
+
+Night vision/tranquilizers remain outside the pinned catalog support. The full
+artwork-driven Carnivores redesign is still the next milestone; no artwork slot
+filenames, lodge layout, hashing/cache strategy or unrelated screens were changed.

@@ -6,6 +6,8 @@
 lives under `gui/`; it now connects the Expedition Console to the backend play loop.
 See [docs/HUNT_LOOP_GUI.md](docs/HUNT_LOOP_GUI.md) for write opt-in, trust gates,
 asset-free demo limits and verification evidence.
+The Console supports multiple licenses/weapons and the four pinned equipment
+entries; map/time remain single-select. See [Genesis policy and session compatibility](docs/GENESIS_HUNT.md).
 See [docs/RMLUI_EVALUATION.md](docs/RMLUI_EVALUATION.md).
 
 The Python implementation is retained for reference, differential tests and
