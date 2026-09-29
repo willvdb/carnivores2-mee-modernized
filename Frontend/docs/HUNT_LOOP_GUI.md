@@ -52,7 +52,9 @@ backend writer lock. Process completion never calls acceptance. There is no forc
 accept and no retargeting of a prepared session after a generation advances.
 
 The retained-session UUID field opens historical or blocked sessions without
-launching. Recover session delegates to the existing no-relaunch/no-PID-signaling
+launching. It clears the preparation association and displays the session's own
+association UUID, so review cannot show another selected association as its owner.
+Choose an association explicitly again before preparing from a recovery view. Recover session delegates to the existing no-relaunch/no-PID-signaling
 recovery. Recover receipt only repairs a convenience receipt for an already
 committed acceptance; orphan generations remain non-authoritative. A schema-1
 store displays an explicit upgrade action and the backup filename; the operation's
@@ -181,20 +183,18 @@ are claimed for this milestone.
 
 ## Verification evidence (2026-09-28)
 
-Backend/model code tested at `0eb38c836bbffb53b5c531e27a35706ee93bdcbe`.
-The final GUI change at `c260a87f90cc6eabbfaa7e1811aec7469f1f9821` only adds
-conditional disabled classes and their self-test assertions; it changes no
-backend, model, worker or GUI-off sources. Documentation commits follow these
-code commits. Host: CachyOS Linux, GCC 16, CMake 4.4, Mesa OpenGL 4.6.
+Final local matrix tested code commit `3c413e1cfafa6f7ebc28f354171c7d3c852963e0`.
+Documentation commits follow this code commit. Host: CachyOS Linux, GCC 16,
+CMake 4.4, Mesa OpenGL 4.6.
 
 | Configuration / command above | Tested code | Result |
 | --- | --- | --- |
-| GUI off, Debug, tests on, CPython 3.12.14 | `0eb38c8` | 51/51 pass, including existing CLI/reference/differential suites and native workflow sandbox |
-| GUI off, Release, Python discovery disabled | `0eb38c8` | configure and build pass |
-| GUI on, system SDL3, focused `frontend-gui-*` | `c260a87` | 7/7 pass, including real-core integration and offscreen documents |
-| System SDL3 self-test with `--capture` | `c260a87` | pass; images under `build/gui-captures/hunt-loop/` |
-| GUI on, pinned SDL3, Release, Python discovery disabled | `c260a87` | build and staged install pass |
-| Staged pinned build, cwd `/tmp`, `PATH=/usr/bin:/bin`, offscreen self-test | `c260a87` | pass; resource log identifies staged `share/c2-frontend-gui` |
+| GUI off, Debug, tests on, CPython 3.12.14 | `3c413e1` | 51/51 pass, including existing CLI/reference/differential suites and native workflow sandbox |
+| GUI off, Release, Python discovery disabled | `3c413e1` | configure and build pass |
+| GUI on, system SDL3, focused `frontend-gui-*` | `3c413e1` | 7/7 pass, including real-core integration and offscreen documents |
+| System SDL3 self-test with `--capture` | `3c413e1` | pass; images under `build/gui-captures/hunt-loop/` |
+| GUI on, pinned SDL3, Release, Python discovery disabled | `3c413e1` | build and staged install pass |
+| Staged pinned build, cwd `/tmp`, `PATH=/usr/bin:/bin`, offscreen self-test | `3c413e1` | pass; resource log identifies staged `share/c2-frontend-gui` |
 
 Local build/configure/test logs are copied to `build/hunt-loop-evidence/` (ignored,
 not shipped). Headless captures were visually inspected, including the raw native
@@ -211,3 +211,20 @@ and completed stale IDs, changed loadout invalidation, decline/accept, missing
 digest, recovery errors and read-only gates. The real-document test drives the
 same button callbacks as users, including Back during pending run, explicit
 acceptance and subsequent preparation from the accepted generation.
+
+
+Hosted CI at `393a878b637c83fd85c4c01656ea22338f9aa0b3`:
+[Frontend run 36509041480](https://github.com/willvdb/carnivores2-mee-modernized/actions/runs/36509041480)
+passed all four jobs: Linux backend **51/51**, Windows backend **66/66**, Linux GUI
+(including documents and staged install) and Windows GUI (build, headless tests,
+install and help). The [repository-wide Build and Test run](https://github.com/willvdb/carnivores2-mee-modernized/actions/runs/36509041500)
+also passed. Windows real-core loop integration passed in 23.43 seconds.
+
+The later retained-session identity fix and development-helper/CI-test-selection
+follow-up (`963fc19`, `3c413e1`) change only GUI/model/test/build glue, not the native
+backend or its CLI. The local matrix above includes those follow-ups. Their hosted
+CI status is tracked on the PR; the earlier hosted results are not attributed to
+the later commits. The GUI CI jobs now explicitly include both loop model and
+real-core integration tests in their focused selection. Development helper lookup
+supports both single-configuration and multi-configuration build layouts; building
+the GUI target explicitly also builds its codec and demo helpers.
