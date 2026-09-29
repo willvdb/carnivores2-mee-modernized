@@ -40,11 +40,30 @@ struct Authorization {
     std::u32string trusted_sha256;
     bool experimental_native_hunt = false;
 };
+// In-memory advice only: never authorizes launch and never replaces fresh prepare/run checks.
+struct LoadoutAdvice {
+    bool allowed = false;
+    std::optional<planning::Integer> score, requirement, remaining;
+    std::string diagnostic;
+};
+class LoadoutContext {
+public:
+    const catalog::Projection& catalog() const;
+    const std::optional<std::u32string>& generation() const;
+    LoadoutAdvice evaluate(const planning::Selection&) const;
+    LoadoutAdvice alternative(const planning::Selection&, catalog::Group, std::u32string id) const;
+private:
+    struct Impl;
+    std::shared_ptr<const Impl> impl_;
+    explicit LoadoutContext(std::shared_ptr<const Impl> p) : impl_(std::move(p)) {}
+    friend class Client;
+};
 struct Access; // private fixture seam; not defined in the installed API
 class Client {
 public:
     Client(Store store, std::optional<std::filesystem::path> probe, bool allow_writes = false);
     catalog::Projection catalog(std::u32string_view association) const;
+    LoadoutContext loadout_context(std::u32string_view association) const;
     Plan plan(std::u32string_view association, const planning::Selection&) const;
     Session prepare(std::u32string_view association, const planning::Selection&,
                     const Authorization&, unsigned timeout_seconds = 900) const;

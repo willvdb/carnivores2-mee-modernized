@@ -20,8 +20,18 @@ void Screens::bind_loop() {
     ctor.BindFunc("schema_one",[this](Rml::Variant& v){v=model_.snapshot() && model_.snapshot()->schema_version==1;});
     ctor.BindFunc("loop_details",[this](Rml::Variant& v){v=model_.loop.details();});
     ctor.BindFunc("loop_error",[this](Rml::Variant& v){v=model_.loop.error();});
+    ctor.BindFunc("loadout_budget",[this](Rml::Variant& v){
+        const auto& advice=model_.loop.advice();
+        if(!advice) { v=std::string("Points unavailable — select an association or refresh points."); return; }
+        auto number=[](const auto& n){return n ? n->decimal : std::string("unavailable");};
+        v="Available points: "+number(advice->score)+"  |  Selected requirement: "+number(advice->requirement)+
+          "  |  Remaining selection budget: "+number(advice->remaining);
+    });
+    ctor.BindFunc("loadout_diagnostic",[this](Rml::Variant& v){
+        const auto& a=model_.loop.advice(); v=a ? a->diagnostic : std::string{};
+    });
     ctor.BindFunc("loop_status",[this](Rml::Variant& v){
-        static const char* names[]={"Select association and loadout","Validating intent","Validated intent only",
+        static const char* names[]={"Select association and loadout","Loading loadout information","Loadout fits available points — ready to prepare",
             "Preparing isolated session","Prepared","Running — logs remain in workspace","Returned — inspect candidate",
             "Inspecting","Review observations","Revalidating acceptance preview","Eligible for explicit acceptance",
             "Acceptance blocked — evidence retained","Accepting reviewed candidate","Accepted — prepare a fresh session",
@@ -111,28 +121,57 @@ void Screens::sync_loop() {
             select->Add(Rml::StringUtilities::EncodeRml(hunter+" / "+expedition+" ["+to_utf8(a.id)+"]"),to_utf8(a.id));
         }
     }
-    if(model_.loop.catalog() && catalog_association_!=loop_association_) {
-        catalog_association_=loop_association_;
+    if(model_.loop.catalog() && (catalog_association_!=loop_association_ || catalog_version_!=model_.loop.catalog_version())) {
+        const bool new_association=catalog_association_!=loop_association_;
+        catalog_association_=loop_association_; catalog_version_=model_.loop.catalog_version();
+        bool selection_changed=false;
         auto fill=[&](const char* id,catalog::Group group,std::string& selected){
             auto* control=rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(console_->GetElementById(id));
             if(!control) return;
-            control->RemoveAll(); selected.clear();
-            for(const auto& entry:model_.loop.catalog()->entries(group)) {
+            const auto previous_selection=selected;
+            const auto entries=model_.loop.catalog()->entries(group);
+            bool membership_changed=control->GetNumOptions()!=static_cast<int>(entries.size());
+            if(!membership_changed) for(std::size_t i=0;i<entries.size();++i)
+                membership_changed=membership_changed || control->GetOption(static_cast<int>(i))->GetAttribute<Rml::String>("value","")!=to_utf8(entries[i].id());
+            if(membership_changed) control->RemoveAll();
+            if(new_association) selected.clear();
+            bool selected_found=false; int index=0;
+            for(const auto& entry:entries) {
                 auto eid=to_utf8(entry.id()); std::string label=eid;
                 if(auto l=entry.label()) {
-                    if(auto text=std::get_if<std::u32string>(&*l)) label=to_utf8(*text)+" ["+eid+"]";
-                    else label=std::get<catalog::Integer>(*l).decimal+" ["+eid+"]";
+                    if(auto text=std::get_if<std::u32string>(&*l)) label=to_utf8(*text);
+                    else label=std::get<catalog::Integer>(*l).decimal;
                 }
-                control->Add(Rml::StringUtilities::EncodeRml(label),eid);
-                if(selected.empty()) selected=eid;
+                if(auto cost=entry.price()) label=cost->decimal+" pts — "+label;
+                else label+=" — requirement unavailable";
+                const auto encoded=Rml::StringUtilities::EncodeRml(label);
+                if(membership_changed) control->Add(encoded,eid);
+                else if(control->GetOption(index)->GetInnerRML()!=encoded) control->GetOption(index)->SetInnerRML(encoded);
+                selected_found=selected_found || selected==eid; ++index;
             }
+            if(!selected_found) selected=entries.empty() ? std::string{} : to_utf8(entries.front().id());
+            selection_changed=selection_changed || selected!=previous_selection;
         };
         fill("loop-area",catalog::Group::areas,loop_area_);
         fill("loop-license",catalog::Group::licenses,loop_license_);
         fill("loop-weapon",catalog::Group::weapons,loop_weapon_);
-        model_.loop.loadout(planning::Selection::hunt(to_utf32(loop_area_),{to_utf32(loop_license_)},{to_utf32(loop_weapon_)},{loop_time_}));
+        if(new_association || selection_changed) model_.loop.loadout(planning::Selection::hunt(to_utf32(loop_area_),{to_utf32(loop_license_)},{to_utf32(loop_weapon_)},{loop_time_}));
     }
-    for(const char* name:{"source","busy","schema_one","loop_details","loop_error","loop_status","pins",
+    // Toggle existing option nodes; rebuilding the list loses dropdown focus.
+    for(const auto& field:std::vector<std::pair<const char*,catalog::Group>>{
+            {"loop-area",catalog::Group::areas},{"loop-license",catalog::Group::licenses},{"loop-weapon",catalog::Group::weapons}}) {
+        auto* control=rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(console_->GetElementById(field.first));
+        if(!control) continue;
+        for(int i=0;i<control->GetNumOptions();++i) {
+            auto* option=control->GetOption(i);
+            const auto advice=model_.loop.alternative(field.second,to_utf32(option->GetAttribute<Rml::String>("value","")));
+            if(advice.allowed) option->RemoveAttribute("disabled");
+            else option->SetAttribute("disabled",Rml::String());
+            option->SetClass("disabled",!advice.allowed);
+            option->SetAttribute("title",advice.diagnostic);
+        }
+    }
+    for(const char* name:{"source","busy","schema_one","loop_details","loop_error","loop_status","pins","loadout_budget","loadout_diagnostic",
                           "association","loop_area","loop_license","loop_weapon","loop_time"}) loop_model_.DirtyVariable(name);
     for(const auto& pair:operations) loop_model_.DirtyVariable(std::string("can_")+pair.first);
     if(review_open_ && !review_shown_) {

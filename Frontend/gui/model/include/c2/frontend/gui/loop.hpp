@@ -7,7 +7,7 @@ enum class LoopState { selection, validating, validated, preparing, prepared, ru
                        inspecting, reviewing, previewing, eligible, blocked, accepting, accepted,
                        recovering, declined, error };
 using LoopValue = std::variant<std::monostate, play_loop::Plan, play_loop::Session, play_loop::Preview,
-                               play_loop::Receipt, play_loop::Evidence, catalog::Projection>;
+                               play_loop::Receipt, play_loop::Evidence, catalog::Projection, play_loop::LoadoutContext>;
 struct LoopResult { LoopValue value; std::string error; };
 struct LoopRequest {
     std::uint64_t id = 0;
@@ -30,6 +30,11 @@ public:
     void decline();
     bool can(Operation) const;
     const std::optional<catalog::Projection>& catalog() const { return catalog_; }
+    const std::optional<play_loop::LoadoutAdvice>& advice() const { return advice_; }
+    play_loop::LoadoutAdvice alternative(catalog::Group g, std::u32string id) const {
+        return context_ ? context_->alternative(selection_,g,std::move(id)) : play_loop::LoadoutAdvice{};
+    }
+    std::uint64_t catalog_version() const { return catalog_version_; }
     bool busy() const { return pending_.has_value(); }
     LoopState state() const { return state_; }
     const std::optional<play_loop::Association>& association() const { return association_; }
@@ -41,9 +46,13 @@ public:
     std::uint64_t version() const { return version_; }
 private:
     std::optional<catalog::Projection> catalog_;
+    std::optional<play_loop::LoadoutContext> context_;
+    std::optional<play_loop::LoadoutAdvice> advice_;
+    bool needs_refresh_ = false, refreshing_after_accept_ = false;
+    void evaluate_loadout();
     bool writable_;
     LoopState state_ = LoopState::selection;
-    std::uint64_t next_ = 1, version_ = 0;
+    std::uint64_t next_ = 1, version_ = 0, catalog_version_ = 0;
     std::optional<LoopRequest> pending_;
     std::optional<play_loop::Association> association_;
     std::optional<play_loop::Session> session_;

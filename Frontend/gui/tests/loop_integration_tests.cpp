@@ -24,6 +24,25 @@ int main(int argc, char** argv) {
         auto a=play_loop::associations(Store(demo.directory).read()).front();
         auto selection=planning::Selection::hunt(U"areas:0",{U"licenses:0"},{U"weapons:0"},{"1"});
         auto protected_bytes=bytes(demo.owned_root/"authored-content");
+        auto context=demo.client.loadout_context(a.id);
+        const auto advice=context.evaluate(selection);
+        CHECK(advice.allowed); CHECK(advice.score->decimal=="100");
+        CHECK(advice.requirement->decimal=="35"); CHECK(advice.remaining->decimal=="65");
+        const auto expensive=context.alternative(selection,catalog::Group::weapons,U"weapons:1");
+        CHECK(!expensive.allowed); CHECK(expensive.requirement->decimal=="215");
+        CHECK(expensive.remaining->decimal=="-115"); CHECK(!expensive.diagnostic.empty());
+        CHECK(!context.alternative(selection,catalog::Group::weapons,U"missing").allowed);
+        HuntLoop interactive(true); interactive.select(a);
+        auto load=*interactive.begin(Operation::catalog);
+        CHECK(!interactive.complete(load.id+1,{context,{}}));
+        CHECK(interactive.complete(load.id,{context,{}}));
+        CHECK(interactive.can(Operation::prepare));
+        interactive.loadout(planning::Selection::hunt(U"areas:0",{U"licenses:0"},{U"weapons:1"},{"1"}));
+        CHECK(!interactive.can(Operation::prepare)); CHECK(!interactive.advice()->allowed);
+        interactive.loadout(selection); CHECK(interactive.can(Operation::prepare));
+        HuntLoop read_only; read_only.select(a); auto read_load=*read_only.begin(Operation::catalog);
+        read_only.complete(read_load.id,{context,{}}); CHECK(read_only.advice()->allowed);
+        CHECK(!read_only.can(Operation::prepare));
         demo.client.plan(a.id,selection);
         auto s1=demo.client.prepare(a.id,selection,demo.authorization);
         auto stale=demo.client.prepare(a.id,selection,demo.authorization);
@@ -39,6 +58,23 @@ int main(int argc, char** argv) {
         auto preview=demo.client.preview(s1.id,*s1.generation); CHECK(preview.allowed);
         CHECK(!preview.candidate_sha256.empty());
         auto receipt=demo.client.accept(preview); CHECK(receipt.result==U"accepted");
+        auto prepare_request=*interactive.begin(Operation::prepare); interactive.complete(prepare_request.id,{s1,{}});
+        auto run_request=*interactive.begin(Operation::run); interactive.complete(run_request.id,{candidate,{}});
+        auto preview_request=*interactive.begin(Operation::preview); interactive.complete(preview_request.id,{preview,{}});
+        auto accept_request=*interactive.begin(Operation::accept); interactive.complete(accept_request.id,{receipt,{}});
+        CHECK(interactive.state()==LoopState::accepted); CHECK(!interactive.advice());
+        CHECK(!interactive.can(Operation::prepare)); // new generation must refresh advice
+
+        CHECK(context.evaluate(selection).score->decimal=="100"); // immutable old snapshot
+        const auto refreshed=demo.client.loadout_context(a.id);
+        CHECK(refreshed.generation()==receipt.current_generation);
+        CHECK(refreshed.evaluate(selection).score->decimal=="107");
+        auto refresh_request=*interactive.begin(Operation::catalog);
+        CHECK(!interactive.complete(load.id,{context,{}}));
+        interactive.complete(refresh_request.id,{refreshed,{}});
+        CHECK(interactive.state()==LoopState::accepted); CHECK(interactive.can(Operation::prepare));
+        CHECK(interactive.details()==receipt.details);
+        CHECK(interactive.advice()->score->decimal=="107");
         auto s2=demo.client.prepare(a.id,selection,demo.authorization);
         CHECK(s2.id!=s1.id); CHECK(s2.generation==receipt.current_generation);
         auto failed=demo.client.run(stale.id,demo.authorization,cancel); CHECK(failed.state==U"failed");
@@ -75,6 +111,9 @@ int main(int argc, char** argv) {
         CHECK(!completion); CHECK(worker.pending_completions()==0);
         auto before=bytes(demo.directory);
         play_loop::Client ro(Store(demo.directory),std::filesystem::path(argv[1]));
+        auto production_advice=ro.loadout_context(a.id).evaluate(selection);
+        CHECK(production_advice.score->decimal=="107");
+        CHECK(!production_advice.allowed); // production policy still rejects authored fixture content
         ro.inspect(s1.id); ro.preview(s1.id,*s1.generation);
         try { ro.accept(preview); CHECK(false); } catch(const StoreError&) {}
         CHECK(bytes(demo.directory)==before);
@@ -83,6 +122,14 @@ int main(int argc, char** argv) {
         preview.candidate_sha256.clear();
         try { demo.client.accept(preview); CHECK(false); } catch(const StoreError&) {}
         CHECK(demo.client.recover_acceptance(s2.id).result==U"not-committed");
+        const auto map=demo.owned_root/"authored-content/HUNTDAT/AREAS/AREA1.MAP";
+        { std::ofstream out(map,std::ios::app); out<<"drift"; }
+        CHECK(context.evaluate(selection).allowed); // cached advice is not fresh launch evidence
+        try { demo.client.prepare(a.id,selection,demo.authorization); CHECK(false); }
+        catch(const std::exception&) {}
+        std::filesystem::remove_all(demo.owned_root/"authored-content");
+        CHECK(context.evaluate(selection).allowed); // pure: no files, helper or hashing
+
     } catch(const std::exception& e) { std::cerr<<e.what()<<'\n'; return 1; }
     return test::failures ? 1 : 0;
 }

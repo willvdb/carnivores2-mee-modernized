@@ -25,7 +25,7 @@ Demo create_demo(const std::filesystem::path& probe, const std::filesystem::path
     try {
         const auto game = root / "authored-content";
         write(game/"HUNTDAT/_RES.TXT", "weapons {\n}\ncharacters {\n{\n name = 'Synthetic animal'\n ai = 10\n}\n}\n");
-        write(game/"HUNTDAT/_MENU.TXT", "weapons {\n{\n name = 'Synthetic weapon'\n}\n}\ncharacters {\n{\n name = 'Synthetic group'\n ai = 10\n}\n}\nprices {\n area = 5\n dino = 10\n weapon = 20\n}\n");
+        write(game/"HUNTDAT/_MENU.TXT", "weapons {\n{\n name = 'Synthetic weapon'\n}\n{\n name = 'Unaffordable fixture weapon'\n}\n}\ncharacters {\n{\n name = 'Synthetic group'\n ai = 10\n}\n}\nprices {\n area = 5\n dino = 10\n weapon = 20\n weapon = 200\n}\n");
         fs::create_directories(game/"HUNTDAT/MENU/TXT"); fs::create_directories(game/"HUNTDAT/MENU/PICS");
         write(game/"HUNTDAT/AREAS/AREA1.MAP","synthetic map evidence");
         write(game/"HUNTDAT/AREAS/AREA1.RSC","synthetic resource evidence");
@@ -67,7 +67,17 @@ Demo create_demo(const std::filesystem::path& probe, const std::filesystem::path
         fs::create_directory(root/"queries");
         policies.query_parent=root/"queries";
         policies.hunt=[](const compat::Value&,const catalog::Projection&,const compat::Value& slot,
-                         const compat::Value& selection,const compat::Value&) {
+                         const compat::Value& selection,const compat::Value& score) {
+            // Authored demo-only eligibility, never installed on a supplied store.
+            const auto& weapons=selection.at(U"weapons");
+            const auto& licenses=selection.at(U"licenses");
+            if (selection.at(U"area").string!=U"areas:0" || licenses.array.size()!=1 ||
+                licenses.array.front().string!=U"licenses:0" || weapons.array.size()!=1 ||
+                (weapons.array.front().string!=U"weapons:0" && weapons.array.front().string!=U"weapons:1"))
+                throw StoreError("unknown fixture selection");
+            const std::string cost=weapons.array.front().string==U"weapons:0" ? "35" : "215";
+            if (score.kind!=compat::Kind::integer || compare_decimal(score.integer,cost)<0)
+                throw StoreError("selection exceeds the native score requirement");
             auto argv=array_value();
             for (const auto& a : {"reg="+slot.integer,std::string("prj=huntdat/areas/area1"),std::string("din=1"),
                  std::string("wep=1"),"dtm="+selection.at(U"time_of_day").integer,
@@ -75,7 +85,7 @@ Demo create_demo(const std::filesystem::path& probe, const std::filesystem::path
             auto result=object_value();
             result.object={{U"adapter",string_value(std::u32string(planning::HUNT_POLICY_ID))},
                 {U"fixture_only",ascii_value("authored disposable state, NOT Genesis")},
-                {U"selection",selection},{U"candidate_argv",argv}};
+                {U"selection",selection},{U"candidate_argv",argv},{U"score_requirement",integer_value(cost)}};
             return result;
         };
         Access::policies(client,std::move(policies));

@@ -7,6 +7,7 @@
 #include "acceptance.hpp"
 #include "store_ops.hpp"
 #include "content_internal.hpp"
+#include "schema_compat.hpp"
 
 namespace c2::frontend::play_loop {
 namespace {
@@ -77,6 +78,83 @@ std::vector<Association> associations(const Manifest& manifest) {
         out.push_back(std::move(a));
     }
     return out;
+}
+struct LoadoutContext::Impl {
+    catalog::Projection catalog;
+    Value revision, slot, score;
+    std::optional<std::u32string> generation;
+    planning_store::PolicyEvaluator policy;
+};
+const catalog::Projection& LoadoutContext::catalog() const { return impl_->catalog; }
+const std::optional<std::u32string>& LoadoutContext::generation() const { return impl_->generation; }
+LoadoutAdvice LoadoutContext::evaluate(const planning::Selection& selection) const {
+    LoadoutAdvice advice;
+    if (impl_->score.kind == compat::Kind::integer) advice.score = planning::Integer{impl_->score.integer};
+    try {
+        const auto result = impl_->policy(impl_->revision, impl_->catalog, impl_->slot,
+                                         planning::PlanningAccess::value(selection), impl_->score);
+        advice.allowed = true;
+        if (result.contains(U"score_requirement"))
+            advice.requirement = planning::Integer{result.at(U"score_requirement").integer};
+    } catch (const std::exception& e) { advice.diagnostic = e.what(); }
+    // Ask the same policy for the requirement even when the real score is too low.
+    // This is an observation, never eligibility or launch authorization.
+    if (!advice.requirement) try {
+        const auto quote = impl_->policy(impl_->revision, impl_->catalog, impl_->slot,
+            planning::PlanningAccess::value(selection), planning_internal::integer_value("2147483647"));
+        if (quote.contains(U"score_requirement")) advice.requirement = planning::Integer{quote.at(U"score_requirement").integer};
+    } catch (const std::exception&) {}
+    if (advice.score && advice.requirement &&
+        planning_internal::compare_decimal(advice.score->decimal,"0") >= 0 &&
+        planning_internal::compare_decimal(advice.score->decimal,"2147483647") <= 0 &&
+        planning_internal::compare_decimal(advice.requirement->decimal,"0") >= 0 &&
+        planning_internal::compare_decimal(advice.requirement->decimal,"2147483647") <= 0)
+        advice.remaining = planning::Integer{std::to_string(std::stoll(advice.score->decimal)-std::stoll(advice.requirement->decimal))};
+    return advice;
+}
+LoadoutAdvice LoadoutContext::alternative(const planning::Selection& selection, catalog::Group group, std::u32string id) const {
+    auto value = planning::PlanningAccess::value(selection);
+    if (group == catalog::Group::areas) {
+        for (auto& field : value.object) if (field.first == U"area") field.second = planning_internal::string_value(std::move(id));
+    } else if (group == catalog::Group::licenses || group == catalog::Group::weapons) {
+        auto ids = planning_internal::array_value(); ids.array.push_back(planning_internal::string_value(std::move(id)));
+        for (auto& field : value.object)
+            if (field.first == (group == catalog::Group::licenses ? U"licenses" : U"weapons")) field.second = std::move(ids);
+    } else return {false, {}, {}, {}, "unsupported loadout group"};
+    return evaluate(planning::PlanningAccess::selection(std::move(value)));
+}
+LoadoutContext Client::loadout_context(std::u32string_view id) const {
+    // One immutable manifest view; refresh_association changes only this local copy.
+    // No HUNTDAT fingerprint here: advice is deliberately not launch evidence.
+    auto data = ManifestAccess::data(impl_->store.read());
+    const auto association = data.at(U"associations").at(id);
+    if (text(association,U"ownership") != U"managed" || text(association,U"origin") != U"personal")
+        throw StoreError("loadout advice requires managed personal state");
+    const auto& hunter = data.at(U"hunters").at(association.at(U"hunter_id").string);
+    if (hunter.contains(U"archived_at") && schema::truth(hunter.at(U"archived_at"))) throw StoreError("archived hunter cannot start a session");
+    const auto instance = data.at(U"instances").at(association.at(U"instance_id").string);
+    auto projection = catalog::project(content_internal::native_units(text(instance,U"path")),text(instance,U"dialect_hint"));
+    const auto observed = planning_store::refresh_association(impl_->store,data,id,impl_->probe);
+    if (text(observed,U"status") != U"unchanged-state") throw StoreError("managed source changed or is unavailable");
+    const auto& files = observed.at(U"files");
+    if (files.array.size() != 2) throw StoreError("hunt requires a complete SAV/SAB pair");
+    for (const auto& diagnostic : observed.at(U"diagnostics").array) {
+        const auto code=text(diagnostic,U"code");
+        if (code!=U"ownership-unproven" && code!=U"pair-coherence-unverified")
+            throw StoreError("native source requires review: " + compat::compact(diagnostic));
+    }
+    Value score;
+    for (const auto& file : files.array) {
+        const auto& decoded = file.at(U"decoded");
+        if (!decoded.at(U"codec_roundtrip_exact").boolean) throw StoreError("native source is unreadable");
+        if (decoded.contains(U"score")) score = decoded.at(U"score");
+    }
+    std::optional<std::u32string> generation;
+    if (association.contains(U"managed_state")) generation = text(association.at(U"managed_state"),U"current_generation");
+    auto context = std::make_shared<LoadoutContext::Impl>(LoadoutContext::Impl{
+        std::move(projection),instance.at(U"revision"),association.at(U"filename_slot"),score,generation,
+        impl_->policies.hunt ? impl_->policies.hunt : planning_store::PolicyEvaluator(planning_internal::hunt_policy)});
+    return LoadoutContext(std::move(context));
 }
 Client::Client(Store store, std::optional<std::filesystem::path> probe, bool writes)
     : impl_(std::make_shared<Impl>(std::move(store), std::move(probe), writes)) {}

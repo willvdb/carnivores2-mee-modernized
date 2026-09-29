@@ -176,7 +176,26 @@ int run_self_test(App& app) {
         if(!model.loop.error().empty()) std::cerr<<"loop error: "<<model.loop.error()<<'\n';
         ST(model.loop.error().empty()); settle(app);
     };
-    activate(screens.console(),"plan-button"); finish(); ST(model.loop.state()==LoopState::validated);
+    ST(screens.console()->GetElementById("plan-button")==nullptr);
+    ST(model.loop.advice() && model.loop.advice()->allowed);
+    ST(model.loop.state()==LoopState::validated);
+    ST(model.loop.advice()->score->decimal=="100");
+    ST(model.loop.advice()->requirement->decimal=="35");
+    auto* weapon=rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(screens.console()->GetElementById("loop-weapon"));
+    ST(weapon && weapon->GetNumOptions()==2);
+    if(weapon) {
+        ST(!weapon->GetOption(0)->HasAttribute("disabled"));
+        ST(weapon->GetOption(1)->HasAttribute("disabled"));
+        auto* retained_option=weapon->GetOption(0);
+        auto* time=rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(screens.console()->GetElementById("loop-time"));
+        time->Focus(true); time->SetValue("2"); settle(app);
+        ST(model.loop.can(Operation::prepare)); ST(!model.loop.busy());
+        ST(screens.focused_id()=="loop-time");
+        ST(weapon->GetOption(0)==retained_option);
+        weapon->ScrollIntoView(); weapon->Focus(true); weapon->Click(); settle(app);
+        ST(app.capture("04b-live-points-options"));
+        app.dispatch(Action::back); settle(app);
+    }
     ST(app.capture("05-validated-intent"));
     activate(screens.console(),"prepare-button"); finish(); ST(model.loop.state()==LoopState::prepared);
     if(!model.loop.session()) return 1;
@@ -201,9 +220,10 @@ int run_self_test(App& app) {
     ST(!model.loop.can(Operation::accept)); ST(model.loop.association()->current_generation==g0);
     activate(screens.console(),"review-button"); settle(app);
     activate(screens.review(),"acceptance-preview"); finish();
-    activate(screens.review(),"accept-button"); finish(); ST(model.loop.state()==LoopState::accepted);
+    activate(screens.review(),"accept-button"); finish(); ST(model.loop.can(Operation::prepare));
     ST(app.capture("09-acceptance-receipt"));
     ST(model.loop.association()->current_generation!=g0);
+    ST(model.loop.advice() && model.loop.advice()->score->decimal=="107");
     app.dispatch(Action::back); settle(app); ST(screens.focused_id()=="review-button");
     activate(screens.console(),"prepare-button"); finish(); ST(model.loop.state()==LoopState::prepared);
     ST(model.loop.session()->id!=first_session);

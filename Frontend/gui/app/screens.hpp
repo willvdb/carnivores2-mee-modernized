@@ -83,6 +83,7 @@ private:
     Rml::ElementDocument* review_ = nullptr;
     Rml::DataModelHandle loop_model_;
     std::string loop_association_, loop_area_, loop_license_, loop_weapon_, loop_time_ = "1", recovery_id_;
+    std::uint64_t catalog_version_ = 0;
     std::string catalog_association_, loop_return_focus_;
     std::vector<std::string> association_ids_;
     bool review_open_ = false, review_shown_ = false;

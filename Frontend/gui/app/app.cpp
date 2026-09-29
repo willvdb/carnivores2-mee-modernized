@@ -204,7 +204,10 @@ void App::loop_operation(Operation op) {
         },
         [this, id = request->id, op](LoopResult result) {
             if (model_->loop.complete(id,std::move(result))) {
-                if (op == Operation::accept || op == Operation::upgrade) reload_store();
+                if (op == Operation::accept || op == Operation::upgrade) {
+                    reload_store();
+                    if (model_->loop.association() && model_->loop.error().empty()) loop_operation(Operation::catalog);
+                }
                 screens_->sync();
             }
         });

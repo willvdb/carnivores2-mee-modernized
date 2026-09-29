@@ -216,6 +216,8 @@ body.modal { background-color: #00000099; display: flex; align-items: center; ju
 .notes div { font-size: 12dp; color: #cfcab8; margin-bottom: 3dp; }
 
 .loop-console { display: block; }
+.loop-console select { width: 100%; max-width: 600dp; }
+.loop-console option.disabled { color: #92958b; opacity: 0.55; }
 .pins, .evidence { display: block; white-space: pre-wrap; word-break: break-all; font-size: 12dp; margin: 8dp 0dp; }
 .evidence { max-height: 240dp; overflow-y: auto; background: #10100e; padding: 10dp; }
 .return-review { width: 88%; max-width: 1050dp; max-height: 90%; overflow-y: auto; }
