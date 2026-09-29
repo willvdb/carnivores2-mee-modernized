@@ -2,7 +2,7 @@
 namespace c2::frontend::gui {
 bool HuntLoop::select(play_loop::Association a) {
     if (busy()) return false;
-    association_ = std::move(a); session_.reset(); preview_.reset();
+    catalog_.reset(); association_ = std::move(a); session_.reset(); preview_.reset();
     state_ = LoopState::selection; details_.clear(); error_.clear(); ++version_; return true;
 }
 bool HuntLoop::loadout(planning::Selection s) {
@@ -18,8 +18,8 @@ bool HuntLoop::inspect_session(std::u32string id) {
 bool HuntLoop::can(Operation op) const {
     if (busy()) return false;
     switch (op) {
-    case Operation::plan: return association_.has_value();
-    case Operation::prepare: return writable_ && (state_ == LoopState::validated || state_ == LoopState::accepted || state_ == LoopState::declined);
+    case Operation::catalog: case Operation::plan: return association_.has_value();
+    case Operation::prepare: return writable_ && association_ && (state_ == LoopState::validated || state_ == LoopState::accepted || state_ == LoopState::declined);
     case Operation::run: return writable_ && session_ && state_ == LoopState::prepared;
     case Operation::inspect: return session_.has_value();
     case Operation::preview: return session_ && session_->generation.has_value();
@@ -38,7 +38,7 @@ std::optional<LoopRequest> HuntLoop::begin(Operation op) {
     if (op == Operation::accept) r.preview = *preview_;
     if (op != Operation::accept) preview_.reset();
     switch (op) {
-    case Operation::plan: state_ = LoopState::validating; break;
+    case Operation::catalog: case Operation::plan: state_ = LoopState::validating; break;
     case Operation::prepare: session_.reset(); state_ = LoopState::preparing; break;
     case Operation::run: state_ = LoopState::running; break;
     case Operation::inspect: state_ = LoopState::inspecting; break;
@@ -53,7 +53,9 @@ bool HuntLoop::complete(std::uint64_t id, LoopResult result) {
     if (!pending_ || pending_->id != id) return false;
     auto op = pending_->operation; pending_.reset(); ++version_;
     if (!result.error.empty()) { error_ = std::move(result.error); state_ = LoopState::error; return true; }
-    if (auto p = std::get_if<play_loop::Plan>(&result.value)) {
+    if (auto c = std::get_if<catalog::Projection>(&result.value)) {
+        catalog_ = *c; details_ = c->export_json(); state_ = LoopState::selection;
+    } else if (auto p = std::get_if<play_loop::Plan>(&result.value)) {
         details_ = p->details; state_ = LoopState::validated;
     } else if (auto s = std::get_if<play_loop::Session>(&result.value)) {
         session_ = *s; details_ = s->details;
@@ -82,6 +84,7 @@ LoopResult execute_loop(const play_loop::Client& client, const LoopRequest& r,
                         const play_loop::Authorization& auth, const std::atomic<bool>& cancel) {
     try {
         switch (r.operation) {
+        case Operation::catalog: return {client.catalog(r.association),{}};
         case Operation::plan: return {client.plan(r.association,r.selection),{}};
         case Operation::prepare: return {client.prepare(r.association,r.selection,auth),{}};
         case Operation::run: {

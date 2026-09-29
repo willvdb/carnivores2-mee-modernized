@@ -39,6 +39,7 @@ struct Access; // private fixture seam; not defined in the installed API
 class Client {
 public:
     Client(Store store, std::optional<std::filesystem::path> probe, bool allow_writes = false);
+    catalog::Projection catalog(std::u32string_view association) const;
     Plan plan(std::u32string_view association, const planning::Selection&) const;
     Session prepare(std::u32string_view association, const planning::Selection&,
                     const Authorization&, unsigned timeout_seconds = 900) const;

@@ -39,18 +39,32 @@
                         <div class="hunter-row" data-for="h : hunters" data-attr-id="'hunter-' + h.id" data-class-selected="h.selected" data-event-click="view_hunter(h.id)">{{h.name}} …{{h.short_id}}{{h.suffix}}</div>
                         <div class="state" data-if="hunters.size == 0">No hunters in this store.</div>
                     </div>
-                    <div class="section-title">Demo loadout <span class="badge">sample values, not catalog data</span></div>
-                    <div class="field"><label>Area</label>
-                        <select id="area-select" data-value="area"></select></div>
-                    <div class="field"><label>Weapon</label>
-                        <select id="weapon-select" data-value="weapon"></select></div>
-                    <div class="field"><label>Time of day</label>
-                        <select id="time-select" data-value="time_of_day"></select></div>
-                    <div class="actions">
-                        <button id="preview-button" class="btn primary" data-event-click="preview()">Demo preview</button>
-                        <button id="launch-button" class="btn disabled" disabled>Launch</button>
+                    <div class="loop-console">
+                        <div class="section-title">Hunt preparation</div>
+                        <div class="explain">{{source}}</div>
+                        <div class="field"><label>Hunter / expedition association</label>
+                            <select id="association-select" data-value="association" data-attrif-disabled="busy"></select></div>
+                        <div class="field"><label>Area</label><select id="loop-area" data-value="loop_area" data-attrif-disabled="busy"></select></div>
+                        <div class="field"><label>License (catalog selection)</label><select id="loop-license" data-value="loop_license" data-attrif-disabled="busy"></select></div>
+                        <div class="field"><label>Weapon</label><select id="loop-weapon" data-value="loop_weapon" data-attrif-disabled="busy"></select></div>
+                        <div class="field"><label>Time</label><select id="loop-time" data-value="loop_time" data-attrif-disabled="busy">
+                            <option value="0">Dawn</option><option value="1">Day</option><option value="2">Night</option></select></div>
+                        <div class="actions">
+                            <button id="plan-button" class="btn" data-attrif-disabled="!can_plan" data-event-click="operate('plan')">Validate loadout</button>
+                            <button id="prepare-button" class="btn" data-attrif-disabled="!can_prepare" data-event-click="operate('prepare')">Prepare fresh session</button>
+                            <button id="launch-button" class="btn primary" data-attrif-disabled="!can_run" data-event-click="operate('run')">Run prepared session</button>
+                            <button id="cancel-run" class="btn" data-attrif-disabled="!busy" data-event-click="operate('cancel')">Cancel run</button>
+                            <button id="review-button" class="btn" data-event-click="operate('review')">Return review</button>
+                        </div>
+                        <div class="section-title">{{loop_status}}</div>
+                        <div class="error wrap">{{loop_error}}</div>
+                        <div class="pins">{{pins}}</div>
+                        <div data-if="schema_one" class="explain">Schema 1: reading does not upgrade. Explicit upgrade creates lodge.schema-1.backup.json and generation-zero identities; its backend result is shown below.
+                            <button id="upgrade-button" class="btn" data-attrif-disabled="!can_upgrade" data-event-click="operate('upgrade')">Upgrade managed metadata</button></div>
+                        <div class="field"><label>Inspect retained session UUID</label><input id="session-id" type="text" data-value="recovery_id"/></div>
+                        <button id="inspect-session" class="btn" data-attrif-disabled="busy" data-event-click="operate('load_session')">Inspect retained session</button>
+                        <div class="evidence">{{loop_details}}</div>
                     </div>
-                    <div class="explain">{{launch_reason}}</div>
                 </div>
             </div>
         </div>

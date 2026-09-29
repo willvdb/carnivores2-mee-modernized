@@ -6,6 +6,7 @@
 #include "session_runner.hpp"
 #include "acceptance.hpp"
 #include "store_ops.hpp"
+#include "content_internal.hpp"
 
 namespace c2::frontend::play_loop {
 namespace {
@@ -69,6 +70,13 @@ void Client::require_writes() const {
     // A supplied missing store must never be implicitly created.
     if (!std::filesystem::is_regular_file(impl_->store.directory() / "lodge.json"))
         throw StoreError("an existing lodge.json is required");
+}
+catalog::Projection Client::catalog(std::u32string_view id) const {
+    auto manifest = impl_->store.read();
+    const auto& data = ManifestAccess::data(manifest);
+    const auto& a = data.at(U"associations").at(id);
+    const auto& i = data.at(U"instances").at(a.at(U"instance_id").string);
+    return catalog::project(content_internal::native_units(i.at(U"path").string),i.at(U"dialect_hint").string);
 }
 Plan Client::plan(std::u32string_view a, const planning::Selection& selection) const {
     auto v = planning_store::plan_hunt(impl_->store,a,planning::PlanningAccess::value(selection),impl_->probe,impl_->policies.hunt);

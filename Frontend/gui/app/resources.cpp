@@ -38,7 +38,7 @@ std::optional<AssetRoot> resolve_asset_root(const std::optional<std::filesystem:
 
 std::vector<std::filesystem::path> missing_essentials(const std::filesystem::path& root) {
     std::vector<std::filesystem::path> missing;
-    for (const char* rel : {"rml/lodge.rml", "rml/console.rml", "rml/setup.rml", "rml/preview.rml",
+    for (const char* rel : {"rml/lodge.rml", "rml/console.rml", "rml/setup.rml", "rml/preview.rml", "rml/review.rml",
                             "rcss/theme.rcss", "fonts/DejaVuSans.ttf"}) {
         std::error_code ec;
         if (!std::filesystem::is_regular_file(root / rel, ec)) missing.push_back(root / rel);

@@ -63,7 +63,7 @@ if(C2_FRONTEND_GUI)
   include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/Dependencies.cmake")
 
   add_executable(c2-frontend-gui
-    app/main.cpp app/app.cpp app/screens.cpp app/gamepad.cpp app/resources.cpp
+    app/main.cpp app/app.cpp app/screens.cpp app/loop_screens.cpp app/gamepad.cpp app/resources.cpp
     app/render_png.cpp app/capture.cpp app/self_test.cpp)
   target_link_libraries(c2-frontend-gui PRIVATE c2_frontend_gui_model c2_frontend_demo c2_rmlui_backend_sdl_gl3)
   target_include_directories(c2-frontend-gui SYSTEM PRIVATE third_party/stb)

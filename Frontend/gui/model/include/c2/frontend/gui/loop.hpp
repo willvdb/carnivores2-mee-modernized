@@ -2,12 +2,12 @@
 #include "c2/frontend/play_loop.hpp"
 #include <variant>
 namespace c2::frontend::gui {
-enum class Operation { plan, prepare, run, inspect, preview, accept, recover, recover_acceptance, upgrade };
+enum class Operation { catalog, plan, prepare, run, inspect, preview, accept, recover, recover_acceptance, upgrade };
 enum class LoopState { selection, validating, validated, preparing, prepared, running, returned,
                        inspecting, reviewing, previewing, eligible, blocked, accepting, accepted,
                        recovering, declined, error };
 using LoopValue = std::variant<std::monostate, play_loop::Plan, play_loop::Session, play_loop::Preview,
-                               play_loop::Receipt, play_loop::Evidence>;
+                               play_loop::Receipt, play_loop::Evidence, catalog::Projection>;
 struct LoopResult { LoopValue value; std::string error; };
 struct LoopRequest {
     std::uint64_t id = 0;
@@ -28,6 +28,7 @@ public:
     void cancel();
     void decline();
     bool can(Operation) const;
+    const std::optional<catalog::Projection>& catalog() const { return catalog_; }
     bool busy() const { return pending_.has_value(); }
     LoopState state() const { return state_; }
     const std::optional<play_loop::Association>& association() const { return association_; }
@@ -38,6 +39,7 @@ public:
     std::shared_ptr<std::atomic<bool>> cancellation() const { return cancel_; }
     std::uint64_t version() const { return version_; }
 private:
+    std::optional<catalog::Projection> catalog_;
     bool writable_;
     LoopState state_ = LoopState::selection;
     std::uint64_t next_ = 1, version_ = 0;
