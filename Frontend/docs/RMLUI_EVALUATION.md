@@ -1,5 +1,8 @@
 # RmlUi evaluation slice (frontend GUI)
 
+> Historical evaluation record. The implemented play-loop milestone, current data
+> modes and verification commands are in [HUNT_LOOP_GUI.md](HUNT_LOOP_GUI.md).
+
 Bounded evaluation of **RmlUi 6.3 + SDL3 + OpenGL** as the toolkit for the
 player-facing frontend, linked directly to the native backend. It proves the
 risky interactions (illustrated lodge layout, a practical Expedition Console,
