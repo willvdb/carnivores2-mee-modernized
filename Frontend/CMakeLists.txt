@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
 # Deliberately standalone: configure with -S Frontend, no engine dependencies.
-set(c2_frontend_core_sources native/src/core.cpp native/src/json_compat.cpp native/src/schema_compat.cpp native/src/manifest_schema.cpp native/src/store_paths.cpp native/src/store.cpp native/src/capture.cpp native/src/profile.cpp native/src/profile_files.cpp native/src/content.cpp native/src/discovery.cpp native/src/catalog.cpp native/src/catalog_projection.cpp native/src/catalog_presentation.cpp native/src/planning.cpp native/src/launch_planning.cpp native/src/store_write.cpp native/src/probe_process.cpp native/src/session_journal.cpp native/src/planning_store.cpp
+set(c2_frontend_core_sources native/src/core.cpp native/src/play_loop.cpp native/src/json_compat.cpp native/src/schema_compat.cpp native/src/manifest_schema.cpp native/src/store_paths.cpp native/src/store.cpp native/src/capture.cpp native/src/profile.cpp native/src/profile_files.cpp native/src/content.cpp native/src/discovery.cpp native/src/catalog.cpp native/src/catalog_projection.cpp native/src/catalog_presentation.cpp native/src/planning.cpp native/src/launch_planning.cpp native/src/store_write.cpp native/src/probe_process.cpp native/src/session_journal.cpp native/src/planning_store.cpp
   native/src/sessions.cpp native/src/session_process.cpp native/src/session_runner.cpp native/src/reconciliation.cpp
   native/src/acceptance.cpp native/src/store_ops.cpp native/src/cli.cpp)
 add_library(c2_frontend_core STATIC ${c2_frontend_core_sources})
@@ -360,4 +360,10 @@ if(BUILD_TESTING)
   include(native/tests/workstream_sessions.cmake)
   include(native/tests/workstream_store_ops.cmake)
   include(native/tests/workstream_acceptance.cmake)
+endif()
+
+if(BUILD_TESTING)
+  add_executable(c2-frontend-play-loop-tests native/tests/play_loop_tests.cpp)
+  target_link_libraries(c2-frontend-play-loop-tests PRIVATE c2_frontend_core)
+  add_test(NAME frontend-play-loop-api COMMAND c2-frontend-play-loop-tests)
 endif()
