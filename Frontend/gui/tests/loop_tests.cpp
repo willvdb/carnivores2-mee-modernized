@@ -11,6 +11,8 @@ int main() {
     CHECK(loop.complete(plan.id, {play_loop::Plan{}, {}}));
     CHECK(!loop.complete(plan.id, {play_loop::Plan{}, {}}));
     auto prepare = *loop.begin(Operation::prepare);
+    CHECK(!loop.complete(plan.id,{play_loop::Plan{},{}}));
+    CHECK(loop.state()==LoopState::preparing);
     play_loop::Session session; session.id=U"session"; session.generation=U"g0"; session.state=U"prepared";
     CHECK(loop.complete(prepare.id,{session,{}}));
     auto run = *loop.begin(Operation::run);
@@ -33,6 +35,14 @@ int main() {
     CHECK(loop.complete(accept.id,{receipt,{}})); CHECK(loop.state()==LoopState::accepted);
     CHECK(!loop.session()); CHECK(loop.association()->current_generation==U"g1");
     CHECK(loop.begin(Operation::prepare).has_value());
+    CHECK(!loop.complete(accept.id,{receipt,{}}));
+    CHECK(loop.state()==LoopState::preparing);
+    HuntLoop changed(true); changed.select({});
+    auto intent=*changed.begin(Operation::plan); changed.complete(intent.id,{play_loop::Plan{},{}});
+    CHECK(changed.can(Operation::prepare));
+    changed.loadout(planning::Selection::hunt(U"areas:1",{U"licenses:0"},{U"weapons:0"},{"2"}));
+    CHECK(!changed.can(Operation::prepare));
+    CHECK(changed.state()==LoopState::selection);
     HuntLoop ro; ro.select({}); CHECK(ro.begin(Operation::plan).has_value());
     CHECK(ro.complete(1,{play_loop::Plan{},{}})); CHECK(!ro.can(Operation::prepare));
     for (auto op : {Operation::recover,Operation::recover_acceptance,Operation::upgrade}) {

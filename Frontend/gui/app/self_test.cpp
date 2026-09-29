@@ -46,7 +46,9 @@ int run_self_test(App& app) {
     ST(model.load_state() == LoadState::ready);
     if (model.load_state() != LoadState::ready) std::cerr << "load error: " << model.load_error() << '\n';
     ST(model.snapshot() && model.snapshot()->associations.size() == 1);
-    const auto expedition_id = model.snapshot()->expeditions.front().id;
+    const auto expedition_id = to_utf8(model.snapshot()->associations.front().instance_id);
+    const auto first_expedition_id = model.snapshot()->expeditions.front().id;
+    ST(model.snapshot()->hunters.size()==4); ST(model.snapshot()->expeditions.size()==3);
     settle(app);
     ST(app.capture("01-lodge"));
 
@@ -132,9 +134,19 @@ int run_self_test(App& app) {
     app.dispatch(Action::nav_left); settle(app);
     app.dispatch(Action::confirm); settle(app);
     ST(model.screen() == Screen::console);
-    ST(screens.focused_id() == "exp-" + expedition_id);
+    ST(screens.focused_id() == "exp-" + first_expedition_id);
     app.dispatch(Action::confirm); settle(app);
-    ST(model.selected_expedition() == expedition_id);
+    ST(model.selected_expedition() == first_expedition_id);
+    app.dispatch(Action::nav_down); settle(app);
+    ST(screens.focused_id()=="exp-"+model.snapshot()->expeditions[1].id);
+    app.dispatch(Action::nav_down); settle(app);
+    ST(screens.focused_id()=="exp-"+model.snapshot()->expeditions[2].id);
+    app.dispatch(Action::nav_down); settle(app);
+    ST(screens.focused_id()=="exp-"+model.snapshot()->expeditions[2].id);
+    std::vector<std::string> duplicate_ids;
+    for(const auto& h:model.snapshot()->hunters) if(h.name=="Fixture Hunter") duplicate_ids.push_back(h.id);
+    ST(duplicate_ids.size()==2); ST(duplicate_ids[0]!=duplicate_ids[1]);
+    for(const auto& id:duplicate_ids) ST(screens.console()->GetElementById("hunter-"+id)!=nullptr);
     ST(app.capture("04a-console-before-navigation"));
     app.dispatch(Action::nav_right); settle(app);
     std::cout << "self-test: console cross-pane focus " << screens.focused_id() << std::endl;
@@ -146,6 +158,8 @@ int run_self_test(App& app) {
     association->SetValue(to_utf8(model.snapshot()->associations.front().id));
     ST(wait_for(app,[&]{return !model.loop.busy() && model.loop.catalog().has_value();}));
     ST(model.loop.error().empty());
+    ST(model.selected_expedition()==expedition_id);
+    ST(model.viewed_hunter()==to_utf8(model.snapshot()->associations.front().hunter_id));
     association->Focus(true); association->Click(); settle(app);
     ST(select_open(association));
     app.dispatch(Action::back); settle(app);

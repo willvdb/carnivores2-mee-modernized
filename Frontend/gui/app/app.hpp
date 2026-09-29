@@ -17,7 +17,7 @@
 
 namespace c2::frontend::gui::app {
 struct Options {
-    std::optional<std::filesystem::path> store;    // read-only supplied store
+    std::optional<std::filesystem::path> store;    // supplied store; mutations require allow_writes
     std::optional<std::filesystem::path> assets;   // asset root override
     bool self_test = false;
     bool allow_writes = false;

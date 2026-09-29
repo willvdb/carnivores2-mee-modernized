@@ -2,7 +2,8 @@
 // One owned worker thread and one completion queue. Work runs off the UI
 // thread; completions run only when the UI thread calls drain(). Foreign
 // threads (for example a native dialog callback) marshal with post().
-// Deliberately not a job framework: no priorities, no cancellation, no pools.
+// Deliberately not a job framework: no priorities or pools. The caller sets
+// its run cancellation token before shutdown(), which joins the owned thread.
 #include <condition_variable>
 #include <deque>
 #include <functional>

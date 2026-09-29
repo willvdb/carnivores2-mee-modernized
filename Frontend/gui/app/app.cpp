@@ -68,7 +68,7 @@ bool App::init(std::string& error) {
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
     const SDL_WindowFlags flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
                                   (options_.self_test ? SDL_WINDOW_HIDDEN : 0);
-    window_ = SDL_CreateWindow("Carnivores frontend (RmlUi evaluation)", options_.width, options_.height, flags);
+    window_ = SDL_CreateWindow("Carnivores Expedition Console", options_.width, options_.height, flags);
     if (!window_) {
         error = std::string("SDL_CreateWindow failed: ") + SDL_GetError();
         return false;

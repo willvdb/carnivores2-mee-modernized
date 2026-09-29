@@ -35,6 +35,10 @@ Demo create_demo(const std::filesystem::path& probe, const std::filesystem::path
         sav.replace(0,12,"Test hunter\0",12); word(sav,128,0); word(sav,132,100); word(sav,136,1000);
         for (std::size_t i=0;i<sab.size();++i) sab[i]=static_cast<char>((i*37)%256);
         write(game/"trophy00.sav",sav); write(game/"trophy00.sab",sab);
+        const auto second_game=root/"authored-second-expedition";
+        const auto long_game=root/"An Extraordinarily Long Authored Expedition Name For Narrow Console Lists";
+        fs::copy(game,second_game,fs::copy_options::recursive);
+        fs::copy(game,long_game,fs::copy_options::recursive);
         // The executable lives outside content so it does not change content evidence.
         fs::create_directory(root/"engine");
         auto engine = root / "engine" / fixture.filename(); fs::copy_file(fixture,engine);
@@ -45,6 +49,13 @@ Demo create_demo(const std::filesystem::path& probe, const std::filesystem::path
         Store store(root/"lodge"); std::u32string hunter, instance;
         store_write::transaction(store,[&](compat::Value& data) {
             hunter=store_ops::hunter(data,U"create",std::nullopt,U"Fixture Hunter").at(U"id").string;
+            store_ops::hunter(data,U"create",std::nullopt,U"Fixture Hunter");
+            store_ops::hunter(data,U"create",std::nullopt,U"Bj\u00f6rn \u00d8deg\u00e5rd");
+            auto archived=store_ops::hunter(data,U"create",std::nullopt,U"Retired Hunter").at(U"id").string;
+            store_ops::hunter(data,U"archive",archived,std::nullopt);
+            store_ops::hunter(data,U"select",hunter,std::nullopt);
+            for(const auto& extra:{second_game,long_game})
+                store_ops::register_instance(data,extra,U"registered",U"mee-newer",std::nullopt,std::nullopt,std::nullopt);
             instance=store_ops::register_instance(data,game,U"registered",U"mee-newer",std::nullopt,std::nullopt,std::nullopt).at(U"id").string;
         });
         store_write::transaction(store,[&](compat::Value& data) {
